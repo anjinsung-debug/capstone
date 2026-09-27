@@ -1,0 +1,44 @@
+# 환경 변수 / 비밀 정보
+.env
+.env.*
+!.env.example
+
+# 원천 데이터 (외부 공개 금지)
+data/raw/*
+!data/raw/.gitkeep
+!data/raw/README.md
+
+# 시뮬레이션 산출물
+simulation/results/*
+!simulation/results/.gitkeep
+*.dss.log
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Node
+node_modules/
+dist/
+build/
+.vite/
+npm-debug.log*
+yarn-error.log*
+
+# Neo4j 로컬 데이터
+infra/neo4j/data/
+infra/neo4j/logs/
+
+# IDE / OS
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
+desktop.ini
+~$*
