@@ -3,10 +3,12 @@
 .env.*
 !.env.example
 
-# 원천 데이터 (외부 공개 금지)
+# 한전 제공 데이터 및 이를 변환한 파생 데이터 (외부 공개 금지)
 data/raw/*
 !data/raw/.gitkeep
-!data/raw/README.md
+data/output/*
+!data/output/.gitkeep
+*.dump
 
 # 시뮬레이션 산출물
 simulation/results/*

@@ -8,7 +8,7 @@ LLM이 **진단 → 원인 → 대안** 리포트를 자동 생성하는 통합 
 ## 전체 흐름
 
 ```
-22.9kV 원천 데이터 ──(FR-01)──▶ CIM 매핑 ──(FR-02)──▶ Neo4j
+한전 22.9kV 데이터 ──(FR-01)──▶ CIM 매핑 ──(FR-02)──▶ Neo4j
                                                         │
                         ┌────────────(FR-03)────────────┘
                         ▼
@@ -25,7 +25,7 @@ LLM이 **진단 → 원인 → 대안** 리포트를 자동 생성하는 통합 
 |------|------|------|---------------|------|
 | FE | [`frontend/`](frontend/) | 웹 단선도 (Cytoscape.js), 결과 오버레이, 드래그&드롭 편집 | FR-05, FR-06 | 고영민, 최민준 |
 | BE | [`backend/`](backend/) | API 서버 (계통 조회/편집, UUID 발급, 시뮬레이션·리포트 연동), 실행 환경 | FR-02, FR-04, FR-06~FR-08 | 안진성, 한승우 |
-| 데이터 (CIM/Neo4j) | [`data/`](data/) | 원천 데이터 → CIM 매핑·검증, Neo4j 스키마·적재 | FR-01, FR-02 | 한승우 |
+| 데이터 (CIM/Neo4j) | [`data/`](data/) | 한전 제공 데이터 → CIM 매핑·검증, Neo4j 스키마·적재 | FR-01, FR-02 | 한승우 |
 | 시뮬레이션 (OpenDSS) | [`simulation/`](simulation/) | Neo4j → OpenDSS 스크립트 변환, 실행, 결과 추출, 회귀 테스트 | FR-03, FR-04 | 안진성 |
 | AI 리포트/프롬프트 | [`ai_report/`](ai_report/) | 결과 수치 → 프롬프트 매핑, LLM 호출, 3단계 리포트 템플릿 | FR-08, FR-09 | 고영민, 최민준 |
 
@@ -63,12 +63,12 @@ capstone/
 │   └── tests/               #   테스트
 │
 ├── data/                    # [데이터] CIM 매핑 / Neo4j 적재 — FR-01, FR-02
-│   ├── raw/                 #   22.9kV 원천 데이터 (⚠ git 제외, 공유는 별도 드라이브)
-│   ├── samples/             #   개발·테스트용 소규모 샘플 계통
-│   ├── mapping/             #   원천 데이터 필드 ↔ CIM 클래스/속성 매핑 테이블
-│   ├── converter/           #   원천 데이터 → CIM 변환 코드
+│   ├── raw/                 #   한전 제공 22.9kV 배전계통 데이터(가공본) (⚠ git 제외)
+│   ├── samples/             #   개발·테스트용 가상 샘플 계통 (한전 데이터 금지)
+│   ├── mapping/             #   한전 데이터 필드 ↔ CIM 클래스/속성 매핑 테이블
+│   ├── converter/           #   한전 데이터 → CIM 변환 코드
 │   ├── validation/          #   변환 결과 검증 스크립트, 예외 케이스 목록
-│   ├── output/              #   CIM 변환 결과 (CIM XML/RDF, CSV 등)
+│   ├── output/              #   CIM 변환 결과 (CIM XML/RDF, CSV 등) (⚠ git 제외)
 │   ├── cypher/              #   Neo4j 스키마·제약조건·인덱스 정의 (.cypher)
 │   ├── loader/              #   CIM 데이터 → Neo4j 적재 (위상·연결·좌표 포함)
 │   └── tests/               #   테스트
@@ -86,7 +86,7 @@ capstone/
 │   └── tests/               #   테스트
 │
 ├── .env.example             # 환경 변수 양식 (복사해서 .env로 사용)
-├── .gitignore               # git 제외 목록 (.env, 원천 데이터, 산출물 등)
+├── .gitignore               # git 제외 목록 (.env, 한전 데이터, 산출물 등)
 └── .gitattributes           # 줄바꿈(LF) 통일 설정
 ```
 
@@ -94,7 +94,7 @@ capstone/
 
 ## 개발 단계
 
-1. **데이터 표준화 / DB 구축** — 22.9kV 원천 데이터 분석 → CIM 매핑 → Neo4j 적재
+1. **데이터 표준화 / DB 구축** — 한전 제공 22.9kV 데이터 분석 → CIM 매핑 → Neo4j 적재
 2. **시뮬레이션 연동** — DB 쿼리 → OpenDSS 스크립트 변환 → 조류 계산 / 결과 추출
 3. **웹 시각화** — Cytoscape.js 단선도 → 결과 오버레이
 4. **웹 편집 / 동기화** — 드래그&드롭 편집 → UUID 발급 → 실시간 저장
@@ -118,7 +118,9 @@ cd capstone
 cp .env.example .env   # Neo4j 접속 정보, LLM API 키 등 입력
 ```
 
-> `.env`와 `data/raw/`의 원천 데이터는 커밋하지 않습니다.
+> ⚠ **한전 제공 데이터는 외부 공개 금지입니다.** 이 저장소는 공개(public) 상태이므로
+> `data/raw/`(한전 데이터)와 `data/output/`(변환 결과), `.env`는 절대 커밋하지 않습니다.
+> 데이터 파일은 별도 공유 드라이브로 주고받고, 커밋 전에 `git status`로 데이터 파일이 섞이지 않았는지 확인하세요.
 
 ## 참고자료
 
