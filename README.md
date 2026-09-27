@@ -40,6 +40,58 @@ LLM이 **진단 → 원인 → 대안** 리포트를 자동 생성하는 통합 
 | 최민준 | `frontend/`, `ai_report/` |
 | 한승우 | `backend/`, `data/` |
 
+## 디렉토리 구조
+
+```
+capstone/
+├── frontend/                # [FE] 웹 단선도 — FR-05, FR-06
+│   ├── public/              #   정적 파일 (index.html, 아이콘 등)
+│   └── src/
+│       ├── graph/           #   Cytoscape.js 단선도 렌더링, 스타일·레이아웃
+│       ├── overlay/         #   시뮬레이션 결과(유효/무효 전력 등) 오버레이 표시
+│       ├── editor/          #   노드/선로 드래그&드롭 편집
+│       ├── components/      #   공통 UI 컴포넌트, AI 리포트 뷰어
+│       └── api/             #   백엔드 API 호출 클라이언트
+│
+├── backend/                 # [BE] API 서버 — FR-02, FR-04, FR-06~FR-08
+│   ├── app/
+│   │   ├── api/             #   라우터 (계통 조회/편집, 시뮬레이션 실행, 리포트 요청)
+│   │   ├── core/            #   설정, Neo4j 연결, 공통 유틸
+│   │   ├── schemas/         #   요청/응답 데이터 모델
+│   │   └── services/        #   비즈니스 로직 (data·simulation·ai_report 모듈 연동)
+│   ├── infra/               #   실행 환경 (Neo4j Docker Compose 등)
+│   └── tests/               #   테스트
+│
+├── data/                    # [데이터] CIM 매핑 / Neo4j 적재 — FR-01, FR-02
+│   ├── raw/                 #   22.9kV 원천 데이터 (⚠ git 제외, 공유는 별도 드라이브)
+│   ├── samples/             #   개발·테스트용 소규모 샘플 계통
+│   ├── mapping/             #   원천 데이터 필드 ↔ CIM 클래스/속성 매핑 테이블
+│   ├── converter/           #   원천 데이터 → CIM 변환 코드
+│   ├── validation/          #   변환 결과 검증 스크립트, 예외 케이스 목록
+│   ├── output/              #   CIM 변환 결과 (CIM XML/RDF, CSV 등)
+│   ├── cypher/              #   Neo4j 스키마·제약조건·인덱스 정의 (.cypher)
+│   ├── loader/              #   CIM 데이터 → Neo4j 적재 (위상·연결·좌표 포함)
+│   └── tests/               #   테스트
+│
+├── simulation/              # [시뮬레이션] OpenDSS 연동 — FR-03, FR-04
+│   ├── converter/           #   Neo4j 조회 결과 → OpenDSS 스크립트(.dss) 생성
+│   ├── runner/              #   OpenDSS 실행, 결과(유효/무효 전력, 전압 등) 추출
+│   ├── results/             #   실행 산출물 (git 제외)
+│   └── tests/regression/    #   기준 계통 대비 변환 정확도 회귀 테스트
+│
+├── ai_report/               # [AI] LLM 자동 해설 리포트 — FR-08, FR-09
+│   ├── prompts/             #   시뮬레이션 수치 → 프롬프트 매핑 규칙
+│   ├── templates/           #   리포트 템플릿 (① 진단 → ② 원인 → ③ 솔루션)
+│   ├── client/              #   LLM API 호출 모듈
+│   └── tests/               #   테스트
+│
+├── .env.example             # 환경 변수 양식 (복사해서 .env로 사용)
+├── .gitignore               # git 제외 목록 (.env, 원천 데이터, 산출물 등)
+└── .gitattributes           # 줄바꿈(LF) 통일 설정
+```
+
+> 빈 폴더에 있는 `.gitkeep`은 폴더를 git에 올리기 위한 빈 파일입니다. 폴더에 실제 파일이 생기면 지워도 됩니다.
+
 ## 개발 단계
 
 1. **데이터 표준화 / DB 구축** — 22.9kV 원천 데이터 분석 → CIM 매핑 → Neo4j 적재
@@ -61,7 +113,7 @@ LLM이 **진단 → 원인 → 대안** 리포트를 자동 생성하는 통합 
 ## 시작하기
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/anjinsung-debug/capstone.git
 cd capstone
 cp .env.example .env   # Neo4j 접속 정보, LLM API 키 등 입력
 ```
