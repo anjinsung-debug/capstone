@@ -39,8 +39,6 @@ LLM이 **진단 → 원인 → 대안** 리포트를 자동 생성하는 통합 
 | 최민준 | `frontend/`, `ai_report/` |
 | 한승우 | `docs/`, `backend/`, `data/` |
 
-폴더별 담당자는 [`.github/CODEOWNERS`](.github/CODEOWNERS)에 등록되어 있어서, 해당 폴더를 수정하는 PR에는 담당자가 자동으로 리뷰어로 지정됩니다.
-
 ## 개발 단계
 
 1. **데이터 표준화 / DB 구축** — 22.9kV 원천 데이터 분석 → CIM 매핑 → Neo4j 적재
