@@ -7,7 +7,7 @@
 | `app/api/` | 라우터 (계통 조회/편집, 시뮬레이션 실행, 리포트 요청) |
 | `app/core/` | 설정, Neo4j 연결, 공통 유틸 |
 | `app/schemas/` | 요청/응답 모델 |
-| `app/services/` | 비즈니스 로직 (`data`, `simulation`, `ai_report` 모듈 연동) |
+| `app/services/` | 비즈니스 로직 (`cim`, `simulation`, `ai_report` 모듈 연동) |
 | `infra/` | 실행 환경 (Neo4j Docker Compose 등) |
 | `tests/` | 테스트 |
 

@@ -25,11 +25,12 @@ LLM이 **진단 → 원인 → 대안** 리포트를 자동 생성하는 통합 
 |------|------|------|---------------|------|
 | FE | [`frontend/`](frontend/) | 웹 단선도 (Cytoscape.js), 결과 오버레이, 드래그&드롭 편집 | FR-05, FR-06 | 고영민, 최민준 |
 | BE | [`backend/`](backend/) | API 서버 (계통 조회/편집, UUID 발급, 시뮬레이션·리포트 연동), 실행 환경 | FR-02, FR-04, FR-06~FR-08 | 안진성, 한승우 |
-| 데이터 (CIM/Neo4j) | [`data/`](data/) | 한전 제공 데이터 → CIM 매핑·검증, Neo4j 스키마·적재 | FR-01, FR-02 | 한승우 |
+| 데이터 (CIM/Neo4j) | [`cim/`](cim/) | 한전 제공 데이터 → CIM 매핑·검증, Neo4j 스키마·적재 | FR-01, FR-02 | 한승우 |
 | 시뮬레이션 (OpenDSS) | [`simulation/`](simulation/) | Neo4j → OpenDSS 스크립트 변환, 실행, 결과 추출, 회귀 테스트 | FR-03, FR-04 | 안진성 |
 | AI 리포트/프롬프트 | [`ai_report/`](ai_report/) | 결과 수치 → 프롬프트 매핑, LLM 호출, 3단계 리포트 템플릿 | FR-08, FR-09 | 고영민, 최민준 |
 
 > 문서(요구사항 분석서, 설계서, 회의록 등, 담당: 안진성·고영민·한승우)는 [Notion](https://app.notion.com/p/3e88a37a2d348066b4ecce17929f7389)에서 관리합니다.
+> [`data/`](data/)는 코드 없이 데이터 파일만 저장하는 공용 폴더입니다.
 
 ### 팀원별 담당 폴더
 
@@ -38,7 +39,7 @@ LLM이 **진단 → 원인 → 대안** 리포트를 자동 생성하는 통합 
 | 안진성 | `backend/`, `simulation/` |
 | 고영민 | `frontend/`, `ai_report/` |
 | 최민준 | `frontend/`, `ai_report/` |
-| 한승우 | `backend/`, `data/` |
+| 한승우 | `backend/`, `cim/` |
 
 ## 디렉토리 구조
 
@@ -58,17 +59,14 @@ capstone/
 │   │   ├── api/             #   라우터 (계통 조회/편집, 시뮬레이션 실행, 리포트 요청)
 │   │   ├── core/            #   설정, Neo4j 연결, 공통 유틸
 │   │   ├── schemas/         #   요청/응답 데이터 모델
-│   │   └── services/        #   비즈니스 로직 (data·simulation·ai_report 모듈 연동)
+│   │   └── services/        #   비즈니스 로직 (cim·simulation·ai_report 모듈 연동)
 │   ├── infra/               #   실행 환경 (Neo4j Docker Compose 등)
 │   └── tests/               #   테스트
 │
-├── data/                    # [데이터] CIM 매핑 / Neo4j 적재 — FR-01, FR-02
-│   ├── raw/                 #   한전 제공 22.9kV 배전계통 데이터(가공본) (⚠ git 제외)
-│   ├── samples/             #   개발·테스트용 가상 샘플 계통 (한전 데이터 금지)
+├── cim/                     # [데이터] CIM 매핑 / Neo4j 적재 코드 — FR-01, FR-02
 │   ├── mapping/             #   한전 데이터 필드 ↔ CIM 클래스/속성 매핑 테이블
 │   ├── converter/           #   한전 데이터 → CIM 변환 코드
 │   ├── validation/          #   변환 결과 검증 스크립트, 예외 케이스 목록
-│   ├── output/              #   CIM 변환 결과 (CIM XML/RDF, CSV 등) (⚠ git 제외)
 │   ├── cypher/              #   Neo4j 스키마·제약조건·인덱스 정의 (.cypher)
 │   ├── loader/              #   CIM 데이터 → Neo4j 적재 (위상·연결·좌표 포함)
 │   └── tests/               #   테스트
@@ -84,6 +82,11 @@ capstone/
 │   ├── templates/           #   리포트 템플릿 (① 진단 → ② 원인 → ③ 솔루션)
 │   ├── client/              #   LLM API 호출 모듈
 │   └── tests/               #   테스트
+│
+├── data/                    # 데이터 파일 저장소 (코드 없음)
+│   ├── raw/                 #   한전 제공 22.9kV 배전계통 데이터(가공본) (⚠ git 제외)
+│   ├── output/              #   CIM 변환 결과 (CIM XML/RDF, CSV 등) (⚠ git 제외)
+│   └── samples/             #   개발·테스트용 가상 샘플 계통 (한전 데이터 금지)
 │
 ├── .env.example             # 환경 변수 양식 (복사해서 .env로 사용)
 ├── .gitignore               # git 제외 목록 (.env, 한전 데이터, 산출물 등)
