@@ -125,8 +125,57 @@ cp .env.example .env   # Neo4j 접속 정보, LLM API 키 등 입력
 > `data/raw/`(한전 데이터)와 `data/output/`(변환 결과), `.env`는 절대 커밋하지 않습니다.
 > 데이터 파일은 별도 공유 드라이브로 주고받고, 커밋 전에 `git status`로 데이터 파일이 섞이지 않았는지 확인하세요.
 
-## 참고자료
+## 협업 규칙
 
-- IEC 61970 / 61968 Common Information Model (CIM) 표준
-- OpenDSS 공식 명령어 매뉴얼
-- OpenDSS 동작 원리 및 예시 코드 (GitHub)
+### 브랜치
+
+- `main` — 항상 실행 가능한 상태 유지. **직접 push 하지 않고 PR로만 병합**합니다.
+- 작업 브랜치 — `타입/파트-작업내용` 형식, 영어 소문자와 `-` 사용
+
+| 타입 | 용도 | 예시 |
+|------|------|------|
+| `feature/` | 새 기능 | `feature/sim-opendss-runner`, `feature/fe-overlay` |
+| `fix/` | 버그 수정 | `fix/cim-voltage-mapping` |
+| `docs/` | README 등 문서 수정 | `docs/readme-setup` |
+
+파트 이름: `fe`, `be`, `cim`, `sim`, `ai`
+
+### 작업 순서
+
+```bash
+# 1. 최신 main 받기
+git checkout main
+git pull
+
+# 2. 작업 브랜치 만들기
+git checkout -b feature/sim-opendss-runner
+
+# 3. 작업 후 커밋 (커밋 전에 git status로 데이터 파일이 없는지 확인)
+git add .
+git commit -m "feat: OpenDSS 조류 계산 실행 함수 추가"
+
+# 4. GitHub에 올리기
+git push -u origin feature/sim-opendss-runner
+```
+
+5. GitHub에서 **Pull Request** 생성 → 팀원 1명 이상 확인 후 main에 병합
+6. 병합된 브랜치는 삭제하고, 다음 작업은 다시 1번부터
+
+### 커밋 메시지
+
+`타입: 무엇을 했는지` 형식으로 한글로 작성합니다.
+
+| 타입 | 용도 | 예시 |
+|------|------|------|
+| `feat` | 기능 추가 | `feat: 단선도 노드 드래그 편집 추가` |
+| `fix` | 버그 수정 | `fix: 선로 임피던스 단위 변환 오류 수정` |
+| `refactor` | 동작 변화 없는 코드 개선 | `refactor: Neo4j 조회 쿼리 함수 분리` |
+| `test` | 테스트 추가/수정 | `test: OpenDSS 변환 회귀 테스트 추가` |
+| `docs` | 문서 수정 | `docs: README 실행 방법 추가` |
+| `chore` | 설정, 패키지 등 기타 | `chore: requirements.txt에 neo4j 추가` |
+
+### 기타
+
+- 다른 파트 폴더를 수정해야 하면 담당자에게 먼저 알립니다.
+- 충돌(conflict)이 나서 해결이 어려우면 혼자 덮어쓰지 말고 해당 파일 담당자와 함께 해결합니다.
+- 한전 데이터, `.env`, 용량이 큰 파일은 커밋하지 않습니다.
