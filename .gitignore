@@ -32,10 +32,6 @@ build/
 npm-debug.log*
 yarn-error.log*
 
-# Neo4j 로컬 데이터
-infra/neo4j/data/
-infra/neo4j/logs/
-
 # IDE / OS
 .idea/
 .vscode/*

@@ -1,0 +1,25 @@
+# Neo4j 개발용 DB
+# 실행 (저장소 루트에서): docker compose -f backend/infra/docker-compose.yml --env-file .env up -d
+name: capstone
+
+services:
+  neo4j:
+    image: neo4j:5.26-community
+    container_name: capstone-neo4j
+    ports:
+      - "7474:7474"   # 웹 브라우저 콘솔: http://localhost:7474
+      - "7687:7687"   # 코드 접속용 (bolt://localhost:7687)
+    environment:
+      NEO4J_AUTH: "${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:?.env에 NEO4J_PASSWORD를 설정하세요 (8자 이상)}"
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_server_memory_heap_initial__size: 512m
+      NEO4J_server_memory_heap_max__size: 1G
+    volumes:
+      # 도커 볼륨에 저장 (OneDrive 동기화 폴더에 DB 파일이 생기지 않도록)
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    restart: unless-stopped
+
+volumes:
+  neo4j_data:
+  neo4j_logs:

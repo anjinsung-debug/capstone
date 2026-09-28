@@ -60,7 +60,7 @@ capstone/
 │   │   ├── core/            #   설정, Neo4j 연결, 공통 유틸
 │   │   ├── schemas/         #   요청/응답 데이터 모델
 │   │   └── services/        #   비즈니스 로직 (cim·simulation·ai_report 모듈 연동)
-│   ├── infra/               #   실행 환경 (Neo4j Docker Compose 등)
+│   ├── infra/               #   실행 환경 (Neo4j docker-compose.yml)
 │   └── tests/               #   테스트
 │
 ├── cim/                     # [데이터] CIM 매핑 / Neo4j 적재 코드 — FR-01, FR-02
@@ -120,6 +120,29 @@ git clone https://github.com/anjinsung-debug/capstone.git
 cd capstone
 cp .env.example .env   # Neo4j 접속 정보, LLM API 키 등 입력
 ```
+
+### Neo4j 실행 (Docker)
+
+[Docker Desktop](https://www.docker.com/products/docker-desktop/)을 설치한 뒤, 저장소 루트에서:
+
+```bash
+# 실행 (처음 한 번은 이미지 다운로드로 시간이 걸림)
+docker compose -f backend/infra/docker-compose.yml --env-file .env up -d
+
+# 상태 확인 / 로그 보기
+docker compose -f backend/infra/docker-compose.yml ps
+docker compose -f backend/infra/docker-compose.yml logs -f neo4j
+
+# 중지 (데이터는 유지됨)
+docker compose -f backend/infra/docker-compose.yml down
+
+# 중지 + DB 데이터 전부 삭제 (초기화)
+docker compose -f backend/infra/docker-compose.yml down -v
+```
+
+- 웹 콘솔: http://localhost:7474 (`.env`의 `NEO4J_USER` / `NEO4J_PASSWORD`로 로그인)
+- 코드 접속 주소: `bolt://localhost:7687`
+- DB 데이터는 Docker 볼륨에 저장되어 각자 PC에만 있습니다. 공유 데이터는 `cim/loader`로 다시 적재합니다.
 
 > ⚠ **한전 제공 데이터는 외부 공개 금지입니다.** 이 저장소는 공개(public) 상태이므로
 > `data/raw/`(한전 데이터)와 `data/output/`(변환 결과), `.env`는 절대 커밋하지 않습니다.
