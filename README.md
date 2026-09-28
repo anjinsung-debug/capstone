@@ -123,21 +123,23 @@ cp .env.example .env   # Neo4j 접속 정보, LLM API 키 등 입력
 
 ### Neo4j 실행 (Docker)
 
-[Docker Desktop](https://www.docker.com/products/docker-desktop/)을 설치한 뒤, 저장소 루트에서:
+[Docker Desktop](https://www.docker.com/products/docker-desktop/)을 설치하고 실행한 뒤, 저장소 루트에서:
+
+> 모든 명령에 `--env-file .env`가 필요합니다. 빠뜨리면 `required variable NEO4J_PASSWORD is missing` 오류가 납니다.
 
 ```bash
 # 실행 (처음 한 번은 이미지 다운로드로 시간이 걸림)
 docker compose -f backend/infra/docker-compose.yml --env-file .env up -d
 
 # 상태 확인 / 로그 보기
-docker compose -f backend/infra/docker-compose.yml ps
-docker compose -f backend/infra/docker-compose.yml logs -f neo4j
+docker compose -f backend/infra/docker-compose.yml --env-file .env ps
+docker compose -f backend/infra/docker-compose.yml --env-file .env logs -f neo4j
 
 # 중지 (데이터는 유지됨)
-docker compose -f backend/infra/docker-compose.yml down
+docker compose -f backend/infra/docker-compose.yml --env-file .env down
 
 # 중지 + DB 데이터 전부 삭제 (초기화)
-docker compose -f backend/infra/docker-compose.yml down -v
+docker compose -f backend/infra/docker-compose.yml --env-file .env down -v
 ```
 
 - 웹 콘솔: http://localhost:7474 (`.env`의 `NEO4J_USER` / `NEO4J_PASSWORD`로 로그인)
