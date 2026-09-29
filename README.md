@@ -25,13 +25,13 @@ LLM이 **진단 → 원인 → 대안** 리포트를 자동 생성하는 통합 
 
 | 영역 | 폴더 | 언어 | 기술 |
 |------|------|------|------|
-| 프론트엔드 | `frontend/` | JavaScript | React, Vite, Cytoscape.js (`cytoscape-edgehandles`로 선로 편집) |
-| 백엔드 | `backend/` | Python 3.12 | FastAPI, Uvicorn, Pydantic |
-| 데이터 | `cim/` | Python 3.12 | pandas, openpyxl, neo4j 공식 드라이버 |
+| 프론트엔드 | `frontend/` | JavaScript (Node 24) | React, Vite, Cytoscape.js (`cytoscape-edgehandles`로 선로 편집) |
+| 백엔드 | `backend/` | Python 3.14 | FastAPI, Uvicorn, Pydantic |
+| 데이터 | `cim/` | Python 3.14 | pandas, openpyxl, neo4j 공식 드라이버 |
 | DB | `backend/infra/` | Cypher | Neo4j 5.26 Community + APOC (Docker) |
-| 시뮬레이션 | `simulation/` | Python 3.12 | OpenDSSDirect.py |
-| AI 리포트 | `ai_report/` | Python 3.12 | Anthropic Claude API (`anthropic` SDK, 구조화 출력) |
-| 테스트 | 각 모듈 `tests/` | Python 3.12 | pytest |
+| 시뮬레이션 | `simulation/` | Python 3.14 | OpenDSSDirect.py |
+| AI 리포트 | `ai_report/` | Python 3.14 | Anthropic Claude API (`anthropic` SDK, 구조화 출력) |
+| 테스트 | 각 모듈 `tests/` | Python 3.14 | pytest |
 
 ### 모듈 간 연결
 
@@ -136,13 +136,36 @@ capstone/
 
 ## 시작하기
 
+### 0. 준비물
+
+| 도구 | 버전 | 설치 |
+|------|------|------|
+| Git | 최신 | https://git-scm.com |
+| Python | **3.14** | https://www.python.org/downloads/ (설치 시 "Add python.exe to PATH" 체크) |
+| Node.js | **24 LTS** | https://nodejs.org |
+| Docker Desktop | 최신 | https://www.docker.com/products/docker-desktop/ |
+
+### 1. 저장소 받기 / 환경 변수
+
 ```bash
 git clone https://github.com/anjinsung-debug/capstone.git
 cd capstone
-cp .env.example .env   # Neo4j 접속 정보, LLM API 키 등 입력
+cp .env.example .env   # .env를 열어 NEO4J_PASSWORD(8자 이상), LLM API 키 등 입력
 ```
 
-### Neo4j 실행 (Docker)
+### 2. Python 가상환경 (backend, cim, simulation, ai_report 공통)
+
+저장소 루트에 가상환경 하나를 만들어 모든 Python 모듈이 함께 씁니다.
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate          # Windows (Mac/Linux: source .venv/bin/activate)
+python -m pip install -r requirements.txt
+```
+
+패키지를 추가하면 `requirements.txt`에 버전과 함께 적고 커밋합니다 (예: `pandas==3.0.6`).
+
+### 3. Neo4j 실행 (Docker)
 
 [Docker Desktop](https://www.docker.com/products/docker-desktop/)을 설치하고 실행한 뒤, 저장소 루트에서:
 
@@ -166,6 +189,29 @@ docker compose -f backend/infra/docker-compose.yml --env-file .env down -v
 - 웹 콘솔: http://localhost:7474 (`.env`의 `NEO4J_USER` / `NEO4J_PASSWORD`로 로그인)
 - 코드 접속 주소: `bolt://localhost:7687`
 - DB 데이터는 Docker 볼륨에 저장되어 각자 PC에만 있습니다. 공유 데이터는 `cim/loader`로 다시 적재합니다.
+
+### 4. 백엔드 실행 (FastAPI)
+
+가상환경을 활성화한 상태로 **저장소 루트에서**:
+
+```bash
+uvicorn backend.app.main:app --reload --port 8000
+```
+
+- 상태 확인: http://localhost:8000/api/health → `{"status":"ok","neo4j":"connected"}`
+- API 문서: http://localhost:8000/docs
+- 테스트: `python -m pytest backend`
+
+### 5. 프론트엔드 실행 (React + Vite)
+
+```bash
+cd frontend
+npm install        # 처음 한 번, package.json이 바뀌었을 때
+npm run dev
+```
+
+- 화면: http://localhost:5173 (백엔드 상태와 예시 단선도가 보이면 성공)
+- `/api`로 시작하는 요청은 Vite가 백엔드(8000번 포트)로 전달합니다.
 
 > ⚠ **한전 제공 데이터는 외부 공개 금지입니다.** 이 저장소는 공개(public) 상태이므로
 > `data/raw/`(한전 데이터)와 `data/output/`(변환 결과), `.env`는 절대 커밋하지 않습니다.
