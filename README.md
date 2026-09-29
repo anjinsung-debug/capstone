@@ -67,18 +67,24 @@ LLM이 **진단 → 원인 → 대안** 리포트를 자동 생성하는 통합 
 ```
 capstone/
 ├── frontend/                # [FE] 웹 단선도 — FR-05, FR-06
-│   ├── public/              #   정적 파일 (index.html, 아이콘 등)
+│   ├── index.html           #   브라우저가 처음 여는 HTML
+│   ├── package.json         #   JavaScript 라이브러리 목록 (React, Cytoscape.js 등)
+│   ├── vite.config.js       #   개발 서버 설정 (/api 요청 → 백엔드로 전달)
+│   ├── public/              #   정적 파일 (아이콘 등)
 │   └── src/
-│       ├── graph/           #   Cytoscape.js 단선도 렌더링, 스타일·레이아웃
+│       ├── main.jsx         #   앱 시작점
+│       ├── App.jsx          #   첫 화면
+│       ├── graph/           #   Cytoscape.js 단선도 렌더링 (SingleLineDiagram.jsx)
 │       ├── overlay/         #   시뮬레이션 결과(유효/무효 전력 등) 오버레이 표시
 │       ├── editor/          #   노드/선로 드래그&드롭 편집
 │       ├── components/      #   공통 UI 컴포넌트, AI 리포트 뷰어
-│       └── api/             #   백엔드 API 호출 클라이언트
+│       └── api/             #   백엔드 API 호출 함수 (client.js)
 │
 ├── backend/                 # [BE] API 서버 — FR-02, FR-04, FR-06~FR-08
 │   ├── app/
-│   │   ├── api/             #   라우터 (계통 조회/편집, 시뮬레이션 실행, 리포트 요청)
-│   │   ├── core/            #   설정, Neo4j 연결, 공통 유틸
+│   │   ├── main.py          #   서버 시작점 (CORS, Neo4j 연결, 라우터 등록)
+│   │   ├── api/             #   라우터 (health.py: 서버·DB 상태 확인)
+│   │   ├── core/            #   설정(config.py: .env 읽기), Neo4j 연결(neo4j.py)
 │   │   ├── schemas/         #   요청/응답 데이터 모델
 │   │   └── services/        #   비즈니스 로직 (cim·simulation·ai_report 모듈 연동)
 │   ├── infra/               #   실행 환경 (Neo4j docker-compose.yml)
@@ -109,6 +115,8 @@ capstone/
 │   ├── output/              #   CIM 변환 결과 (CIM XML/RDF, CSV 등) (⚠ git 제외)
 │   └── samples/             #   개발·테스트용 가상 샘플 계통 (한전 데이터 금지)
 │
+├── requirements.txt         # Python 라이브러리 목록 (버전 고정, 모든 Python 모듈 공통)
+├── README.md                # 이 문서
 ├── .env.example             # 환경 변수 양식 (복사해서 .env로 사용)
 ├── .gitignore               # git 제외 목록 (.env, 한전 데이터, 산출물 등)
 └── .gitattributes           # 줄바꿈(LF) 통일 설정
@@ -213,9 +221,41 @@ npm run dev
 - 화면: http://localhost:5173 (백엔드 상태와 예시 단선도가 보이면 성공)
 - `/api`로 시작하는 요청은 Vite가 백엔드(8000번 포트)로 전달합니다.
 
+### 매일 개발 시작할 때
+
+위 0~5단계는 처음 한 번만 하면 됩니다. 이후에는 **Docker Desktop을 켠 뒤** 아래만 실행합니다.
+
+```bash
+# 저장소 루트에서: Neo4j 켜기
+docker compose -f backend/infra/docker-compose.yml --env-file .env up -d
+
+# 터미널 1 (저장소 루트): 백엔드
+.venv\Scripts\activate
+uvicorn backend.app.main:app --reload --port 8000
+
+# 터미널 2: 프론트엔드
+cd frontend
+npm run dev
+```
+
+끝낼 때는 각 터미널에서 `Ctrl+C`로 서버를 끄고, Neo4j는 `docker compose -f backend/infra/docker-compose.yml --env-file .env down`으로 끕니다.
+
 > ⚠ **한전 제공 데이터는 외부 공개 금지입니다.** 이 저장소는 공개(public) 상태이므로
 > `data/raw/`(한전 데이터)와 `data/output/`(변환 결과), `.env`는 절대 커밋하지 않습니다.
 > 데이터 파일은 별도 공유 드라이브로 주고받고, 커밋 전에 `git status`로 데이터 파일이 섞이지 않았는지 확인하세요.
+
+## 자주 나는 문제
+
+| 증상 | 원인 / 해결 |
+|------|-------------|
+| `.venv\Scripts\activate` 실행 시 "스크립트를 실행할 수 없으므로…" (PowerShell) | PowerShell 실행 정책 때문입니다. `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`를 한 번 실행한 뒤 다시 시도합니다. |
+| Docker 설치 직후 `docker` 명령을 찾을 수 없음 | 설치 경로가 아직 반영되지 않았습니다. VS Code(또는 터미널)를 다시 시작합니다. |
+| `/api/health` 결과가 `"neo4j": "unavailable: ..."` | Docker Desktop 또는 Neo4j가 꺼져 있습니다. Docker Desktop을 켜고 Neo4j `up` 명령을 실행합니다. |
+| `required variable NEO4J_PASSWORD is missing` | `--env-file .env`를 빠뜨렸거나 `.env`가 없습니다. 명령을 확인하고 `.env`를 만듭니다. |
+| `ModuleNotFoundError: No module named 'backend'` | 백엔드를 저장소 루트가 아닌 곳에서 실행했습니다. 루트로 이동해 다시 실행합니다. |
+| `ModuleNotFoundError` (fastapi, neo4j 등) | 가상환경이 활성화되지 않았습니다. `.venv\Scripts\activate` 후 다시 실행합니다. |
+| 포트 8000 / 5173이 이미 사용 중 | 이전에 켠 서버가 남아 있습니다. 해당 터미널에서 `Ctrl+C`로 끄거나 터미널을 닫습니다. |
+| 프론트엔드 화면에 "백엔드 연결 실패" | 백엔드가 꺼져 있습니다. 터미널 1에서 백엔드를 실행합니다. |
 
 ## 협업 규칙
 
