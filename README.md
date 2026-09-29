@@ -19,6 +19,27 @@ LLM이 **진단 → 원인 → 대안** 리포트를 자동 생성하는 통합 
  (FR-06/07) 편집·UUID·실시간 저장                  (FR-08/09) LLM 리포트
 ```
 
+## 기술 스택
+
+사용 언어는 **Python**(프론트엔드 외 전부)과 **JavaScript**(프론트엔드) 두 가지입니다.
+
+| 영역 | 폴더 | 언어 | 기술 |
+|------|------|------|------|
+| 프론트엔드 | `frontend/` | JavaScript | React, Vite, Cytoscape.js (`cytoscape-edgehandles`로 선로 편집) |
+| 백엔드 | `backend/` | Python 3.12 | FastAPI, Uvicorn, Pydantic |
+| 데이터 | `cim/` | Python 3.12 | pandas, openpyxl, neo4j 공식 드라이버 |
+| DB | `backend/infra/` | Cypher | Neo4j 5.26 Community + APOC (Docker) |
+| 시뮬레이션 | `simulation/` | Python 3.12 | OpenDSSDirect.py |
+| AI 리포트 | `ai_report/` | Python 3.12 | Anthropic Claude API (`anthropic` SDK, 구조화 출력) |
+| 테스트 | 각 모듈 `tests/` | Python 3.12 | pytest |
+
+### 모듈 간 연결
+
+- **프론트엔드 ↔ 백엔드**: HTTP + JSON으로 통신합니다. 주고받는 주소와 JSON 형식은 API 정의서로 합의하고,
+  백엔드 실행 중 http://localhost:8000/docs 에서 FastAPI가 자동 생성한 API 문서를 확인할 수 있습니다.
+- **백엔드 ↔ 나머지 모듈**: `cim`, `simulation`, `ai_report`는 모두 Python이라 백엔드가 직접 import해서 호출합니다.
+- **LLM 호출은 백엔드에서만** 합니다. API 키는 백엔드 `.env`에만 두고 프론트엔드 코드에는 넣지 않습니다.
+
 ## 역할별 디렉토리
 
 | 역할 | 경로 | 내용 | 관련 요구사항 | 담당 |
