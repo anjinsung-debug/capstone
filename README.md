@@ -36,4 +36,4 @@ cd frontend
 npm run dev
 ```
 
-http://localhost:5173 에 "서버 ok, Neo4j connected"가 보이면 정상입니다.
+http://localhost:5173 에 "서버 ok"가 보이면 정상입니다.

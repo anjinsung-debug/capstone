@@ -6,7 +6,7 @@ export default function App() {
 
   useEffect(() => {
     getHealth()
-      .then((h) => setHealth(`서버 ${h.status}, Neo4j ${h.neo4j}`))
+      .then((h) => setHealth(`서버 ${h.status}`))
       .catch((e) => setHealth(`백엔드 연결 실패 (${e.message})`))
   }, [])
 

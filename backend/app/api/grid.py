@@ -23,7 +23,7 @@ def get_feeder(feeder_id: str):
 
 @router.post("/feeders/{feeder_id}/nodes")
 def create_node(feeder_id: str, body: dict):
-    """노드 추가. 서버가 UUID를 발급해 저장"""
+    """노드 추가. 서버가 UUID를 발급"""
     not_implemented()
 
 
@@ -41,7 +41,7 @@ def delete_node(node_id: str):
 
 @router.post("/feeders/{feeder_id}/lines")
 def create_line(feeder_id: str, body: dict):
-    """선로 추가. 서버가 UUID를 발급해 저장"""
+    """선로 추가. 서버가 UUID를 발급"""
     not_implemented()
 
 
