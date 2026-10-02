@@ -17,7 +17,7 @@
 
 | 연결 | 정의된 곳 |
 |------|-----------|
-| 프론트엔드 → 백엔드 API | `frontend/src/api/client.js`, `backend/app/api/` (형식은 http://localhost:8000/docs) |
+| 프론트엔드 → 백엔드 API | `frontend/src/api/client.js`, `backend/api/` (형식은 http://localhost:8000/docs) |
 | 계통 데이터 형식, Neo4j 구조 | `cim/models.py`, `cim/graph.py`, `cim/schema.cypher` |
 | 시뮬레이션 결과 형식 | `simulation/models.py` |
 | 리포트 형식 | `ai_report/models.py` |
@@ -41,7 +41,7 @@ cd frontend && npm install && cd ..
 docker compose up -d
 
 # 백엔드 (저장소 루트, 가상환경 활성화 후)
-uvicorn backend.app.main:app --reload --port 8000
+uvicorn backend.main:app --reload --port 8000
 
 # 프론트엔드
 cd frontend

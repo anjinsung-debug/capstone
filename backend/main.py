@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
-from backend.app.api import grid, health, report, simulation
+from backend.api import grid, health, report, simulation
 
 app = FastAPI(title="배전계통 통합 분석 플랫폼 API")
 
