@@ -42,6 +42,11 @@ frontend ──HTTP──▶ backend ───┤ cim/graph.py (조회·편집)
 
 구현되지 않은 함수는 `NotImplementedError`를 내고, API는 501을 돌려줍니다.
 
+### 공유 형식 파일 변경 규칙
+
+`cim/models.py`, `simulation/models.py`, `ai_report/models.py`, `frontend/src/api/client.js`는 여러 폴더가 함께 쓰는 약속입니다.
+이 파일을 바꿀 때는 먼저 팀에 알리고, PR로 영향받는 담당자의 확인을 받은 뒤 합칩니다.
+
 ## 실행
 
 필요한 것: Python 3.14, Node.js 24, Docker Desktop
