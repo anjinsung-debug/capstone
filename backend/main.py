@@ -1,9 +1,20 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 from backend.api import grid, health, report, simulation
+from cim import db
 
-app = FastAPI(title="배전계통 통합 분석 플랫폼 API")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    db.connect()
+    yield
+    db.close()
+
+
+app = FastAPI(title="배전계통 통합 분석 플랫폼 API", lifespan=lifespan)
 
 
 @app.exception_handler(NotImplementedError)

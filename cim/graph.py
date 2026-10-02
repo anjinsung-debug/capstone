@@ -1,4 +1,4 @@
-"""Neo4j 계통 조회·편집. Neo4j에 접근하는 코드는 이 파일에만 둔다.
+"""Neo4j 계통 조회·편집. 연결은 cim/db.py의 get_driver()를 쓴다.
 
 Neo4j 구조 (속성은 cim/models.py와 같음):
     (:Feeder {id, name, base_kv})
