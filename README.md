@@ -8,7 +8,7 @@
 
 | 폴더 | 역할 | 담당 |
 |------|------|------|
-| `frontend/` | 웹 화면 (React, Vite) | 고영민, 최민준 |
+| `frontend/` | 웹 화면 (React, Vite), 단선도 (Cytoscape.js) | 고영민, 최민준 |
 | `backend/` | API 서버 (FastAPI) | 안진성, 한승우 |
 | `cim/` | 한전 데이터 → CIM 변환, Neo4j 적재·조회·편집 | 한승우 |
 | `simulation/` | OpenDSS 조류 계산 | 안진성 |
@@ -41,7 +41,7 @@ capstone/
 │   │   ├── App.jsx          화면 (현재: 서버·Neo4j 상태 표시)
 │   │   └── api/client.js    백엔드 API 호출 함수
 │   ├── vite.config.js       /api 요청을 백엔드(localhost:8000)로 전달
-│   └── package.json         프론트엔드 라이브러리
+│   └── package.json         프론트엔드 라이브러리 (react, cytoscape)
 ├── data/                    한전 원본 (git 제외)
 ├── docker-compose.yml       Neo4j 실행 설정
 ├── requirements.txt         Python 라이브러리
@@ -60,7 +60,7 @@ capstone/
 | 계통 조회·편집 | `cim/graph.py` | 틀만 있음 |
 | 조류 계산 | `simulation/simulate.py` | 틀만 있음 |
 | AI 리포트 | `ai_report/report.py` | 틀만 있음 |
-| 단선도 화면, 편집 UI | `frontend/src/` | 없음 |
+| 단선도 화면, 편집 UI (Cytoscape.js) | `frontend/src/` | 없음 (라이브러리만 설치됨) |
 
 틀만 있는 함수는 `NotImplementedError`를 내고, 해당 API는 501을 돌려줍니다.
 
