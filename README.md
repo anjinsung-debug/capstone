@@ -31,7 +31,7 @@ LLM이 **진단 → 원인 → 대안** 리포트를 자동 생성하는 통합 
 | DB | `backend/infra/` | Cypher | Neo4j 5.26 Community + APOC (Docker) |
 | 시뮬레이션 | `simulation/` | Python 3.14 | OpenDSSDirect.py |
 | AI 리포트 | `ai_report/` | Python 3.14 | Anthropic Claude API (`anthropic` SDK, 구조화 출력) |
-| 테스트 | 각 모듈 `tests/` | Python 3.14 | pytest |
+| 코드 검증 | 각 모듈 `tests/` | Python 3.14 | pytest (플랫폼 코드가 맞게 계산하는지 확인) |
 
 ### 모듈 간 연결
 
@@ -88,7 +88,7 @@ capstone/
 │   │   ├── schemas/         #   요청/응답 데이터 모델
 │   │   └── services/        #   비즈니스 로직 (cim·simulation·ai_report 모듈 연동)
 │   ├── infra/               #   실행 환경 (Neo4j docker-compose.yml)
-│   └── tests/               #   테스트
+│   └── tests/               #   코드 검증: 서버와 API가 정상 응답하는지
 │
 ├── cim/                     # [데이터] CIM 매핑 / Neo4j 적재 코드 — FR-01, FR-02
 │   ├── mapping/             #   한전 데이터 필드 ↔ CIM 클래스/속성 매핑 테이블
@@ -96,19 +96,19 @@ capstone/
 │   ├── validation/          #   변환 결과 검증 스크립트, 예외 케이스 목록
 │   ├── cypher/              #   Neo4j 스키마·제약조건·인덱스 정의 (.cypher)
 │   ├── loader/              #   CIM 데이터 → Neo4j 적재 (위상·연결·좌표 포함)
-│   └── tests/               #   테스트
+│   └── tests/               #   코드 검증: 매핑·변환이 맞는지 (단위, 필드 누락 등)
 │
 ├── simulation/              # [시뮬레이션] OpenDSS 연동 — FR-03, FR-04
 │   ├── converter/           #   Neo4j 조회 결과 → OpenDSS 스크립트(.dss) 생성
 │   ├── runner/              #   OpenDSS 실행, 결과(유효/무효 전력, 전압 등) 추출
 │   ├── results/             #   실행 산출물 (git 제외)
-│   └── tests/regression/    #   기준 계통 대비 변환 정확도 회귀 테스트
+│   └── tests/regression/    #   코드 검증: 공개 기준 계통(IEEE 13-bus) 결과와 비교
 │
 ├── ai_report/               # [AI] LLM 자동 해설 리포트 — FR-08, FR-09
 │   ├── prompts/             #   시뮬레이션 수치 → 프롬프트 매핑 규칙
 │   ├── templates/           #   리포트 템플릿 (① 진단 → ② 원인 → ③ 솔루션)
 │   ├── client/              #   LLM API 호출 모듈
-│   └── tests/               #   테스트
+│   └── tests/               #   코드 검증: 프롬프트 구성·응답 형식 (선택)
 │
 ├── data/                    # 데이터 파일 저장소 (코드 없음)
 │   ├── raw/                 #   한전 제공 22.9kV 배전계통 데이터(가공본) (⚠ git 제외)
@@ -123,6 +123,21 @@ capstone/
 ```
 
 > 빈 폴더에 있는 `.gitkeep`은 폴더를 git에 올리기 위한 빈 파일입니다. 폴더에 실제 파일이 생기면 지워도 됩니다.
+
+### tests/ 폴더
+
+`tests/`는 **배전계통을 시험하는 곳이 아니라, 이 플랫폼의 코드가 계통을 맞게 계산하는지 확인하는 곳**입니다.
+계통 진단은 플랫폼의 기능(시뮬레이션)이 하고, `tests/`는 그 진단 도구 자체가 정확한지 검사합니다.
+단위 실수나 변환 오류가 있어도 OpenDSS는 에러 없이 숫자를 내기 때문에, 이런 확인이 없으면 틀린 결과로 진단하게 됩니다.
+
+| 폴더 | 확인하는 것 | 우선순위 |
+|------|-------------|----------|
+| `simulation/tests/regression/` | 정답이 공개된 IEEE 13-bus 계통을 넣었을 때 전압·전력이 공식 결과와 허용 오차 안에서 맞는지 | **필수** (기획안 명시, 통합 테스트 결과서 근거) |
+| `cim/tests/` | 한전 데이터 → CIM 매핑에서 단위 변환, 필드 누락, 연결 관계가 맞는지 | 권장 |
+| `backend/tests/` | 서버가 뜨고 API가 정상 응답하는지 | 최소한 (현재 1개) |
+| `ai_report/tests/` | 프롬프트에 수치가 빠짐없이 들어가는지, 응답이 3단계 형식을 지키는지 (LLM 문장 자체는 매번 달라 검사하지 않음) | 선택 |
+
+실행: 저장소 루트에서 `python -m pytest` (전체) 또는 `python -m pytest simulation` (한 모듈).
 
 ## 개발 단계
 
