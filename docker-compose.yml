@@ -1,5 +1,5 @@
 # Neo4j 개발용 DB
-# 실행 (저장소 루트에서): docker compose -f backend/infra/docker-compose.yml --env-file .env up -d
+# 실행 (저장소 루트에서): docker compose up -d
 name: capstone
 
 services:

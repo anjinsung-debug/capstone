@@ -14,11 +14,5 @@ class Settings(BaseSettings):
     neo4j_user: str = "neo4j"
     neo4j_password: str = ""
 
-    llm_api_key: str = ""
-    llm_model: str = ""
-
-    # 프론트엔드 개발 서버 (Vite 기본 포트)
-    cors_origins: list[str] = ["http://localhost:5173"]
-
 
 settings = Settings()
