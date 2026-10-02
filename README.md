@@ -13,6 +13,18 @@
 | `ai_report/` | LLM 리포트 생성 | 고영민, 최민준 |
 | `data/` | 한전 데이터 보관 (git에 올라가지 않음) | 공용 |
 
+## 폴더 간 연결
+
+| 연결 | 정의된 곳 |
+|------|-----------|
+| 프론트엔드 → 백엔드 API | `frontend/src/api/client.js`, `backend/app/api/` (형식은 http://localhost:8000/docs) |
+| 계통 데이터 형식, Neo4j 구조 | `cim/models.py`, `cim/graph.py`, `cim/schema.cypher` |
+| 시뮬레이션 결과 형식 | `simulation/models.py` |
+| 리포트 형식 | `ai_report/models.py` |
+| 백엔드 → 각 모듈 함수 | `cim/graph.py`, `simulation/simulate.py`, `ai_report/report.py` |
+
+구현되지 않은 함수는 `NotImplementedError`를 내고, API는 501을 돌려줍니다.
+
 ## 실행
 
 필요한 것: Python 3.14, Node.js 24, Docker Desktop

@@ -1,57 +1,65 @@
 """계통 조회·편집 API (FR-02, FR-05, FR-06, FR-07)"""
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
+
+from cim import graph
+from cim.models import (
+    Feeder,
+    FeederGraph,
+    Line,
+    LineCreate,
+    LineUpdate,
+    Node,
+    NodeCreate,
+    NodeUpdate,
+)
 
 router = APIRouter()
 
 
-def not_implemented():
-    raise HTTPException(status_code=501, detail="아직 구현되지 않았습니다.")
-
-
 @router.get("/feeders")
-def list_feeders():
-    """배전선로 목록 조회"""
-    not_implemented()
+def list_feeders() -> list[Feeder]:
+    """배전선로 목록"""
+    return graph.list_feeders()
 
 
 @router.get("/feeders/{feeder_id}")
-def get_feeder(feeder_id: str):
-    """배전선로의 노드·선로 조회 (단선도 표시용)"""
-    not_implemented()
+def get_feeder(feeder_id: str) -> FeederGraph:
+    """배전선로의 노드·선로 (단선도 표시용)"""
+    return graph.get_feeder(feeder_id)
 
 
 @router.post("/feeders/{feeder_id}/nodes")
-def create_node(feeder_id: str, body: dict):
-    """노드 추가. 서버가 UUID를 발급"""
-    not_implemented()
+def create_node(feeder_id: str, data: NodeCreate) -> Node:
+    """노드 추가"""
+    return graph.create_node(feeder_id, data)
 
 
 @router.patch("/nodes/{node_id}")
-def update_node(node_id: str, body: dict):
+def update_node(node_id: str, data: NodeUpdate) -> Node:
     """노드 수정 (위치 이동 포함)"""
-    not_implemented()
+    return graph.update_node(node_id, data)
 
 
-@router.delete("/nodes/{node_id}")
-def delete_node(node_id: str):
+@router.delete("/nodes/{node_id}", status_code=204)
+def delete_node(node_id: str) -> None:
     """노드 삭제"""
-    not_implemented()
+    graph.delete_node(node_id)
 
 
 @router.post("/feeders/{feeder_id}/lines")
-def create_line(feeder_id: str, body: dict):
-    """선로 추가. 서버가 UUID를 발급"""
-    not_implemented()
+def create_line(feeder_id: str, data: LineCreate) -> Line:
+    """선로 추가"""
+    return graph.create_line(feeder_id, data)
 
 
 @router.patch("/lines/{line_id}")
-def update_line(line_id: str, body: dict):
+def update_line(line_id: str, data: LineUpdate) -> Line:
     """선로 수정"""
-    not_implemented()
+    return graph.update_line(line_id, data)
 
 
-@router.delete("/lines/{line_id}")
-def delete_line(line_id: str):
+@router.delete("/lines/{line_id}", status_code=204)
+def delete_line(line_id: str) -> None:
     """선로 삭제"""
-    not_implemented()
+    graph.delete_line(line_id)
