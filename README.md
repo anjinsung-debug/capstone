@@ -233,7 +233,7 @@ npm install        # 처음 한 번, package.json이 바뀌었을 때
 npm run dev
 ```
 
-- 화면: http://localhost:5173 (백엔드 상태와 예시 단선도가 보이면 성공)
+- 화면: http://localhost:5173 (백엔드 상태가 "서버 ok, Neo4j connected"로 보이면 성공)
 - `/api`로 시작하는 요청은 Vite가 백엔드(8000번 포트)로 전달합니다.
 
 ### 매일 개발 시작할 때
@@ -271,6 +271,7 @@ npm run dev
 | `ModuleNotFoundError` (fastapi, neo4j 등) | 가상환경이 활성화되지 않았습니다. `.venv\Scripts\activate` 후 다시 실행합니다. |
 | 포트 8000 / 5173이 이미 사용 중 | 이전에 켠 서버가 남아 있습니다. 해당 터미널에서 `Ctrl+C`로 끄거나 터미널을 닫습니다. |
 | 프론트엔드 화면에 "백엔드 연결 실패" | 백엔드가 꺼져 있습니다. 터미널 1에서 백엔드를 실행합니다. |
+| `npm run build`가 `transforming...` 뒤 오류 메시지 없이 끝남 | OneDrive 동기화가 기존 `frontend/dist/`를 잡고 있는 경우입니다. `dist` 폴더를 지우고 다시 빌드합니다 (빌드 결과물이라 지워도 됩니다). |
 
 ## 협업 규칙
 
