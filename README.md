@@ -2,7 +2,9 @@
 
 팀 으라차차: 안진성, 고영민, 최민준, 한승우
 
-## 폴더 구성
+이 README는 항상 현재 저장소의 디렉토리 구성과 작동 방식을 나타냅니다. 바꾸는 방법은 아래 [README 갱신 규칙](#readme-갱신-규칙)을 따릅니다.
+
+## 디렉토리 구성
 
 | 폴더 | 역할 | 담당 |
 |------|------|------|
@@ -13,7 +15,56 @@
 | `ai_report/` | LLM 리포트 생성 | 고영민, 최민준 |
 | `data/` | 한전 데이터 보관 (git에 올라가지 않음) | 공용 |
 
-## 전체 흐름
+```
+capstone/
+├── backend/
+│   ├── main.py              앱 생성, 시작·종료 시 Neo4j 연결·해제, 미구현 함수 → 501
+│   └── api/
+│       ├── health.py        GET /api/health: 서버·Neo4j 상태
+│       ├── grid.py          계통 조회·편집 API → cim/graph.py
+│       ├── simulation.py    시뮬레이션 API → cim/graph.py, simulation/simulate.py
+│       └── report.py        리포트 API → cim/graph.py, ai_report/report.py
+├── cim/
+│   ├── models.py            계통 데이터 형식 (Feeder, Node, Line, FeederGraph)
+│   ├── graph.py             Neo4j 조회·편집 함수, Neo4j 구조 설명
+│   ├── db.py                Neo4j 연결
+│   └── schema.cypher        Neo4j 제약조건
+├── simulation/
+│   ├── models.py            시뮬레이션 결과 형식
+│   └── simulate.py          조류 계산 함수
+├── ai_report/
+│   ├── models.py            리포트 형식 (진단, 원인, 솔루션)
+│   └── report.py            리포트 생성 함수
+├── frontend/
+│   ├── src/
+│   │   ├── main.jsx         React 시작점
+│   │   ├── App.jsx          화면 (현재: 서버·Neo4j 상태 표시)
+│   │   └── api/client.js    백엔드 API 호출 함수
+│   ├── vite.config.js       /api 요청을 백엔드(localhost:8000)로 전달
+│   └── package.json         프론트엔드 라이브러리
+├── data/                    한전 원본 (git 제외)
+├── docker-compose.yml       Neo4j 실행 설정
+├── requirements.txt         Python 라이브러리
+└── .env.example             접속 정보 양식 (.env로 복사해서 사용)
+```
+
+`.gitignore`, `frontend/index.html`, `frontend/.oxlintrc.json` 같은 기본 설정 파일은 생략했습니다.
+
+## 구현 상태
+
+| 기능 | 위치 | 상태 |
+|------|------|------|
+| 서버 실행, Neo4j 연결 | `backend/main.py`, `cim/db.py`, `backend/api/health.py` | 동작 |
+| 프론트엔드 → 백엔드 API 호출 | `frontend/src/api/client.js` | 동작 |
+| 한전 데이터 적재 | `cim/` | 없음 |
+| 계통 조회·편집 | `cim/graph.py` | 틀만 있음 |
+| 조류 계산 | `simulation/simulate.py` | 틀만 있음 |
+| AI 리포트 | `ai_report/report.py` | 틀만 있음 |
+| 단선도 화면, 편집 UI | `frontend/src/` | 없음 |
+
+틀만 있는 함수는 `NotImplementedError`를 내고, 해당 API는 501을 돌려줍니다.
+
+## 작동 방식
 
 ```
 data/ (한전 원본) ──cim──▶ Neo4j
@@ -55,12 +106,21 @@ frontend ──HTTP──▶ backend ───┤ cim/graph.py (조회·편집)
 | 리포트 형식 | `ai_report/models.py` |
 | 백엔드 → 각 모듈 함수 | `cim/graph.py`, `simulation/simulate.py`, `ai_report/report.py` |
 
-지금 동작하는 것은 서버 실행과 Neo4j 연결(`/api/health`)뿐입니다. 나머지 함수는 틀만 있어 `NotImplementedError`를 내고, API는 501을 돌려줍니다.
-
 ### 공유 형식 파일 변경 규칙
 
 `cim/models.py`, `simulation/models.py`, `ai_report/models.py`, `frontend/src/api/client.js`는 여러 폴더가 함께 쓰는 약속입니다.
 이 파일을 바꿀 때는 먼저 팀에 알리고, PR로 영향받는 담당자의 확인을 받은 뒤 합칩니다.
+
+### README 갱신 규칙
+
+아래가 바뀌면 같은 PR에서 README도 함께 고칩니다.
+
+| 바뀐 것 | 고칠 곳 |
+|---------|---------|
+| 파일·폴더 추가, 삭제, 이름 변경 | 디렉토리 구성 |
+| 기능 구현 완료, 새 기능 추가 | 구현 상태 |
+| API 경로, 데이터 흐름 | 작동 방식, 폴더 간 연결 |
+| 실행 방법, 라이브러리, 환경 변수 | 실행, Neo4j 연결 |
 
 ## 한전 데이터 → CIM 모델 정하기
 
