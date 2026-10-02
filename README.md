@@ -8,7 +8,7 @@
 |------|------|------|
 | `frontend/` | 웹 화면 (React, Vite) | 고영민, 최민준 |
 | `backend/` | API 서버 (FastAPI) | 안진성, 한승우 |
-| `cim/` | 한전 데이터 → CIM 변환, Neo4j 적재 | 한승우 |
+| `cim/` | 한전 데이터 → CIM 변환, Neo4j 적재·조회·편집 | 한승우 |
 | `simulation/` | OpenDSS 조류 계산 | 안진성 |
 | `ai_report/` | LLM 리포트 생성 | 고영민, 최민준 |
 | `data/` | 한전 데이터 보관 (git에 올라가지 않음) | 공용 |
@@ -31,7 +31,7 @@ frontend ──HTTP──▶ backend ───┤ cim/graph.py (조회·편집)
 
 ### 편집 → 시뮬레이션 → 리포트
 
-비전문가도 쓸 수 있도록, 시뮬레이션할 때마다 리포트로 설명을 보여 줍니다.
+비전문가도 쓸 수 있도록, 시뮬레이션할 때마다 리포트로 설명을 보여 주는 방식으로 구현합니다.
 
 ```
 편집 (노드 이동·추가·삭제 등) → 그때마다 해당 API 호출 → Neo4j에 바로 저장
@@ -55,7 +55,7 @@ frontend ──HTTP──▶ backend ───┤ cim/graph.py (조회·편집)
 | 리포트 형식 | `ai_report/models.py` |
 | 백엔드 → 각 모듈 함수 | `cim/graph.py`, `simulation/simulate.py`, `ai_report/report.py` |
 
-구현되지 않은 함수는 `NotImplementedError`를 내고, API는 501을 돌려줍니다.
+지금 동작하는 것은 서버 실행과 Neo4j 연결(`/api/health`)뿐입니다. 나머지 함수는 틀만 있어 `NotImplementedError`를 내고, API는 501을 돌려줍니다.
 
 ### 공유 형식 파일 변경 규칙
 
@@ -79,7 +79,7 @@ frontend ──HTTP──▶ backend ───┤ cim/graph.py (조회·편집)
 |---------|-------------|----------------------|
 | 시뮬레이션 (OpenDSS) | 전원 전압, 연결 관계, 선로 길이·임피던스, 부하 크기 | `base_kv`, `from_node_id`, `to_node_id`, `length_km`, `r_ohm_per_km`, `x_ohm_per_km`, `p_kw`, `q_kvar` |
 | 단선도 화면 | 위치, 이름, 종류 | `x`, `y`, `name`, `type` |
-| AI 리포트 | 시뮬레이션 결과만 사용 | 없음 |
+| AI 리포트 | 노드·선로 이름, 종류, 연결 관계 (시뮬레이션 결과와 함께 사용) | `name`, `type`, `from_node_id`, `to_node_id` |
 
 ### 데이터를 받으면 확인할 것
 
@@ -101,13 +101,17 @@ frontend ──HTTP──▶ backend ───┤ cim/graph.py (조회·편집)
 
 필요한 것: Python 3.14, Node.js 24, Docker Desktop
 
-```bash
+아래 명령은 Windows PowerShell 기준입니다.
+
+```powershell
 # 처음 한 번
 cp .env.example .env              # NEO4J_PASSWORD 입력
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
-cd frontend && npm install && cd ..
+cd frontend
+npm install
+cd ..
 
 # Neo4j (저장소 루트)
 docker compose up -d
