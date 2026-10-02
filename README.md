@@ -13,6 +13,22 @@
 | `ai_report/` | LLM 리포트 생성 | 고영민, 최민준 |
 | `data/` | 한전 데이터 보관 (git에 올라가지 않음) | 공용 |
 
+## 전체 흐름
+
+```
+data/ (한전 원본) ──cim──▶ Neo4j
+                              ▲
+frontend ──HTTP──▶ backend ───┤ cim/graph.py (조회·편집)
+                      │
+                      ├──▶ simulation/simulate.py ──▶ 시뮬레이션 결과
+                      └──▶ ai_report/report.py   ──▶ AI 리포트
+```
+
+1. **적재** (FR-01, 02): `data/`의 한전 원본을 `cim`이 CIM 형식으로 변환해 Neo4j에 저장
+2. **조회·편집** (FR-02, 05, 06, 07): 프론트엔드 → `backend/api/grid.py` → `cim/graph.py` → Neo4j
+3. **시뮬레이션** (FR-03, 04): 프론트엔드 → `POST /api/feeders/{id}/simulations` → 백엔드가 `cim/graph.py`로 계통을 읽어 `simulation/simulate.py`에 넘김 → 결과를 프론트엔드가 단선도에 표시
+4. **AI 리포트** (FR-08, 09): 프론트엔드가 받은 시뮬레이션 결과를 `POST /api/reports`로 보냄 → `ai_report/report.py`가 진단·원인·솔루션 리포트 생성
+
 ## 폴더 간 연결
 
 | 연결 | 정의된 곳 |
