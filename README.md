@@ -167,7 +167,7 @@ frontend ──HTTP──▶ backend ────────┤ cim/graph.py (�
 3. **`cim/models.py` 맞추기**: 제안서 요구를 반영한 현재 모델에 대응표대로 필드 이름·단위를 맞춤 (공유 형식 파일 변경 규칙대로)
 4. **적재 코드 작성**: `cim/load.py`의 `read_raw`(원본 읽기), `to_substation_graphs`(대응표대로 변환), `save_to_neo4j`(저장)를 채움
 
-3번이 끝나면 형식이 정해지므로 각자 그 형식에 맞춰 개발할 수 있고, 실제 데이터 확인은 4번 이후에 가능합니다.
+데이터 형식은 이미 `cim/models.py`에 있으므로 각자 그 형식에 맞춰 개발할 수 있고, 실제 데이터 확인은 4번 이후에 가능합니다.
 
 ### 항목을 정하는 기준
 
@@ -180,7 +180,17 @@ frontend ──HTTP──▶ backend ────────┤ cim/graph.py (�
 
 한전이 제공하는 것 (산학협력 문제 제안서): 가상 데이터 (변전소 2개, 배전선로 20개), CIM 전력 데이터 모델 스키마 매핑 가이드 (최소 모델).
 
-현재 모델은 제안서 요구를 반영해 두었습니다. 매핑 가이드를 받으면 필드 이름·단위만 맞춥니다.
+현재 모델은 제안서 요구를 반영해 두었습니다. 매핑 가이드와 한전 답변(Notion QA 정리본)에 따라 아래가 바뀔 수 있습니다.
+
+| 바뀔 수 있는 것 | 영향받는 코드 | 관련 질문 |
+|----------------|---------------|-----------|
+| 필드 이름·단위 | `cim/models.py`, `cim/load.py` | 1, 3번 |
+| 좌표 노드(DiagramObject)의 속성·관계 이름 | `cim/graph.py` | 4번 |
+| 연결 특성(`kind`) 구분 기준과 값 목록 | `cim/graph.py`의 `classify_connection`, `simulation/dss.py` | 12번 |
+| Neo4j 노드·관계 이름을 CIM 클래스 이름으로 쓸지 | `cim/graph.py`, `cim/schema.cypher`, `cim/load.py` | 13번 |
+| 4대 시뮬레이션 판정 기준 | `simulation/simulate.py`, `components/Diagram.jsx` | 7번 |
+
+현재 모델의 구조:
 
 - 설비 종류: 변전소 전원(`source`), 출구 차단기(`breaker`), 접속점(`bus`), 부하(`load`), 분산전원 태양광(`pv`)·풍력(`wind`). CIM 클래스 대응은 `cim/models.py` 주석
 - 좌표(x, y)는 설비 속성과 분리된 좌표 메타데이터 노드(DiagramObject)에 저장
