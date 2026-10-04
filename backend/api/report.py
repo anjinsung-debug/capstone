@@ -13,4 +13,4 @@ router = APIRouter()
 @router.post("/reports")
 def create_report(result: SimulationResult) -> Report:
     """시뮬레이션 결과와 해당 계통 정보로 진단·원인·솔루션 리포트 생성"""
-    return generate_report(graph.get_feeder(result.feeder_id), result)
+    return generate_report(graph.get_substation(result.substation_id), result)

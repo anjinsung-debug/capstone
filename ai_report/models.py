@@ -4,7 +4,7 @@ from pydantic import BaseModel
 
 
 class Report(BaseModel):
-    feeder_id: str
+    substation_id: str
     diagnosis: str  # 1단계: 건강도 진단
-    causes: list[str]  # 2단계: 원인 분석
-    solutions: list[str]  # 3단계: 솔루션 제안
+    causes: list[str]  # 2단계: 물리적 원인 분석
+    solutions: list[str]  # 3단계: 엔지니어링 솔루션 제안

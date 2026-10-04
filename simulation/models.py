@@ -20,11 +20,18 @@ class LineResult(BaseModel):
     reverse_flow: bool = False  # 역조류 (분산전원 때문에 평소와 반대 방향으로 흐름)
 
 
-class SimulationResult(BaseModel):
+class FeederResult(BaseModel):
+    """변전소 출구 차단기(CB)에서의 피더별 송출 전력. 화면에는 차단기 옆에 MW·MVAr로 황색 표시"""
+
     feeder_id: str
+    p_kw: float
+    q_kvar: float
+
+
+class SimulationResult(BaseModel):
+    substation_id: str
     converged: bool
-    total_p_kw: float  # 변전소 출구 차단기(CB)에서의 피더 송출 전력 (화면에는 MW로 표시)
-    total_q_kvar: float  # 화면에는 MVAr로 표시
     loss_kw: float
+    feeders: list[FeederResult]
     nodes: list[NodeResult]
     lines: list[LineResult]

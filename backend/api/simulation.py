@@ -11,10 +11,10 @@ from simulation.simulate import simulate
 router = APIRouter()
 
 
-@router.post("/feeders/{feeder_id}/simulations")
-def run_simulation(feeder_id: str) -> SimulationResult:
-    """배전선로 계통을 읽어 조류 계산 실행"""
-    return simulate(graph.get_feeder(feeder_id))
+@router.post("/substations/{substation_id}/simulations")
+def run_simulation(substation_id: str) -> SimulationResult:
+    """변전소 계통을 읽어 4대 시뮬레이션 실행"""
+    return simulate(graph.get_substation(substation_id))
 
 
 @router.post(
@@ -24,5 +24,5 @@ def run_simulation(feeder_id: str) -> SimulationResult:
 )
 def create_plot(result: SimulationResult) -> Response:
     """시뮬레이션 결과 그래프 (PNG)"""
-    png = plot_result(graph.get_feeder(result.feeder_id), result)
+    png = plot_result(graph.get_substation(result.substation_id), result)
     return Response(content=png, media_type="image/png")
