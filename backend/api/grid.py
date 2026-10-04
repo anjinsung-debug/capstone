@@ -6,12 +6,14 @@ from cim import graph
 from cim.models import (
     Feeder,
     FeederGraph,
+    FeederSnapshot,
     Line,
     LineCreate,
     LineUpdate,
     Node,
     NodeCreate,
     NodeUpdate,
+    SnapshotSaved,
 )
 
 router = APIRouter()
@@ -27,6 +29,12 @@ def list_feeders() -> list[Feeder]:
 def get_feeder(feeder_id: str) -> FeederGraph:
     """배전선로의 노드·선로 (단선도 표시용)"""
     return graph.get_feeder(feeder_id)
+
+
+@router.put("/feeders/{feeder_id}")
+def save_feeder(feeder_id: str, snapshot: FeederSnapshot) -> SnapshotSaved:
+    """편집 스냅샷 전체 저장 (임시 id → 실제 id 대응표 포함)"""
+    return graph.save_feeder(feeder_id, snapshot)
 
 
 @router.post("/feeders/{feeder_id}/nodes")

@@ -11,12 +11,14 @@ id는 서버가 uuid4로 발급한다 (FR-07).
 from cim.models import (
     Feeder,
     FeederGraph,
+    FeederSnapshot,
     Line,
     LineCreate,
     LineUpdate,
     Node,
     NodeCreate,
     NodeUpdate,
+    SnapshotSaved,
 )
 
 
@@ -49,4 +51,14 @@ def update_line(line_id: str, data: LineUpdate) -> Line:
 
 
 def delete_line(line_id: str) -> None:
+    raise NotImplementedError
+
+
+def save_feeder(feeder_id: str, snapshot: FeederSnapshot) -> SnapshotSaved:
+    """편집 스냅샷을 하나의 트랜잭션으로 저장한다 (4단계).
+
+    - DB에 없는 id는 새 노드·선로로 보고 uuid4를 발급해 id_map에 기록
+    - 선로의 from/to_node_id에 쓰인 임시 id도 발급한 실제 id로 바꿈
+    - 스냅샷에 없는 기존 노드·선로는 삭제 (가비지 컬렉션)
+    """
     raise NotImplementedError

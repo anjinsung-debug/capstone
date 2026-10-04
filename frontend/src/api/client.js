@@ -15,6 +15,8 @@ export const getHealth = () => request('GET', '/health')
 // 계통 조회·편집 (FR-02, FR-05, FR-06, FR-07)
 export const listFeeders = () => request('GET', '/feeders')
 export const getFeeder = (feederId) => request('GET', `/feeders/${feederId}`)
+// 편집 스냅샷 전체 저장: 새 노드·선로는 임시 id로 보내고, 응답의 id_map으로 실제 id를 받는다
+export const saveFeeder = (feederId, snapshot) => request('PUT', `/feeders/${feederId}`, snapshot)
 export const createNode = (feederId, body) => request('POST', `/feeders/${feederId}/nodes`, body)
 export const updateNode = (nodeId, body) => request('PATCH', `/nodes/${nodeId}`, body)
 export const deleteNode = (nodeId) => request('DELETE', `/nodes/${nodeId}`)
