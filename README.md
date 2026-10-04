@@ -11,7 +11,7 @@
 | `frontend/` | 웹 화면 (React, Vite), 단선도 (Cytoscape.js) | 고영민, 최민준 |
 | `backend/` | API 서버 (FastAPI) | 안진성, 한승우 |
 | `cim/` | 한전 데이터 → CIM 변환, Neo4j 적재·조회·편집 | 한승우 |
-| `simulation/` | OpenDSS 조류 계산, 결과 그래프 (matplotlib) | 안진성 |
+| `simulation/` | 계통 → OpenDSS 변환, 4대 시뮬레이션, 결과 그래프 (matplotlib) | 안진성 |
 | `ai_report/` | LLM 리포트 생성 | 고영민, 최민준 |
 | `data/` | 한전 데이터 보관 (git에 올라가지 않음) | 공용 |
 
@@ -79,19 +79,20 @@ capstone/
 ## 작동 방식
 
 ```
-data/ (한전 원본) ──cim──▶ Neo4j
-                              ▲
-frontend ──HTTP──▶ backend ───┤ cim/graph.py (조회·편집)
+data/ (한전 원본) ──cim/load.py──▶ Neo4j
+                                   ▲
+frontend ──HTTP──▶ backend ────────┤ cim/graph.py (조회·편집)
                       │
                       ├──▶ simulation/simulate.py ──▶ 시뮬레이션 결과
+                      │      └─ simulation/dss.py (계통 → OpenDSS 스크립트)
                       ├──▶ simulation/plot.py     ──▶ 결과 그래프 (PNG)
                       └──▶ ai_report/report.py   ──▶ AI 리포트 (계통 정보 + 시뮬레이션 결과)
 ```
 
-1. **적재** (FR-01, 02): `data/`의 한전 원본을 `cim`이 CIM 형식으로 변환해 Neo4j에 저장
+1. **적재** (FR-01, 02): `python -m cim.load` 실행 → `cim/load.py`가 `data/`의 한전 원본을 읽어(`read_raw`) CIM 형식으로 변환하고(`to_feeder_graphs`) Neo4j에 저장(`save_to_neo4j`). 웹이 아니라 명령어로 실행
 2. **조회·편집** (FR-02, 05, 06, 07): 프론트엔드 → `backend/api/grid.py` → `cim/graph.py` → Neo4j
    - **스냅샷 저장** (제안서 4단계): 편집이 끝난 계통 전체를 `PUT /api/feeders/{id}`로 보냄 → `cim/graph.py`의 `save_feeder`가 한 트랜잭션으로 저장. 새 노드·선로의 임시 id에 실제 id(uuid4)를 발급해 `id_map`으로 돌려주고, 스냅샷에 없는 기존 노드·선로는 삭제
-3. **시뮬레이션** (FR-03, 04): 프론트엔드 → `POST /api/feeders/{id}/simulations` → 백엔드가 `cim/graph.py`로 계통을 읽어 `simulation/simulate.py`에 넘김 → 결과를 프론트엔드가 단선도에 표시
+3. **시뮬레이션** (FR-03, 04): 프론트엔드 → `POST /api/feeders/{id}/simulations` → 백엔드가 `cim/graph.py`로 계통을 읽어 `simulation/simulate.py`에 넘김 → `simulation/dss.py`가 OpenDSS 스크립트로 변환 → `simulate.py`가 실행해 결과 반환 → 결과를 프론트엔드가 단선도에 표시
    - **4대 시뮬레이션** (제안서 3단계): 결과 형식(`simulation/models.py`)에 아래 항목이 있음
 
      | 시뮬레이션 | 결과 필드 |
@@ -107,12 +108,14 @@ frontend ──HTTP──▶ backend ───┤ cim/graph.py (조회·편집)
 
 ### 편집 → 시뮬레이션 → 리포트
 
-비전문가도 쓸 수 있도록, 시뮬레이션할 때마다 리포트로 설명을 보여 주는 방식으로 구현합니다.
+비전문가도 쓸 수 있도록, 시뮬레이션할 때마다 리포트로 설명을 보여 줍니다. 이 화면 흐름은 `frontend/src/App.jsx`에 있습니다.
 
 ```
+배전선로 선택 → GET /api/feeders/{id} → 단선도 표시 (Diagram.jsx)
 편집 (노드 이동·추가·삭제 등) → Neo4j에 저장 (아래 두 방식 중 하나, 회의로 결정)
-시뮬레이션 요청 → 결과 도착 → 단선도에 바로 표시
-                           └→ 프론트엔드가 자동으로 POST /api/reports → 리포트 도착하면 표시
+시뮬레이션 버튼 → 결과 도착 → 결과 요약 표시 (ResultPanel.jsx), 단선도 오버레이 (Diagram.jsx)
+                           ├→ 자동으로 POST /api/plots   → 그래프 도착하면 표시
+                           └→ 자동으로 POST /api/reports → 리포트 도착하면 표시
 ```
 
 편집 저장 방식은 두 API가 모두 틀로 있고, 어느 쪽을 쓸지는 회의 안건입니다.
@@ -123,7 +126,7 @@ frontend ──HTTP──▶ backend ───┤ cim/graph.py (조회·편집)
 | 스냅샷 저장 (제안서 4단계) | `PUT /api/feeders/{id}` | 편집을 마칠 때 전체를 한 번에 |
 
 - 시뮬레이션과 리포트 API를 나눈 이유: LLM 응답(수 초~수십 초)을 기다리지 않고 결과를 먼저 보여 주기 위해
-- 리포트가 만들어지는 중에 새 시뮬레이션이 끝나면, 이전 리포트는 버리고 마지막 결과의 리포트만 표시
+- 리포트가 만들어지는 중에 새 시뮬레이션이 끝나거나 배전선로를 바꾸면, 이전 결과·그래프·리포트는 버리고 마지막 요청의 것만 표시 (`App.jsx`의 `runId`)
 - 리포트에는 계통 정보(노드·선로 이름, 종류, 연결)가 함께 들어가므로 "어느 구간이 왜 문제인지"를 설명할 수 있음
 - 시뮬레이션마다 LLM을 호출하므로 API 사용량을 확인하고, 한전 수치를 외부 LLM에 보내도 되는지 한전 측에 확인
 
@@ -134,9 +137,12 @@ frontend ──HTTP──▶ backend ───┤ cim/graph.py (조회·편집)
 | 프론트엔드 → 백엔드 API | `frontend/src/api/client.js`, `backend/api/` (형식은 http://localhost:8000/docs) |
 | 계통 데이터 형식, Neo4j 구조 | `cim/models.py`, `cim/graph.py`, `cim/schema.cypher` |
 | Neo4j 연결 | `cim/db.py` (접속 정보는 `.env`) |
+| 한전 데이터 → Neo4j 적재 | `cim/load.py` (명령어 `python -m cim.load`, `cim/models.py` 형식으로 저장) |
 | 시뮬레이션 결과 형식 | `simulation/models.py` |
 | 리포트 형식 | `ai_report/models.py` |
 | 백엔드 → 각 모듈 함수 | `cim/graph.py`, `simulation/simulate.py`, `simulation/plot.py`, `ai_report/report.py` |
+| 시뮬레이션 → OpenDSS 변환 | `simulation/simulate.py` → `simulation/dss.py`의 `to_dss_script` |
+| 화면 → 화면 부품 | `frontend/src/App.jsx` → `components/Diagram.jsx`(단선도), `components/ResultPanel.jsx`(결과·그래프·리포트) |
 
 ### 공유 형식 파일 변경 규칙
 
@@ -161,7 +167,7 @@ frontend ──HTTP──▶ backend ───┤ cim/graph.py (조회·편집)
 1. **한전 데이터 확인**: 받은 파일에 있는 항목(컬럼) 파악
 2. **쓸 항목 정하기**: 한전 항목 → 모델 필드 대응표 작성
 3. **`cim/models.py` 확정**: 대응표에 맞춰 필드 추가·삭제 (공유 형식 파일 변경 규칙대로)
-4. **적재 코드 작성**: `data/`의 원본을 읽어 `cim/models.py` 형식으로 Neo4j에 저장
+4. **적재 코드 작성**: `cim/load.py`의 `read_raw`(원본 읽기), `to_feeder_graphs`(대응표대로 변환), `save_to_neo4j`(저장)를 채움
 
 3번이 끝나면 형식이 정해지므로 각자 그 형식에 맞춰 개발할 수 있고, 실제 데이터 확인은 4번 이후에 가능합니다.
 
@@ -194,7 +200,7 @@ frontend ──HTTP──▶ backend ───┤ cim/graph.py (조회·편집)
 ### 각자 데이터 준비
 
 1. 한전 파일을 자기 PC의 `data/`에 넣기 (git에 올리지 않고 따로 공유)
-2. `cim` 적재 코드를 실행해 자기 PC의 Neo4j에 저장
+2. 저장소 루트에서 `python -m cim.load` 실행해 자기 PC의 Neo4j에 저장 (다시 적재할 때는 `--reset`)
 
 같은 원본과 같은 적재 코드를 쓰므로 모두 같은 데이터를 갖게 됩니다. 웹에서 편집한 내용은 자기 DB에만 남고, 다시 적재하면 처음 상태로 돌아갑니다.
 
@@ -228,7 +234,14 @@ cd frontend
 npm run dev
 ```
 
-http://localhost:5173 에 "서버 ok, Neo4j connected"가 보이면 정상입니다.
+http://localhost:5173 에 "서버 ok, Neo4j connected"가 보이면 정상입니다. 조회 기능을 구현하기 전에는 "배전선로 목록을 불러오지 못했습니다 (HTTP 501)"이 함께 표시되는 것이 정상입니다.
+
+`.env` 항목
+
+| 항목 | 쓰는 곳 |
+|------|---------|
+| `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` | Docker(Neo4j), 백엔드, `python -m cim.load` |
+| `ANTHROPIC_API_KEY` | AI 리포트 (`ai_report/report.py`). 백엔드만 읽으며, 프론트엔드 코드에는 넣지 않음 |
 
 ## Neo4j 연결
 
