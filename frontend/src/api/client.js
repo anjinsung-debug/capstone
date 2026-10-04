@@ -25,5 +25,16 @@ export const deleteLine = (lineId) => request('DELETE', `/lines/${lineId}`)
 // 시뮬레이션 (FR-03, FR-04)
 export const runSimulation = (feederId) => request('POST', `/feeders/${feederId}/simulations`)
 
+// 시뮬레이션 결과 그래프: runSimulation 결과를 그대로 넘기면 <img src>에 쓸 수 있는 PNG 주소를 돌려준다
+export async function createPlot(simulationResult) {
+  const res = await fetch('/api/plots', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(simulationResult),
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return URL.createObjectURL(await res.blob())
+}
+
 // AI 리포트 (FR-08, FR-09): runSimulation 결과를 그대로 넘긴다
 export const createReport = (simulationResult) => request('POST', '/reports', simulationResult)

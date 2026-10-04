@@ -11,7 +11,7 @@
 | `frontend/` | 웹 화면 (React, Vite), 단선도 (Cytoscape.js) | 고영민, 최민준 |
 | `backend/` | API 서버 (FastAPI) | 안진성, 한승우 |
 | `cim/` | 한전 데이터 → CIM 변환, Neo4j 적재·조회·편집 | 한승우 |
-| `simulation/` | OpenDSS 조류 계산 | 안진성 |
+| `simulation/` | OpenDSS 조류 계산, 결과 그래프 (matplotlib) | 안진성 |
 | `ai_report/` | LLM 리포트 생성 | 고영민, 최민준 |
 | `data/` | 한전 데이터 보관 (git에 올라가지 않음) | 공용 |
 
@@ -22,7 +22,7 @@ capstone/
 │   └── api/
 │       ├── health.py        GET /api/health: 서버·Neo4j 상태
 │       ├── grid.py          계통 조회·편집 API → cim/graph.py
-│       ├── simulation.py    시뮬레이션 API → cim/graph.py, simulation/simulate.py
+│       ├── simulation.py    시뮬레이션·그래프 API → cim/graph.py, simulation/simulate.py, simulation/plot.py
 │       └── report.py        리포트 API → cim/graph.py, ai_report/report.py
 ├── cim/
 │   ├── models.py            계통 데이터 형식 (Feeder, Node, Line, FeederGraph)
@@ -31,7 +31,8 @@ capstone/
 │   └── schema.cypher        Neo4j 제약조건
 ├── simulation/
 │   ├── models.py            시뮬레이션 결과 형식
-│   └── simulate.py          조류 계산 함수
+│   ├── simulate.py          조류 계산 함수
+│   └── plot.py              결과 그래프 함수 (matplotlib → PNG)
 ├── ai_report/
 │   ├── models.py            리포트 형식 (진단, 원인, 솔루션)
 │   └── report.py            리포트 생성 함수
@@ -59,6 +60,7 @@ capstone/
 | 한전 데이터 적재 | `cim/` | 없음 |
 | 계통 조회·편집 | `cim/graph.py` | 틀만 있음 |
 | 조류 계산 | `simulation/simulate.py` | 틀만 있음 |
+| 결과 그래프 (matplotlib) | `simulation/plot.py` | 틀만 있음 |
 | AI 리포트 | `ai_report/report.py` | 틀만 있음 |
 | 단선도 화면, 편집 UI (Cytoscape.js) | `frontend/src/` | 없음 (라이브러리만 설치됨) |
 
@@ -72,12 +74,14 @@ data/ (한전 원본) ──cim──▶ Neo4j
 frontend ──HTTP──▶ backend ───┤ cim/graph.py (조회·편집)
                       │
                       ├──▶ simulation/simulate.py ──▶ 시뮬레이션 결과
+                      ├──▶ simulation/plot.py     ──▶ 결과 그래프 (PNG)
                       └──▶ ai_report/report.py   ──▶ AI 리포트 (계통 정보 + 시뮬레이션 결과)
 ```
 
 1. **적재** (FR-01, 02): `data/`의 한전 원본을 `cim`이 CIM 형식으로 변환해 Neo4j에 저장
 2. **조회·편집** (FR-02, 05, 06, 07): 프론트엔드 → `backend/api/grid.py` → `cim/graph.py` → Neo4j
 3. **시뮬레이션** (FR-03, 04): 프론트엔드 → `POST /api/feeders/{id}/simulations` → 백엔드가 `cim/graph.py`로 계통을 읽어 `simulation/simulate.py`에 넘김 → 결과를 프론트엔드가 단선도에 표시
+   - **결과 그래프**: 프론트엔드가 받은 결과를 `POST /api/plots`로 보냄 → 백엔드가 계통 정보와 함께 `simulation/plot.py`에 넘김 → matplotlib으로 그린 PNG를 받아 화면에 표시
 4. **AI 리포트** (FR-08, 09): 프론트엔드가 받은 시뮬레이션 결과를 `POST /api/reports`로 보냄 → 백엔드가 `cim/graph.py`로 같은 계통 정보를 읽어 결과와 함께 `ai_report/report.py`에 넘김 → 진단·원인·솔루션 리포트 생성
 
 ### 편집 → 시뮬레이션 → 리포트
@@ -104,7 +108,7 @@ frontend ──HTTP──▶ backend ───┤ cim/graph.py (조회·편집)
 | Neo4j 연결 | `cim/db.py` (접속 정보는 `.env`) |
 | 시뮬레이션 결과 형식 | `simulation/models.py` |
 | 리포트 형식 | `ai_report/models.py` |
-| 백엔드 → 각 모듈 함수 | `cim/graph.py`, `simulation/simulate.py`, `ai_report/report.py` |
+| 백엔드 → 각 모듈 함수 | `cim/graph.py`, `simulation/simulate.py`, `simulation/plot.py`, `ai_report/report.py` |
 
 ### 공유 형식 파일 변경 규칙
 
