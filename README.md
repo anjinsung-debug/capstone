@@ -27,11 +27,13 @@ capstone/
 ├── cim/
 │   ├── models.py            계통 데이터 형식 (Feeder, Node, Line, FeederGraph, 편집 스냅샷)
 │   ├── graph.py             Neo4j 조회·편집·스냅샷 저장 함수, Neo4j 구조 설명
+│   ├── load.py              한전 데이터 → CIM 형식 변환·Neo4j 적재 (python -m cim.load)
 │   ├── db.py                Neo4j 연결
 │   └── schema.cypher        Neo4j 제약조건
 ├── simulation/
 │   ├── models.py            시뮬레이션 결과 형식 (4대 시뮬레이션)
-│   ├── simulate.py          조류 계산·고장 해석 함수
+│   ├── dss.py               계통 → OpenDSS 스크립트 변환
+│   ├── simulate.py          조류 계산·고장 해석 함수 (dss.py로 변환 후 실행)
 │   └── plot.py              결과 그래프 함수 (matplotlib → PNG)
 ├── ai_report/
 │   ├── models.py            리포트 형식 (진단, 원인, 솔루션)
@@ -39,14 +41,17 @@ capstone/
 ├── frontend/
 │   ├── src/
 │   │   ├── main.jsx         React 시작점
-│   │   ├── App.jsx          화면 (현재: 서버·Neo4j 상태 표시)
+│   │   ├── App.jsx          화면 흐름: 배전선로 선택 → 단선도 → 시뮬레이션 → 결과·그래프·리포트
+│   │   ├── components/
+│   │   │   ├── Diagram.jsx      단선도 뷰어·편집기 (Cytoscape.js), 결과 오버레이
+│   │   │   └── ResultPanel.jsx  결과 요약(MW·MVAr), 결과 그래프, AI 리포트 표시
 │   │   └── api/client.js    백엔드 API 호출 함수
 │   ├── vite.config.js       /api 요청을 백엔드(localhost:8000)로 전달
 │   └── package.json         프론트엔드 라이브러리 (react, cytoscape)
 ├── data/                    한전 원본 (git 제외)
 ├── docker-compose.yml       Neo4j 실행 설정
 ├── requirements.txt         Python 라이브러리
-└── .env.example             접속 정보 양식 (.env로 복사해서 사용)
+└── .env.example             접속 정보·API 키 양식 (.env로 복사해서 사용)
 ```
 
 `.gitignore`, `frontend/index.html`, `frontend/.oxlintrc.json` 같은 기본 설정 파일은 생략했습니다.
@@ -57,13 +62,17 @@ capstone/
 |------|------|------|
 | 서버 실행, Neo4j 연결 | `backend/main.py`, `cim/db.py`, `backend/api/health.py` | 동작 |
 | 프론트엔드 → 백엔드 API 호출 | `frontend/src/api/client.js` | 동작 |
-| 한전 데이터 적재 | `cim/` | 없음 |
+| 한전 데이터 적재 | `cim/load.py` | 틀만 있음 |
 | 계통 조회·편집 | `cim/graph.py` | 틀만 있음 |
 | 편집 스냅샷 저장 (4단계) | `cim/graph.py`의 `save_feeder` | 틀만 있음 |
+| OpenDSS 스크립트 변환 (2단계) | `simulation/dss.py` | 틀만 있음 |
 | 4대 시뮬레이션 (3단계) | `simulation/simulate.py` | 틀만 있음 |
 | 결과 그래프 (matplotlib) | `simulation/plot.py` | 틀만 있음 |
 | AI 리포트 | `ai_report/report.py` | 틀만 있음 |
-| 단선도 화면, 편집 UI (Cytoscape.js) | `frontend/src/` | 없음 (라이브러리만 설치됨) |
+| 화면 흐름 (선택 → 시뮬레이션 → 결과·리포트) | `frontend/src/App.jsx` | 동작 (API 구현 전에는 501 메시지 표시) |
+| 단선도 표시 (Cytoscape.js) | `frontend/src/components/Diagram.jsx` | 기본 표시만 있음 |
+| 단선도 편집 UI, 결과 오버레이 | `frontend/src/components/Diagram.jsx` | 틀만 있음 (TODO) |
+| 결과·그래프·리포트 표시 | `frontend/src/components/ResultPanel.jsx` | 동작 |
 
 틀만 있는 함수는 `NotImplementedError`를 내고, 해당 API는 501을 돌려줍니다.
 
@@ -197,7 +206,7 @@ frontend ──HTTP──▶ backend ───┤ cim/graph.py (조회·편집)
 
 ```powershell
 # 처음 한 번
-cp .env.example .env              # NEO4J_PASSWORD 입력
+cp .env.example .env              # NEO4J_PASSWORD, ANTHROPIC_API_KEY 입력
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
@@ -207,6 +216,9 @@ cd ..
 
 # Neo4j (저장소 루트)
 docker compose up -d
+
+# 데이터 적재 (data/에 한전 파일을 넣은 뒤, 저장소 루트·가상환경 활성화 후, 적재 코드 구현 후 사용)
+python -m cim.load
 
 # 백엔드 (저장소 루트, 가상환경 활성화 후)
 uvicorn backend.main:app --reload --port 8000 --env-file .env

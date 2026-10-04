@@ -1,0 +1,65 @@
+"""한전 데이터 → CIM 형식 변환·적재 (FR-01, 제안서 1단계)
+
+data/ 폴더의 한전 가상 데이터(변전소 2개, 배전선로 20개)를 읽어
+cim/models.py 형식(Feeder, Node, Line)으로 바꾼 뒤 Neo4j에 저장한다.
+한전의 CIM 스키마 매핑 가이드를 받으면 read_raw, to_feeder_graphs를 채운다.
+
+실행 (저장소 루트, 가상환경 활성화 후):
+    python -m cim.load            # data/ 전체 적재
+    python -m cim.load --reset    # 기존 데이터를 지우고 다시 적재
+"""
+
+import argparse
+import os
+from pathlib import Path
+
+from cim.models import FeederGraph
+
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+
+
+def read_raw(data_dir: Path = DATA_DIR) -> dict:
+    """data/의 한전 원본 파일(엑셀 등)을 읽어 표 단위로 돌려준다 (pandas 사용 예정)."""
+    raise NotImplementedError
+
+
+def to_feeder_graphs(raw: dict) -> list[FeederGraph]:
+    """원본 표를 매핑 가이드의 대응표에 따라 배전선로별 FeederGraph로 바꾼다."""
+    raise NotImplementedError
+
+
+def save_to_neo4j(graphs: list[FeederGraph], reset: bool = False) -> None:
+    """FeederGraph 목록을 Neo4j에 저장한다. reset=True면 기존 계통을 먼저 지운다."""
+    raise NotImplementedError
+
+
+def load(data_dir: Path = DATA_DIR, reset: bool = False) -> None:
+    """원본 읽기 → CIM 형식 변환 → Neo4j 저장"""
+    save_to_neo4j(to_feeder_graphs(read_raw(data_dir)), reset=reset)
+
+
+def _read_env_file(path: Path) -> None:
+    """저장소 루트의 .env 값을 환경 변수로 읽는다 (이미 설정된 값은 유지)."""
+    if not path.exists():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            key, value = line.split("=", 1)
+            os.environ.setdefault(key.strip(), value.strip())
+
+
+if __name__ == "__main__":
+    from cim import db
+
+    _read_env_file(DATA_DIR.parent / ".env")
+
+    parser = argparse.ArgumentParser(description="한전 데이터를 Neo4j에 적재")
+    parser.add_argument("--reset", action="store_true", help="기존 데이터를 지우고 다시 적재")
+    args = parser.parse_args()
+
+    db.connect()
+    try:
+        load(reset=args.reset)
+    finally:
+        db.close()
