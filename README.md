@@ -56,6 +56,30 @@ capstone/
 
 `.gitignore`, `frontend/index.html`, `frontend/.oxlintrc.json` 같은 기본 설정 파일은 생략했습니다.
 
+## 협업 규칙
+
+### 담당 폴더 규칙
+
+각자 위 표에서 자신이 담당한 폴더의 코드만 수정합니다.
+다른 담당자의 폴더를 고쳐야 할 때는 직접 수정하지 않고 그 담당자에게 요청합니다.
+README, `requirements.txt`, `docker-compose.yml`, `.env.example` 같은 공용 파일은 아래 공유 형식 파일과 같은 방식으로 팀에 알리고 PR로 합칩니다.
+
+### 공유 형식 파일 변경 규칙
+
+`cim/models.py`, `simulation/models.py`, `ai_report/models.py`, `frontend/src/api/client.js`는 여러 폴더가 함께 쓰는 약속입니다.
+이 파일을 바꿀 때는 먼저 팀에 알리고, PR로 영향받는 담당자의 확인을 받은 뒤 합칩니다.
+
+### README 갱신 규칙
+
+아래가 바뀌면 같은 PR에서 README도 함께 고칩니다.
+
+| 바뀐 것 | 고칠 곳 |
+|---------|---------|
+| 파일·폴더 추가, 삭제, 이름 변경 | 디렉토리 구성 |
+| 기능 구현 완료, 새 기능 추가 | 구현 상태 |
+| API 경로, 데이터 흐름 | 작동 방식, 폴더 간 연결 |
+| 실행 방법, 라이브러리, 환경 변수 | 실행, Neo4j 연결 |
+
 ## 구현 상태
 
 | 기능 | 위치 | 상태 |
@@ -144,22 +168,6 @@ frontend ──HTTP──▶ backend ────────┤ cim/graph.py (�
 | 백엔드 → 각 모듈 함수 | `cim/graph.py`, `simulation/simulate.py`, `simulation/plot.py`, `ai_report/report.py` |
 | 시뮬레이션 → OpenDSS 변환 | `simulation/simulate.py` → `simulation/dss.py`의 `to_dss_script` |
 | 화면 → 화면 부품 | `frontend/src/App.jsx` → `components/Diagram.jsx`(단선도), `components/ResultPanel.jsx`(결과·그래프·리포트) |
-
-### 공유 형식 파일 변경 규칙
-
-`cim/models.py`, `simulation/models.py`, `ai_report/models.py`, `frontend/src/api/client.js`는 여러 폴더가 함께 쓰는 약속입니다.
-이 파일을 바꿀 때는 먼저 팀에 알리고, PR로 영향받는 담당자의 확인을 받은 뒤 합칩니다.
-
-### README 갱신 규칙
-
-아래가 바뀌면 같은 PR에서 README도 함께 고칩니다.
-
-| 바뀐 것 | 고칠 곳 |
-|---------|---------|
-| 파일·폴더 추가, 삭제, 이름 변경 | 디렉토리 구성 |
-| 기능 구현 완료, 새 기능 추가 | 구현 상태 |
-| API 경로, 데이터 흐름 | 작동 방식, 폴더 간 연결 |
-| 실행 방법, 라이브러리, 환경 변수 | 실행, Neo4j 연결 |
 
 ## 한전 데이터 → CIM 모델 정하기
 
