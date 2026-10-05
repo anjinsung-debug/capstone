@@ -1,10 +1,15 @@
 """시뮬레이션 결과 형식. 단위: 전압 pu, 전력 kW·kvar(3상 합계), 부하율 %, 고장전류 kA
 
 4대 시뮬레이션 (3단계): 전압 영향, 선로 과부하, 역조류, 단락용량 고장전류
-해석 범위 (cim/models.py와 같음): 22.9kV, 3상 평형이라 상별 값 대신 한 값, 한 시점 결과, 고장은 3상 단락만
+해석 범위 (cim/models.py와 같음): 22.9kV, 3상 평형이라 상별 값 대신 한 값, 방사형, 한 시점 결과, 고장은 3상 단락만
 """
 
 from pydantic import BaseModel
+
+# 판정 기준 (단선도 오버레이 색상, AI 리포트 진단에 공통 사용)
+VOLTAGE_MIN_PU = 0.95  # 전압 정상 범위 하한 (OpenDSS 기본 정상 범위)
+VOLTAGE_MAX_PU = 1.05  # 전압 정상 범위 상한
+OVERLOAD_PCT = 100.0  # loading_pct가 이 값을 넘으면 선로 과부하
 
 
 class NodeResult(BaseModel):

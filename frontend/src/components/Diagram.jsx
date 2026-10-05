@@ -43,7 +43,8 @@ export default function Diagram({ graph, result }) {
   useEffect(() => {
     if (!cyRef.current || !result) return
     // TODO(오버레이, 3단계): 4대 시뮬레이션(전압 pu, 부하율, 역조류, 고장전류)을 색상·두께로 표시,
-    // breaker 노드 옆에 result.feeders의 피더별 송출 MW·MVAr 황색 표시. 기준은 회의 안건 6번(결과 표시 방식)
+    // breaker 노드 옆에 result.feeders의 피더별 송출 MW·MVAr 황색 표시.
+    // 판정 기준은 simulation/models.py와 같게: 전압 0.95~1.05 pu 밖, 부하율 100% 초과면 경고 색
   }, [result])
 
   return <div ref={containerRef} style={{ width: '100%', height: 600, background: '#11171b', border: '1px solid #2a363d' }} />

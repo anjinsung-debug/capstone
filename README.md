@@ -66,7 +66,7 @@ capstone/
 | 한전 데이터 적재 | `cim/load.py` | 틀만 있음 |
 | 변전소 계통 조회 | `cim/graph.py`의 `list_substations`, `get_substation` | 틀만 있음 |
 | 편집 스냅샷 저장 (4단계) | `cim/graph.py`의 `save_substation` | 틀만 있음 |
-| 연결 특성 자동 구분 (위상 형성 논리) | `cim/graph.py`의 `classify_connection` | 틀만 있음 |
+| 연결 특성 자동 구분 (위상 형성 논리) | `cim/graph.py`의 `classify_connection` | 동작 (차단기에 닿으면 `switch`, 그 외 `line`) |
 | OpenDSS 스크립트 변환 (2단계) | `simulation/dss.py` | 틀만 있음 |
 | 4대 시뮬레이션 (3단계) | `simulation/simulate.py` | 틀만 있음 |
 | 결과 그래프 (matplotlib) | `simulation/plot.py` | 틀만 있음 |
@@ -80,7 +80,7 @@ capstone/
 
 ## 작동 방식
 
-**해석 범위**: 22.9kV 배전계통, 3상 평형(정상분 1상 등가), 한 시점 계산, 3상 단락만. 데이터 형식(`cim/models.py`)과 OpenDSS 변환(`simulation/dss.py`)이 이 범위를 전제로 합니다.
+**해석 범위**: 22.9kV 배전계통, 3상 평형(정상분 1상 등가), 방사형 계통, 한 시점 계산, 3상 단락만. 데이터 형식(`cim/models.py`)과 OpenDSS 변환(`simulation/dss.py`)이 이 범위를 전제로 합니다.
 
 ```
 data/ (한전 원본) ──cim/load.py──▶ Neo4j
@@ -185,18 +185,19 @@ frontend ──HTTP──▶ backend ────────┤ cim/graph.py (�
 
 한전이 제공하는 것 (산학협력 문제 제안서): 가상 데이터 (변전소 2개, 배전선로 20개), CIM 전력 데이터 모델 스키마 매핑 가이드 (최소 모델).
 
-현재 모델은 제안서 요구를 반영해 두었습니다. 매핑 가이드와 한전 답변(Notion QA 정리본), 회의 결과에 따라 아래가 바뀔 수 있습니다.
+현재 모델은 제안서 요구를 반영해 두었고, 남은 설계 항목은 모두 아래 기본값으로 정했습니다. 매핑 가이드를 받으면 필드 이름·단위만 맞추고, 원본 형태가 다르면 `cim/load.py`에서 변환합니다.
 
-| 바뀔 수 있는 것 | 영향받는 코드 | 관련 질문·안건 |
-|----------------|---------------|-----------|
-| 필드 이름·단위 | `cim/models.py`, `cim/load.py` | 매핑 가이드 (QA 1번) |
-| 연결 특성(`kind`) 구분 기준과 값 목록 | `cim/graph.py`의 `classify_connection`, `simulation/dss.py` | 회의 안건 3번 |
-| Neo4j 노드·관계 이름을 CIM 클래스 이름으로 쓸지 | `cim/graph.py`, `cim/schema.cypher`, `cim/load.py` | 회의 안건 9번 |
-| 4대 시뮬레이션 판정 기준 (전압 허용 범위, 과부하 %) | `components/Diagram.jsx`, `ai_report/report.py` | 회의 안건 8번 |
+| 항목 | 기본값 | 코드 |
+|------|--------|------|
+| 계통 구조 | 방사형 | `cim/models.py` 설명 |
+| 설비 종류 | source·breaker·bus·load·pv·wind 6종 (개폐기·변압기 없음) | `NodeType` |
+| 연결 특성 | 차단기에 닿은 연결은 `switch`(OpenDSS `Line switch=yes`), 그 외 `line` | `LineKind`, `classify_connection` |
+| 판정 기준 | 전압 0.95~1.05 pu (OpenDSS 기본 정상 범위), 부하율 100% 초과면 과부하 | `simulation/models.py`의 `VOLTAGE_MIN_PU`, `VOLTAGE_MAX_PU`, `OVERLOAD_PCT` |
+| Neo4j 이름 | 내부 이름(`Node`, `LINE`)을 쓰고 CIM 클래스는 주석으로 대응 | `cim/models.py`, `cim/graph.py` |
 
 현재 모델의 구조:
 
-- 해석 범위: 22.9kV(`BASE_KV`), 3상 평형, 한 시점, 3상 단락만. 전력은 3상 합계, 임피던스는 정상분, 선로 정전용량은 무시
+- 해석 범위: 22.9kV(`BASE_KV`), 3상 평형, 방사형, 한 시점, 3상 단락만. 전력은 3상 합계, 임피던스는 정상분, 선로 정전용량은 무시
 - 선로의 `from_node_id`는 전원 쪽. 조류가 to → from으로 흐르면 역조류
 - 허용전류·단락용량이 없으면 해당 결과(`loading_pct`, `fault_current_ka`)는 비워 둠
 - 설비 종류: 변전소 전원(`source`), 출구 차단기(`breaker`), 접속점(`bus`), 부하(`load`), 분산전원 태양광(`pv`)·풍력(`wind`). CIM 클래스 대응은 `cim/models.py` 주석

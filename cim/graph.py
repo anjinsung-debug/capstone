@@ -10,7 +10,7 @@ Neo4j 구조 (속성은 cim/models.py와 같음):
 API의 Node.x, y는 조회할 때 DiagramObject에서 읽고, 저장할 때 DiagramObject에 쓴다.
 """
 
-from cim.models import Node, SnapshotSaved, Substation, SubstationGraph, SubstationSnapshot
+from cim.models import LineKind, Node, SnapshotSaved, Substation, SubstationGraph, SubstationSnapshot
 
 
 def list_substations() -> list[Substation]:
@@ -33,6 +33,6 @@ def save_substation(substation_id: str, snapshot: SubstationSnapshot) -> Snapsho
     raise NotImplementedError
 
 
-def classify_connection(from_node: Node, to_node: Node) -> str:
-    """두 노드의 설비 종류(type)로 연결 특성을 정한다 (위상 형성 논리, 규칙은 회의에서 확정)."""
-    raise NotImplementedError
+def classify_connection(from_node: Node, to_node: Node) -> LineKind:
+    """두 노드의 설비 종류(type)로 연결 특성을 정한다 (위상 형성 논리). 차단기에 닿으면 switch, 그 외는 line."""
+    return "switch" if "breaker" in (from_node.type, to_node.type) else "line"

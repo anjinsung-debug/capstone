@@ -1,6 +1,7 @@
 """계통 데이터 형식. API 응답과 Neo4j 저장에 같은 형식을 쓴다.
 
-해석 범위: 22.9kV 배전계통, 3상 평형(정상분 1상 등가), 한 시점 계산, 3상 단락만.
+해석 범위: 22.9kV 배전계통, 3상 평형(정상분 1상 등가), 방사형 계통, 한 시점 계산, 3상 단락만.
+Neo4j에는 내부 이름(Node, LINE)을 쓰고 CIM 클래스는 아래 주석으로 대응한다.
 단선도·시뮬레이션은 변전소 단위로 다룬다 (변전소 하나 = 출구 차단기별 피더 여러 개).
 단위: 전압 kV(선간)·pu, 전력 kW·kvar(3상 합계), 전류 A, 단락용량 MVA, 길이 km, 임피던스 Ω/km(정상분), 좌표 x·y는 단선도 좌표
 """
@@ -14,6 +15,9 @@ BASE_KV = 22.9  # 계통 기준 전압 (선간, kV). 지원 범위가 22.9kV뿐�
 # source: 변전소 전원(CIM EnergySource), breaker: 변전소 출구 차단기(Breaker), bus: 접속점(ConnectivityNode),
 # load: 부하(EnergyConsumer), pv: 태양광 분산전원(PhotoVoltaicUnit), wind: 풍력 분산전원(WindGeneratingUnit)
 NodeType = Literal["source", "breaker", "bus", "load", "pv", "wind"]
+
+# switch: 차단기(breaker)에 닿은 연결 (CIM Breaker, OpenDSS Line switch=yes), line: 그 외 선로 (CIM ACLineSegment)
+LineKind = Literal["line", "switch"]
 
 
 class Substation(BaseModel):
@@ -60,7 +64,7 @@ class Line(BaseModel):
     substation_id: str
     feeder_id: str | None = None
     name: str
-    kind: str | None = None  # 연결 특성. 양 끝 설비 종류로 서버가 자동 구분 (cim/graph.py의 classify_connection)
+    kind: LineKind | None = None  # 연결 특성. 양 끝 설비 종류로 서버가 자동 구분 (cim/graph.py의 classify_connection)
     from_node_id: str
     to_node_id: str
     length_km: float
