@@ -1,6 +1,7 @@
-"""시뮬레이션 결과 형식. 단위: 전압 pu, 전력 kW·kvar, 부하율 %, 고장전류 kA
+"""시뮬레이션 결과 형식. 단위: 전압 pu, 전력 kW·kvar(3상 합계), 부하율 %, 고장전류 kA
 
 4대 시뮬레이션 (3단계): 전압 영향, 선로 과부하, 역조류, 단락용량 고장전류
+해석 범위 (cim/models.py와 같음): 22.9kV, 3상 평형이라 상별 값 대신 한 값, 한 시점 결과, 고장은 3상 단락만
 """
 
 from pydantic import BaseModel
@@ -9,15 +10,15 @@ from pydantic import BaseModel
 class NodeResult(BaseModel):
     node_id: str
     voltage_pu: float  # 전압 영향
-    fault_current_ka: float | None = None  # 단락 고장전류
+    fault_current_ka: float | None = None  # 이 지점 3상 단락 전류 (대칭 실효값). 단락용량이 없으면 None
 
 
 class LineResult(BaseModel):
     line_id: str
     p_kw: float  # from → to 방향이 +
     q_kvar: float
-    loading_pct: float | None = None  # 선로 과부하 (허용전류 대비 %)
-    reverse_flow: bool = False  # 역조류 (분산전원 때문에 평소와 반대 방향으로 흐름)
+    loading_pct: float | None = None  # 선로 과부하 (전류 / 허용전류 × 100). 허용전류가 없으면 None
+    reverse_flow: bool = False  # 역조류 (p_kw < 0, 분산전원 때문에 to → from으로 흐름)
 
 
 class FeederResult(BaseModel):

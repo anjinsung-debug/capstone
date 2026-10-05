@@ -61,6 +61,7 @@ capstone/
 | 기능 | 위치 | 상태 |
 |------|------|------|
 | 서버 실행, Neo4j 연결 | `backend/main.py`, `cim/db.py`, `backend/api/health.py` | 동작 |
+| 계통 입력 검사 (전원 1개, 피더별 차단기 1개, 부하·분산전원 출력, 선로 양 끝) | `cim/models.py` | 동작 (API 요청·응답 시 자동 검사, 잘못되면 422) |
 | 프론트엔드 → 백엔드 API 호출 | `frontend/src/api/client.js` | 동작 |
 | 한전 데이터 적재 | `cim/load.py` | 틀만 있음 |
 | 변전소 계통 조회 | `cim/graph.py`의 `list_substations`, `get_substation` | 틀만 있음 |
@@ -78,6 +79,8 @@ capstone/
 틀만 있는 함수는 `NotImplementedError`를 내고, 해당 API는 501을 돌려줍니다.
 
 ## 작동 방식
+
+**해석 범위**: 22.9kV 배전계통, 3상 평형(정상분 1상 등가), 한 시점 계산, 3상 단락만. 데이터 형식(`cim/models.py`)과 OpenDSS 변환(`simulation/dss.py`)이 이 범위를 전제로 합니다.
 
 ```
 data/ (한전 원본) ──cim/load.py──▶ Neo4j
@@ -173,8 +176,10 @@ frontend ──HTTP──▶ backend ────────┤ cim/graph.py (�
 
 | 쓰는 곳 | 필요한 정보 | 현재 모델 필드 |
 |---------|-------------|----------------|
-| 조류 계산 (OpenDSS) | 전원 전압, 연결 관계, 선로 길이·임피던스, 부하 크기 | `Substation.base_kv`, `from_node_id`, `to_node_id`, `length_km`, `r_ohm_per_km`, `x_ohm_per_km`, `p_kw`, `q_kvar` |
-| 4대 시뮬레이션 | 선로 허용전류, 분산전원(태양광·풍력) 출력, 변전소 전원 단락용량 | `Line.rated_current_a`, `type`이 `pv`·`wind`인 노드의 `p_kw`·`q_kvar`, `Substation.short_circuit_mva` |
+| 조류 계산·전압 영향 | 기준 전압, 변전소 모선 전압, 연결 관계, 선로 길이·정상분 임피던스, 부하 크기(3상 합계, 한 시점) | `BASE_KV`(22.9 고정), `Substation.source_voltage_pu`, `from_node_id`, `to_node_id`, `length_km`, `r_ohm_per_km`, `x_ohm_per_km`, `p_kw`, `q_kvar` |
+| 선로 과부하 | 선로 허용전류 | `Line.rated_current_a` |
+| 역조류 | 분산전원(태양광·풍력) 출력, 평소 조류 방향 | `type`이 `pv`·`wind`인 노드의 `p_kw`·`q_kvar`, 선로의 `from_node_id`(전원 쪽) |
+| 3상 단락 고장전류 | 변전소 전원 3상 단락용량, X/R | `Substation.short_circuit_mva`, `Substation.x_r_ratio` |
 | 단선도 화면 | 위치, 이름, 종류, 변전소 출구 차단기(CB), 소속 피더 | `x`, `y`(DiagramObject), `name`, `type`(`breaker` 포함), `feeder_id` |
 | AI 리포트 | 설비 이름·종류·연결 관계 (시뮬레이션 결과와 함께 사용) | `name`, `type`, `kind`, `from_node_id`, `to_node_id` |
 
@@ -192,6 +197,9 @@ frontend ──HTTP──▶ backend ────────┤ cim/graph.py (�
 
 현재 모델의 구조:
 
+- 해석 범위: 22.9kV(`BASE_KV`), 3상 평형, 한 시점, 3상 단락만. 전력은 3상 합계, 임피던스는 정상분, 선로 정전용량은 무시
+- 선로의 `from_node_id`는 전원 쪽. 조류가 to → from으로 흐르면 역조류
+- 허용전류·단락용량이 없으면 해당 결과(`loading_pct`, `fault_current_ka`)는 비워 둠
 - 설비 종류: 변전소 전원(`source`), 출구 차단기(`breaker`), 접속점(`bus`), 부하(`load`), 분산전원 태양광(`pv`)·풍력(`wind`). CIM 클래스 대응은 `cim/models.py` 주석
 - 좌표(x, y)는 설비 속성과 분리된 좌표 메타데이터 노드(DiagramObject)에 저장
 - 변전소 하나에 피더 여러 개, 피더는 출구 차단기 하나에서 시작

@@ -1,7 +1,7 @@
 """Neo4j 계통 조회·저장. 연결은 cim/db.py의 get_driver()를 쓴다.
 
 Neo4j 구조 (속성은 cim/models.py와 같음):
-    (:Substation {id, name, base_kv, short_circuit_mva})
+    (:Substation {id, name, source_voltage_pu, short_circuit_mva, x_r_ratio})
     (:Substation)-[:HAS_FEEDER]->(:Feeder {id, substation_id, name})
     (:Node {id, substation_id, feeder_id, name, type, p_kw, q_kvar})
     (:Node)-[:LINE {id, substation_id, feeder_id, name, kind, length_km, r_ohm_per_km, x_ohm_per_km, rated_current_a}]->(:Node)
