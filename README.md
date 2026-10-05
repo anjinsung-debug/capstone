@@ -189,11 +189,10 @@ frontend ──HTTP──▶ backend ────────┤ cim/graph.py (�
 
 | 바뀔 수 있는 것 | 영향받는 코드 | 관련 질문·안건 |
 |----------------|---------------|-----------|
-| 필드 이름·단위 | `cim/models.py`, `cim/load.py` | QA 1, 3번 |
-| 좌표 노드(DiagramObject)의 속성·관계 이름 | `cim/graph.py` | QA 4번 |
+| 필드 이름·단위 | `cim/models.py`, `cim/load.py` | 매핑 가이드 (QA 1번) |
 | 연결 특성(`kind`) 구분 기준과 값 목록 | `cim/graph.py`의 `classify_connection`, `simulation/dss.py` | 회의 안건 3번 |
 | Neo4j 노드·관계 이름을 CIM 클래스 이름으로 쓸지 | `cim/graph.py`, `cim/schema.cypher`, `cim/load.py` | 회의 안건 9번 |
-| 4대 시뮬레이션 판정 기준 (전압 허용 범위, 과부하 %) | `components/Diagram.jsx`, `ai_report/report.py` | QA 7번 |
+| 4대 시뮬레이션 판정 기준 (전압 허용 범위, 과부하 %) | `components/Diagram.jsx`, `ai_report/report.py` | 회의 안건 8번 |
 
 현재 모델의 구조:
 
