@@ -185,15 +185,15 @@ frontend ──HTTP──▶ backend ────────┤ cim/graph.py (�
 
 한전이 제공하는 것 (산학협력 문제 제안서): 가상 데이터 (변전소 2개, 배전선로 20개), CIM 전력 데이터 모델 스키마 매핑 가이드 (최소 모델).
 
-현재 모델은 제안서 요구를 반영해 두었습니다. 매핑 가이드와 한전 답변(Notion QA 정리본)에 따라 아래가 바뀔 수 있습니다.
+현재 모델은 제안서 요구를 반영해 두었습니다. 매핑 가이드와 한전 답변(Notion QA 정리본), 회의 결과에 따라 아래가 바뀔 수 있습니다.
 
-| 바뀔 수 있는 것 | 영향받는 코드 | 관련 질문 |
+| 바뀔 수 있는 것 | 영향받는 코드 | 관련 질문·안건 |
 |----------------|---------------|-----------|
-| 필드 이름·단위 | `cim/models.py`, `cim/load.py` | 1, 3번 |
-| 좌표 노드(DiagramObject)의 속성·관계 이름 | `cim/graph.py` | 4번 |
-| 연결 특성(`kind`) 구분 기준과 값 목록 | `cim/graph.py`의 `classify_connection`, `simulation/dss.py` | 12번 |
-| Neo4j 노드·관계 이름을 CIM 클래스 이름으로 쓸지 | `cim/graph.py`, `cim/schema.cypher`, `cim/load.py` | 13번 |
-| 4대 시뮬레이션 판정 기준 | `simulation/simulate.py`, `components/Diagram.jsx` | 7번 |
+| 필드 이름·단위 | `cim/models.py`, `cim/load.py` | QA 1, 3번 |
+| 좌표 노드(DiagramObject)의 속성·관계 이름 | `cim/graph.py` | QA 4번 |
+| 연결 특성(`kind`) 구분 기준과 값 목록 | `cim/graph.py`의 `classify_connection`, `simulation/dss.py` | 회의 안건 3번 |
+| Neo4j 노드·관계 이름을 CIM 클래스 이름으로 쓸지 | `cim/graph.py`, `cim/schema.cypher`, `cim/load.py` | 회의 안건 9번 |
+| 4대 시뮬레이션 판정 기준 (전압 허용 범위, 과부하 %) | `components/Diagram.jsx`, `ai_report/report.py` | QA 7번 |
 
 현재 모델의 구조:
 
@@ -209,8 +209,8 @@ frontend ──HTTP──▶ backend ────────┤ cim/graph.py (�
 - 선로가 저항·리액턴스 값으로 오는지, 전선 종류 코드로 오는지 (코드라면 임피던스 변환표 필요)
 - 단선도 좌표가 있는지 (없으면 화면에서 자동 배치)
 - 개폐기, 변압기처럼 현재 모델(`NodeType`)에 없는 설비가 있는지
-- 부하가 kW·kvar로 오는지, 계약전력이나 시간대별 값으로 오는지
-- 선로 허용전류, 분산전원, 변전소 전원 정보가 있는지 (4대 시뮬레이션에 필요)
+- 부하가 kW·kvar로 오는지, 계약전력으로 오는지 (모델은 한 시점 kW·kvar)
+- 선로 허용전류, 분산전원, 변전소 전원 3상 단락용량·X/R·모선 전압이 있는지 (4대 시뮬레이션에 필요)
 
 `cim` 담당이 정리하고, 시뮬레이션 담당과 프론트엔드 담당이 필요한 항목이 빠지지 않았는지 확인합니다.
 
