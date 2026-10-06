@@ -4,7 +4,9 @@
 # 한전 데이터: 기본은 깃 제외, 공개 허락받은 가상 데이터만 아래 예외로 올림
 data/*
 !data/.gitkeep
-!data/virtual_substation.json
+!data/korean_distribution_cim.xml
+!data/add_feeder2.py
+!data/LICENSE
 !data/NOTICE.md
 
 # Python
