@@ -19,7 +19,7 @@ DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 
 def read_raw(data_dir: Path = DATA_DIR) -> dict:
-    """data/의 CIM XML(RDF)을 읽어 CIM 클래스별 객체 목록으로 돌려준다."""
+    """data/의 CIM XML(RDF)을 rdflib로 읽어 CIM 클래스별 객체 목록으로 돌려준다."""
     raise NotImplementedError
 
 
