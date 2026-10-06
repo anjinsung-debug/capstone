@@ -3,7 +3,7 @@
 Neo4j 구조 (속성은 cim/models.py와 같음):
     (:Substation {id, name, source_voltage_pu, short_circuit_mva, x_r_ratio})
     (:Substation)-[:HAS_FEEDER]->(:Feeder {id, substation_id, name})
-    (:Node {id, substation_id, feeder_id, name, type, p_kw, q_kvar})
+    (:Node {id, substation_id, feeder_id, name, type, p_kw, q_kvar, is_open})
     (:Node)-[:LINE {id, substation_id, feeder_id, name, kind, length_km, r_ohm_per_km, x_ohm_per_km, rated_current_a}]->(:Node)
     (:Node)-[:HAS_DIAGRAM]->(:DiagramObject {x, y})   좌표 메타데이터 노드 (설비 속성과 분리, 제안서)
 
@@ -34,5 +34,5 @@ def save_substation(substation_id: str, snapshot: SubstationSnapshot) -> Snapsho
 
 
 def classify_connection(from_node: Node, to_node: Node) -> LineKind:
-    """두 노드의 설비 종류(type)로 연결 특성을 정한다 (위상 형성 논리). 차단기에 닿으면 switch, 그 외는 line."""
-    return "switch" if "breaker" in (from_node.type, to_node.type) else "line"
+    """두 노드의 설비 종류(type)로 연결 특성을 정한다 (위상 형성 논리). 차단기·개폐기에 닿으면 switch, 그 외는 line."""
+    return "switch" if {"breaker", "switch"} & {from_node.type, to_node.type} else "line"

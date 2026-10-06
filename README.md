@@ -188,7 +188,7 @@ frontend ──HTTP──▶ backend ────────┤ cim/graph.py (�
 | 선로 과부하 | 선로 허용전류 | `Line.rated_current_a` |
 | 역조류 | 분산전원(태양광·풍력) 출력, 평소 조류 방향 | `type`이 `pv`·`wind`인 노드의 `p_kw`·`q_kvar`, 선로의 `from_node_id`(전원 쪽) |
 | 3상 단락 고장전류 | 변전소 전원 3상 단락용량, X/R | `Substation.short_circuit_mva`, `Substation.x_r_ratio` |
-| 단선도 화면 | 위치, 이름, 종류, 변전소 출구 차단기(CB), 소속 피더 | `x`, `y`(DiagramObject), `name`, `type`(`breaker` 포함), `feeder_id` |
+| 단선도 화면 | 위치, 이름, 종류, 변전소 출구 차단기(CB), 개폐기 열림·닫힘, 소속 피더 | `x`, `y`(DiagramObject), `name`, `type`(`breaker`·`switch` 포함), `is_open`, `feeder_id` |
 | AI 리포트 | 설비 이름·종류·연결 관계 (시뮬레이션 결과와 함께 사용) | `name`, `type`, `kind`, `from_node_id`, `to_node_id` |
 
 한전이 제공하는 것 (산학협력 문제 제안서): 가상 데이터 (변전소 2개, 배전선로 20개), CIM 전력 데이터 모델 스키마 매핑 가이드 (최소 모델).
@@ -197,9 +197,9 @@ frontend ──HTTP──▶ backend ────────┤ cim/graph.py (�
 
 | 항목 | 기본값 | 코드 |
 |------|--------|------|
-| 계통 구조 | 방사형 | `cim/models.py` 설명 |
-| 설비 종류 | source·breaker·bus·load·pv·wind 6종 (개폐기·변압기 없음) | `NodeType` |
-| 연결 특성 | 차단기에 닿은 연결은 `switch`(OpenDSS `Line switch=yes`), 그 외 `line` | `LineKind`, `classify_connection` |
+| 계통 구조 | 방사형 (열린 개폐기로 끊은 뒤 기준) | `cim/models.py` 설명 |
+| 설비 종류 | source·breaker·switch·bus·load·pv·wind 7종 (변압기 없음). 개폐기(`switch`)는 열림·닫힘(`is_open`)을 가짐 | `NodeType`, `Node.is_open` |
+| 연결 특성 | 차단기·개폐기에 닿은 연결은 `switch`(OpenDSS `Line switch=yes`), 그 외 `line`. 열린 개폐기에 닿은 연결은 끊고 계산 | `LineKind`, `classify_connection` |
 | 판정 기준 | 전압 0.95~1.05 pu (OpenDSS 기본 정상 범위), 부하율 100% 초과면 과부하 | `simulation/models.py`의 `VOLTAGE_MIN_PU`, `VOLTAGE_MAX_PU`, `OVERLOAD_PCT` |
 | Neo4j 이름 | 내부 이름(`Node`, `LINE`)을 쓰고 CIM 클래스는 주석으로 대응 | `cim/models.py`, `cim/graph.py` |
 
@@ -208,7 +208,7 @@ frontend ──HTTP──▶ backend ────────┤ cim/graph.py (�
 - 해석 범위: 22.9kV(`BASE_KV`), 3상 평형, 방사형, 한 시점, 3상 단락만. 전력은 3상 합계, 임피던스는 정상분, 선로 정전용량은 무시
 - 선로의 `from_node_id`는 전원 쪽. 조류가 to → from으로 흐르면 역조류
 - 허용전류·단락용량이 없으면 해당 결과(`loading_pct`, `fault_current_ka`)는 비워 둠
-- 설비 종류: 변전소 전원(`source`), 출구 차단기(`breaker`), 접속점(`bus`), 부하(`load`), 분산전원 태양광(`pv`)·풍력(`wind`). CIM 클래스 대응은 `cim/models.py` 주석
+- 설비 종류: 변전소 전원(`source`), 출구 차단기(`breaker`), 선로 중간 개폐기(`switch`, 열림·닫힘 `is_open`), 접속점(`bus`), 부하(`load`), 분산전원 태양광(`pv`)·풍력(`wind`). CIM 클래스 대응은 `cim/models.py` 주석
 - 좌표(x, y)는 설비 속성과 분리된 좌표 메타데이터 노드(DiagramObject)에 저장
 - 변전소 하나에 피더 여러 개, 피더는 출구 차단기 하나에서 시작
 
@@ -216,7 +216,7 @@ frontend ──HTTP──▶ backend ────────┤ cim/graph.py (�
 
 - 선로가 저항·리액턴스 값으로 오는지, 전선 종류 코드로 오는지 (코드라면 임피던스 변환표 필요)
 - 단선도 좌표가 있는지 (없으면 화면에서 자동 배치)
-- 개폐기, 변압기처럼 현재 모델(`NodeType`)에 없는 설비가 있는지
+- 변압기처럼 현재 모델(`NodeType`)에 없는 설비가 있는지
 - 부하가 kW·kvar로 오는지, 계약전력으로 오는지 (모델은 한 시점 kW·kvar)
 - 선로 허용전류, 분산전원, 변전소 전원 3상 단락용량·X/R·모선 전압이 있는지 (4대 시뮬레이션에 필요)
 
