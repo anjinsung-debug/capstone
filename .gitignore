@@ -5,7 +5,6 @@
 data/*
 !data/.gitkeep
 !data/korean_distribution_cim.xml
-!data/add_feeder2.py
 !data/LICENSE
 !data/NOTICE.md
 
