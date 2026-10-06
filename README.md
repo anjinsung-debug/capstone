@@ -13,7 +13,7 @@
 | `cim/` | 한전 데이터 → CIM 변환, Neo4j 적재·조회·편집 저장 | 한승우 |
 | `simulation/` | 계통 → OpenDSS 변환, 4대 시뮬레이션, 결과 그래프 (matplotlib) | 안진성 |
 | `ai_report/` | LLM 리포트 생성 | 고영민, 최민준 |
-| `data/` | 한전 데이터 보관 (git에 올라가지 않음) | 공용 |
+| `data/` | 한전 제공 원본 CIM XML (공개 허락받은 파일만 git에 올림) | 공용 |
 
 ```
 capstone/
@@ -48,7 +48,7 @@ capstone/
 │   │   └── api/client.js    백엔드 API 호출 함수
 │   ├── vite.config.js       /api 요청을 백엔드(localhost:8000)로 전달
 │   └── package.json         프론트엔드 라이브러리 (react, cytoscape)
-├── data/                    한전 원본 (git 제외)
+├── data/                    한전 제공 원본 (korean_distribution_cim.xml, 출처 NOTICE.md)
 ├── docker-compose.yml       Neo4j 실행 설정
 ├── requirements.txt         Python 라이브러리
 └── .env.example             접속 정보·API 키 양식 (.env로 복사해서 사용)
@@ -107,7 +107,7 @@ README, `requirements.txt`, `docker-compose.yml`, `.env.example` 같은 공용 �
 **해석 범위**: 22.9kV 배전계통, 3상 평형(정상분 1상 등가), 방사형 계통, 한 시점 계산, 3상 단락만. 데이터 형식(`cim/models.py`)과 OpenDSS 변환(`simulation/dss.py`)이 이 범위를 전제로 합니다.
 
 ```
-data/ (한전 원본) ──cim/load.py──▶ Neo4j
+data/ (한전 원본 CIM XML) ──cim/load.py──▶ Neo4j
                                    ▲
 frontend ──HTTP──▶ backend ────────┤ cim/graph.py (조회·스냅샷 저장)
                       │
@@ -117,7 +117,7 @@ frontend ──HTTP──▶ backend ────────┤ cim/graph.py (�
                       └──▶ ai_report/report.py   ──▶ AI 리포트 (계통 정보 + 시뮬레이션 결과)
 ```
 
-1. **적재** (FR-01, 02): `python -m cim.load` 실행 → `cim/load.py`가 `data/`의 한전 원본을 읽어(`read_raw`) CIM 형식으로 변환하고(`to_substation_graphs`) Neo4j에 저장(`save_to_neo4j`). 웹이 아니라 명령어로 실행
+1. **적재** (FR-01, 02): `python -m cim.load` 실행 → `cim/load.py`가 `data/`의 한전 원본 CIM XML을 읽어(`read_raw`) 매핑 가이드대로 공통 모델로 변환하고(`to_substation_graphs`) Neo4j에 저장(`save_to_neo4j`). 웹이 아니라 명령어로 실행
 2. **조회** (FR-02, 05): 변전소 단위로 읽음. `GET /api/substations` → `GET /api/substations/{id}` → `cim/graph.py`의 `get_substation`이 피더·노드·선로를 위상 탐색 쿼리로 읽고, 좌표는 DiagramObject에서 읽어 `Node.x`, `y`로 돌려줌
    - **편집 스냅샷 저장** (FR-06, 07, 제안서 4단계): 편집 중 추가한 노드·선로에는 프론트엔드가 `crypto.randomUUID()`로 UUID를 바로 할당 → 편집을 마치면 변전소 계통 전체를 `PUT /api/substations/{id}`로 보냄 → `save_substation`이 한 트랜잭션으로 저장
      - 선로의 연결 특성(`kind`)은 양 끝 설비 종류로 `classify_connection`이 자동 구분
@@ -171,14 +171,13 @@ frontend ──HTTP──▶ backend ────────┤ cim/graph.py (�
 
 ## 한전 데이터 → CIM 모델 정하기
 
-각자의 Neo4j에 같은 데이터를 넣으려면 `cim` 적재 코드가 먼저 있어야 하고, 그 전에 한전 데이터에서 쓸 항목을 정해야 합니다.
+원본 데이터는 한전이 제공한 가상 계통의 CIM16 XML(`data/korean_distribution_cim.xml`)입니다. 변전소 1개, 배전선로 1개(이진트리, 선로 11·부하 8·태양광 4)이고, 출처는 `data/NOTICE.md`에 있습니다. 매핑 가이드(CIM 클래스·속성 → 공통 모델 필드 대응표)는 한전에서 받지 않고 팀이 CIM 기준으로 작성합니다.
 
-1. **한전 데이터 확인**: 받은 파일에 있는 항목(컬럼) 파악
-2. **쓸 항목 정하기**: 한전 항목 → 모델 필드 대응표 작성
-3. **`cim/models.py` 맞추기**: 제안서 요구를 반영한 현재 모델에 대응표대로 필드 이름·단위를 맞춤 (공유 형식 파일 변경 규칙대로)
-4. **적재 코드 작성**: `cim/load.py`의 `read_raw`(원본 읽기), `to_substation_graphs`(대응표대로 변환), `save_to_neo4j`(저장)를 채움
+1. **매핑 가이드 작성**: CIM 클래스·속성 → `cim/models.py` 필드 대응표, 단위 환산, XML에 없는 값의 출처
+2. **`cim/models.py` 맞추기**: 대응표에 필요한 필드가 없으면 추가 (공유 형식 파일 변경 규칙대로)
+3. **적재 코드 작성**: `cim/load.py`의 `read_raw`(CIM XML 읽기), `to_substation_graphs`(대응표대로 변환), `save_to_neo4j`(저장)를 채움
 
-데이터 형식은 이미 `cim/models.py`에 있으므로 각자 그 형식에 맞춰 개발할 수 있고, 실제 데이터 확인은 4번 이후에 가능합니다.
+데이터 형식은 이미 `cim/models.py`에 있으므로 각자 그 형식에 맞춰 개발할 수 있습니다.
 
 ### 항목을 정하는 기준
 
@@ -191,9 +190,7 @@ frontend ──HTTP──▶ backend ────────┤ cim/graph.py (�
 | 단선도 화면 | 위치, 이름, 종류, 변전소 출구 차단기(CB), 개폐기 열림·닫힘, 소속 피더 | `x`, `y`(DiagramObject), `name`, `type`(`breaker`·`switch` 포함), `is_open`, `feeder_id` |
 | AI 리포트 | 설비 이름·종류·연결 관계 (시뮬레이션 결과와 함께 사용) | `name`, `type`, `kind`, `from_node_id`, `to_node_id` |
 
-한전이 제공하는 것 (산학협력 문제 제안서): 가상 데이터 (변전소 2개, 배전선로 20개), CIM 전력 데이터 모델 스키마 매핑 가이드 (최소 모델).
-
-현재 모델은 제안서 요구를 반영해 두었고, 남은 설계 항목은 모두 아래 기본값으로 정했습니다. 매핑 가이드를 받으면 필드 이름·단위만 맞추고, 원본 형태가 다르면 `cim/load.py`에서 변환합니다.
+현재 모델은 제안서 요구를 반영해 두었고, 남은 설계 항목은 모두 아래 기본값으로 정했습니다. CIM XML과 형태가 다른 부분은 매핑 가이드에 적고 `cim/load.py`에서 변환합니다.
 
 | 항목 | 기본값 | 코드 |
 |------|--------|------|
@@ -212,19 +209,18 @@ frontend ──HTTP──▶ backend ────────┤ cim/graph.py (�
 - 좌표(x, y)는 설비 속성과 분리된 좌표 메타데이터 노드(DiagramObject)에 저장
 - 변전소 하나에 피더 여러 개, 피더는 출구 차단기 하나에서 시작
 
-### 데이터를 받으면 확인할 것
+### 매핑 가이드에서 정할 것 (CIM XML 확인 결과)
 
-- 선로가 저항·리액턴스 값으로 오는지, 전선 종류 코드로 오는지 (코드라면 임피던스 변환표 필요)
-- 단선도 좌표가 있는지 (없으면 화면에서 자동 배치)
-- 변압기처럼 현재 모델(`NodeType`)에 없는 설비가 있는지
-- 부하가 kW·kvar로 오는지, 계약전력으로 오는지 (모델은 한 시점 kW·kvar)
-- 선로 허용전류, 분산전원, 변전소 전원 3상 단락용량·X/R·모선 전압이 있는지 (4대 시뮬레이션에 필요)
+- XML에 있는 것: `Substation`, `Breaker`(`Switch.normalOpen`, `ratedCurrent`), `BusbarSection`, `ConnectivityNode`, `Terminal`, `ACLineSegment`(`Conductor.length`, `r`·`x`·`r0`·`x0`), `EnergyConsumer`(`p`·`q`·`pfixed`), `SolarGeneratingUnit`(`maxOperatingP`·`minOperatingP`), 설비마다 `IdentifiedObject.mRID`
+- 단위 환산: 전력은 W·var → kW·kvar (÷1000), 임피던스는 구간 전체 Ω → Ω/km (÷ 길이)
+- XML에 없는 값: 변전소 3상 단락용량·X/R(`EnergySource` 없음), 선로 허용전류, 단선도 좌표(`DiagramObject` 없음), 태양광 한 시점 출력(정격만 있음)
+- 구조 차이: 설비가 `Terminal`로 접속점에 붙는 구조 → 노드 하나에 설비 하나인 공통 모델로 나누는 규칙, 피더 소속(차단기에서 연결을 따라가며 정함), 노드·선로 `id`로 `mRID`를 쓸지
 
 `cim` 담당이 정리하고, 시뮬레이션 담당과 프론트엔드 담당이 필요한 항목이 빠지지 않았는지 확인합니다.
 
 ### 각자 데이터 준비
 
-1. 한전 파일을 자기 PC의 `data/`에 넣기 (git에 올리지 않고 따로 공유)
+1. `git pull`로 `data/korean_distribution_cim.xml` 받기 (저장소에 포함)
 2. 저장소 루트에서 `python -m cim.load` 실행해 자기 PC의 Neo4j에 저장 (다시 적재할 때는 `--reset`)
 
 같은 원본과 같은 적재 코드를 쓰므로 모두 같은 데이터를 갖게 됩니다. 웹에서 편집한 내용은 자기 DB에만 남고, 다시 적재하면 처음 상태로 돌아갑니다.
@@ -248,7 +244,7 @@ cd ..
 # Neo4j (저장소 루트)
 docker compose up -d
 
-# 데이터 적재 (data/에 한전 파일을 넣은 뒤, 저장소 루트·가상환경 활성화 후, 적재 코드 구현 후 사용)
+# 데이터 적재 (저장소 루트·가상환경 활성화 후, 적재 코드 구현 후 사용)
 python -m cim.load
 
 # 백엔드 (저장소 루트, 가상환경 활성화 후)
