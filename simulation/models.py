@@ -14,8 +14,11 @@ OVERLOAD_PCT = 100.0  # loading_pct가 이 값을 넘으면 선로 과부하
 
 class NodeResult(BaseModel):
     node_id: str
+    # 전원과 연결되어 있는지. False면 열린 개폐기 아래 정전 구간이라 voltage_pu=0, fault_current_ka=None.
+    # 정전은 저전압이 아니므로 전압 판정(VOLTAGE_MIN_PU)·오버레이·리포트에서 따로 다룬다
+    energized: bool = True
     voltage_pu: float  # 전압 영향
-    fault_current_ka: float | None = None  # 이 지점 3상 단락 전류 (대칭 실효값). 단락용량이 없으면 None
+    fault_current_ka: float | None = None  # 이 지점 3상 단락 전류 (대칭 실효값). 정전 구간이면 None
 
 
 class LineResult(BaseModel):
