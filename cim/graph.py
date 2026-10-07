@@ -19,6 +19,20 @@ def list_substations() -> list[Substation]:
 
 def get_substation(substation_id: str) -> SubstationGraph:
     """변전소의 피더·노드·선로를 위상 탐색 쿼리로 읽는다 (좌표는 DiagramObject에서)."""
+    # 구현 참고 (안진성): 아래 쿼리로 Neo4j에서 읽어 SubstationGraph를 만들면 시뮬레이션까지 동작함을 확인했다.
+    # (python -m cim.load로 적재한 데이터 → XML을 바로 변환한 결과와 모든 노드 전압 일치)
+    #
+    #   MATCH (s:Substation {id: $id}) RETURN s
+    #   MATCH (:Substation {id: $id})-[:HAS_FEEDER]->(f:Feeder) RETURN f
+    #   MATCH (n:Node {substation_id: $id})-[:HAS_DIAGRAM]->(d:DiagramObject)
+    #   OPTIONAL MATCH (n)-[:CONNECTED_TO]->(b:Node)
+    #   RETURN n, d.x AS x, d.y AS y, b.id AS bus_id
+    #   MATCH (a:Node {substation_id: $id})-[l:LINE]->(b:Node) RETURN l, a.id AS from_node_id, b.id AS to_node_id
+    #
+    # - bus_id는 노드 속성이 아니라 CONNECTED_TO 관계로 저장되어 있으므로 반드시 위처럼 읽어 채운다.
+    #   빠지면 source·load·pv·wind 노드가 Node 검사(bus_id 필수)를 통과하지 못한다
+    # - Node: dict(n) | {"x": x, "y": y, "bus_id": bus_id}, Line: dict(l) | {"from_node_id": ..., "to_node_id": ...}
+    # - 변전소가 없으면 404를 낼 수 있도록 처리 (예: LookupError → backend에서 404)
     raise NotImplementedError
 
 
