@@ -15,6 +15,7 @@ BASE_KV = 22.9  # 계통 기준 전압 (선간, kV). 지원 범위가 22.9kV뿐�
 # source: 변전소 전원(CIM EnergySource), breaker: 변전소 출구 차단기(Breaker), switch: 선로 중간 개폐기(LoadBreakSwitch),
 # bus: 접속점(ConnectivityNode), load: 부하(EnergyConsumer), pv: 태양광 분산전원(PhotoVoltaicUnit), wind: 풍력 분산전원(WindGeneratingUnit)
 NodeType = Literal["source", "breaker", "switch", "bus", "load", "pv", "wind"]
+ONE_TERMINAL_TYPES = ("source", "load", "pv", "wind")  # bus_id로 접속점에 붙는 설비. 나머지(breaker·switch·bus)는 Line으로 연결
 
 # switch: 차단기(breaker)나 개폐기(switch)에 닿은 연결 (OpenDSS Line switch=yes), line: 그 외 선로 (CIM ACLineSegment)
 LineKind = Literal["line", "switch"]
@@ -49,6 +50,9 @@ class Node(BaseModel):
     p_kw: float | None = None  # load: 소비 전력, pv·wind: 발전 출력 (3상 합계, 한 시점 값)
     q_kvar: float | None = None  # 없으면 0 (역률 1)
     is_open: bool = False  # switch(개폐기)만: True면 열림 → 이 노드에 닿은 연결을 끊고 계산 (CIM Switch.open)
+    # 단자 1개 설비(source·load·pv·wind)가 붙은 접속점(type=bus 노드)의 id (CIM Terminal.ConnectivityNode).
+    # 이 설비들은 선로(Line)로 잇지 않고 bus_id로만 연결한다. Neo4j에서는 (:Node)-[:CONNECTED_TO]->(:Node {type:'bus'})
+    bus_id: str | None = None
 
     @model_validator(mode="after")
     def _check_power(self):
@@ -56,6 +60,8 @@ class Node(BaseModel):
             raise ValueError(f"{self.type} 노드 {self.id}에는 p_kw가 필요합니다")
         if self.is_open and self.type != "switch":
             raise ValueError(f"노드 {self.id}: 열림(is_open)은 개폐기(switch) 노드에만 쓸 수 있습니다")
+        if (self.type in ONE_TERMINAL_TYPES) != (self.bus_id is not None):
+            raise ValueError(f"노드 {self.id}: bus_id는 {'/'.join(ONE_TERMINAL_TYPES)} 노드에만, 반드시 있어야 합니다")
         return self
 
 
@@ -91,10 +97,15 @@ class SubstationGraph(BaseModel):
         for f in self.feeders:
             if sum(n.type == "breaker" and n.feeder_id == f.id for n in self.nodes) != 1:
                 raise ValueError(f"피더 {f.id}에는 출구 차단기(breaker) 노드가 하나여야 합니다")
-        node_ids = {n.id for n in self.nodes}
+        types = {n.id: n.type for n in self.nodes}
+        for n in self.nodes:
+            if n.bus_id is not None and types.get(n.bus_id) != "bus":
+                raise ValueError(f"노드 {n.id}의 bus_id {n.bus_id}가 접속점(bus) 노드가 아닙니다")
         for line in self.lines:
-            if line.from_node_id not in node_ids or line.to_node_id not in node_ids:
+            if line.from_node_id not in types or line.to_node_id not in types:
                 raise ValueError(f"선로 {line.id}의 양 끝 노드가 계통에 없습니다")
+            if {types[line.from_node_id], types[line.to_node_id]} & set(ONE_TERMINAL_TYPES):
+                raise ValueError(f"선로 {line.id}: {'/'.join(ONE_TERMINAL_TYPES)} 노드는 선로가 아니라 bus_id로 연결합니다")
         return self
 
 
