@@ -22,18 +22,18 @@ Neo4j에서 읽은 SubstationGraph를 OpenDSS가 이해하는 명령어 목록�
 OpenDSS 이름은 원래 id 대신 목록 순서로 짓는다 (id에 OpenDSS가 못 쓰는 문자가 있을 수 있음).
     노드 i → 버스 n{i}, 부하 Load.n{i}, 분산전원 Generator.n{i} / 선로 j → Line.l{j}
 
-변환 전에 trace로 전원에서 계통을 따라가며 방사형인지 검사하고, 선로의 실제 전원 쪽과 거리를 구한다.
+변환 전에 trace로 계통이 완성됐는지(check_complete), 방사형인지 검사하고, 선로의 실제 전원 쪽과 거리를 구한다.
 저장된 from_node_id 방향은 편집 중 거꾸로 그려질 수 있으므로 역조류 판정·그래프에는 trace 결과를 쓴다.
 """
 
 from dataclasses import dataclass
 
-from cim.models import BASE_KV, Line, SubstationGraph
+from cim.models import BASE_KV, ONE_TERMINAL_TYPES, Line, SubstationGraph
 
 
 
 class SimulationError(ValueError):
-    """계통을 계산할 수 없음 (루프, OpenDSS 명령 오류, 수렴 실패). 백엔드가 422와 메시지로 돌려준다."""
+    """계통을 계산할 수 없음 (미완성 계통, 루프, OpenDSS 명령 오류, 수렴 실패). 백엔드가 422와 메시지로 돌려준다."""
 
 
 # ── 데이터에 없는 값의 기본값 ──
@@ -70,6 +70,26 @@ def open_line_ids(graph: SubstationGraph) -> set[str]:
     return {line.id for line in graph.lines if {line.from_node_id, line.to_node_id} & open_switches}
 
 
+def check_complete(graph: SubstationGraph) -> None:
+    """계산에 필요한 값이 다 있는지 검사한다. 편집 중인 계통은 이것이 빠져도 저장되므로 시뮬레이션 직전에 확인한다."""
+    names = {n.id: n.name for n in graph.nodes}
+    problems = []
+    sources = sum(n.type == "source" for n in graph.nodes)
+    if sources != 1:
+        problems.append(f"변전소 전원(source) 노드가 {sources}개입니다 (1개 필요)")
+    for f in graph.feeders:
+        breakers = sum(n.type == "breaker" and n.feeder_id == f.id for n in graph.nodes)
+        if breakers != 1:
+            problems.append(f"피더 {f.name}의 출구 차단기(breaker)가 {breakers}개입니다 (1개 필요)")
+    for n in graph.nodes:
+        if n.type in ("load", "pv", "wind") and n.p_kw is None:
+            problems.append(f"{names[n.id]}: 출력(p_kw)이 없습니다")
+        if n.type in ONE_TERMINAL_TYPES and n.bus_id is None:
+            problems.append(f"{names[n.id]}: 연결된 접속점(bus_id)이 없습니다")
+    if problems:
+        raise SimulationError("계통이 완성되지 않아 계산할 수 없습니다: " + "; ".join(problems))
+
+
 @dataclass
 class Trace:
     distance_km: dict[str, float]  # 전원에서 닿는 노드 id → 선로를 따라 잰 거리. 없는 노드는 정전 구간
@@ -77,7 +97,9 @@ class Trace:
 
 
 def trace(graph: SubstationGraph) -> Trace:
-    """전원 버스에서 닫힌 선로를 방향 없이 따라간다. 이미 지난 노드를 다른 선로로 다시 만나면 루프라 SimulationError."""
+    """전원 버스에서 닫힌 선로를 방향 없이 따라간다. 이미 지난 노드를 다른 선로로 다시 만나면 루프라 SimulationError.
+    완성되지 않은 계통(check_complete 실패)도 SimulationError."""
+    check_complete(graph)
     source = next(n for n in graph.nodes if n.type == "source")
     names = {n.id: n.name for n in graph.nodes}
     disabled = open_line_ids(graph)

@@ -15,7 +15,9 @@ export const getHealth = () => request('GET', '/health')
 // 계통 조회·편집 저장 (FR-02, FR-05, FR-06, FR-07), 변전소 단위
 export const listSubstations = () => request('GET', '/substations')
 export const getSubstation = (substationId) => request('GET', `/substations/${substationId}`)
-// 편집 스냅샷 전체 저장: 편집 중 추가한 노드·선로에는 crypto.randomUUID()로 id를 바로 할당해 보내고,
+// 편집 스냅샷 전체 저장: { substation, feeders, nodes, lines }를 한 번에 보낸다.
+// 편집 중 새로 만든 변전소·피더·노드·선로에는 crypto.randomUUID()로 id를 바로 할당한다.
+// 없는 변전소 id면 새로 만들어지므로 빈 계통에서 하나씩 추가하며 저장할 수 있다 (미완성이어도 저장됨, 시뮬레이션만 422).
 // 응답의 element_ids(UUID → Neo4j element id)를 받는다
 export const saveSubstation = (substationId, snapshot) =>
   request('PUT', `/substations/${substationId}`, snapshot)

@@ -86,7 +86,8 @@ README, `requirements.txt`, `docker-compose.yml`, `.env.example` 같은 공용 �
 | 기능 | 위치 | 상태 |
 |------|------|------|
 | 서버 실행, Neo4j 연결 | `backend/main.py`, `cim/db.py`, `backend/api/health.py` | 동작 |
-| 계통 입력 검사 (전원 1개, 피더별 차단기 1개, 부하·분산전원 출력, 선로 양 끝, 단자 1개 설비의 `bus_id`) | `cim/models.py` | 동작 (API 요청·응답 시 자동 검사, 잘못되면 422) |
+| 계통 입력 검사 (저장: 선로 양 끝, `bus_id` 대상, 개폐기만 `is_open`) | `cim/models.py` | 동작 (API 요청·응답 시 자동 검사, 잘못되면 422). 미완성 계통도 저장 가능 |
+| 계통 완성 검사 (전원 1개, 피더별 차단기 1개, 부하·분산전원 출력·`bus_id`) | `simulation/dss.py`의 `check_complete` | 동작 (시뮬레이션 직전, 부족하면 422와 빠진 항목) |
 | 프론트엔드 → 백엔드 API 호출 | `frontend/src/api/client.js` | 동작 |
 | 한전 데이터 적재 | `cim/load.py`, `cim/mapping.py` | 동작 (`--dry-run`이면 Neo4j 없이 변환 결과만 출력) |
 | 변전소 계통 조회 | `cim/graph.py`의 `list_substations`, `get_substation` | 틀만 있음 |
@@ -101,7 +102,7 @@ README, `requirements.txt`, `docker-compose.yml`, `.env.example` 같은 공용 �
 | 단선도 편집 UI, 결과 오버레이 | `frontend/src/components/Diagram.jsx` | 틀만 있음 (TODO) |
 | 결과·그래프·리포트 표시 | `frontend/src/components/ResultPanel.jsx` | 동작 |
 
-틀만 있는 함수는 `NotImplementedError`를 내고, 해당 API는 501을 돌려줍니다. 시뮬레이션이 계산할 수 없는 계통(루프, 잘못된 값, 수렴 실패)은 `SimulationError`로 422와 이유를 돌려줍니다 (`backend/main.py`).
+틀만 있는 함수는 `NotImplementedError`를 내고, 해당 API는 501을 돌려줍니다. 시뮬레이션이 계산할 수 없는 계통(미완성, 루프, 잘못된 값, 수렴 실패)은 `SimulationError`로 422와 이유를 돌려줍니다 (`backend/main.py`).
 
 ## 작동 방식
 
@@ -120,7 +121,10 @@ frontend ──HTTP──▶ backend ────────┤ cim/graph.py (�
 
 1. **적재** (FR-01, 02): `python -m cim.load` 실행 → `cim/load.py`가 `data/`의 한전 원본 CIM XML을 읽어(`read_raw`) 매핑 가이드(`cim/mapping.py`)대로 공통 모델로 변환하고(`to_substation_graphs`) Neo4j에 저장(`save_to_neo4j`). 웹이 아니라 명령어로 실행
 2. **조회** (FR-02, 05): 변전소 단위로 읽음. `GET /api/substations` → `GET /api/substations/{id}` → `cim/graph.py`의 `get_substation`이 피더·노드·선로를 위상 탐색 쿼리로 읽고, 좌표는 DiagramObject에서 읽어 `Node.x`, `y`로 돌려줌
-   - **편집 스냅샷 저장** (FR-06, 07, 제안서 4단계): 편집 중 추가한 노드·선로에는 프론트엔드가 `crypto.randomUUID()`로 UUID를 바로 할당 → 편집을 마치면 변전소 계통 전체를 `PUT /api/substations/{id}`로 보냄 → `save_substation`이 한 트랜잭션으로 저장
+   - **편집 스냅샷 저장** (FR-06, 07, 제안서 4단계): 편집 중 새로 만든 변전소·피더·노드·선로에는 프론트엔드가 `crypto.randomUUID()`로 UUID를 바로 할당 → 편집을 마치면 변전소·피더·노드·선로 전체(`SubstationSnapshot`, 형식은 `SubstationGraph`와 같음)를 `PUT /api/substations/{id}`로 보냄 → `save_substation`이 한 트랜잭션으로 저장
+     - 없는 변전소 id면 새로 만듦. 빈 계통에서 변전소 → 노드 → 선로 순으로 하나씩 추가하며 저장할 수 있음
+     - 저장할 때는 데이터가 깨졌는지만 검사 (선로 양 끝, `bus_id` 대상 등). 전원·차단기·출력·`bus_id`가 빠진 미완성 계통도 저장되고, 시뮬레이션할 때 빠진 항목을 422로 알려 줌
+     - 주소의 id와 `substation.id`가 다르면 422 (`backend/api/grid.py`)
      - 선로의 연결 특성(`kind`)은 양 끝 설비 종류로 `classify_connection`이 자동 구분
      - 좌표는 설비 노드와 분리된 좌표 메타데이터 노드(DiagramObject)에 저장
      - 스냅샷에 없는 기존 노드·선로와 연결이 끊긴 DiagramObject는 삭제 (가비지 컬렉션)
@@ -128,7 +132,7 @@ frontend ──HTTP──▶ backend ────────┤ cim/graph.py (�
 3. **시뮬레이션** (FR-03, 04): 프론트엔드 → `POST /api/substations/{id}/simulations` → 백엔드가 `cim/graph.py`로 계통을 읽어 `simulation/simulate.py`에 넘김 → `simulation/dss.py`가 OpenDSS 스크립트로 변환 → `simulate.py`가 실행해 결과 반환 → 결과를 프론트엔드가 단선도에 표시
    - **OpenDSS 변환** (`dss.py`): 접속점·차단기·개폐기 노드가 OpenDSS 버스가 되고, 전원·부하·분산전원은 `bus_id`의 버스에 붙음. 열린 개폐기에 닿은 선로는 `enabled=no`로 끊어 그 아래 구간은 전압 0
    - **계산 순서** (`simulate.py`): 방사형 검사·실제 조류 방향 찾기 → 조류 계산 → 전압·선로 조류·손실·피더 송출 전력 → 고장 해석 → 지점별 3상 단락 전류
-     - 방사형 검사 (`dss.py`의 `trace`): 전원에서 닫힌 선로를 따라가며 루프가 있으면 422. 같은 탐색으로 각 선로의 실제 전원 쪽과 전원으로부터 거리를 구함
+     - 완성·방사형 검사 (`dss.py`의 `check_complete`, `trace`): 전원 1개·피더별 차단기 1개·출력·`bus_id`가 빠졌거나, 전원에서 닫힌 선로를 따라가다 루프가 있으면 422. 같은 탐색으로 각 선로의 실제 전원 쪽과 전원으로부터 거리를 구함
      - 역조류는 저장된 `from_node_id`가 아니라 실제 전원 쪽 기준으로 판정 (편집 중 선을 거꾸로 그려도 맞게 나옴). `p_kw` 부호는 저장된 from → to 기준
      - 전원에서 닿지 않는 노드(열린 개폐기 아래)는 정전: `energized=False`, 전압 0, 고장전류 없음. 저전압과 구분
      - OpenDSS 명령 오류·수렴 실패는 계산을 멈추고 422로 알림 (잘못된 결과가 그래프·리포트로 넘어가지 않음)
@@ -156,7 +160,7 @@ frontend ──HTTP──▶ backend ────────┤ cim/graph.py (�
 
 ```
 변전소 선택 → GET /api/substations/{id} → 다크모드 단선도 표시 (Diagram.jsx)
-편집 (노드 이동·추가·삭제, 연결선 그리기) → 새 설비에 UUID 할당 → 편집 종료 시 PUT /api/substations/{id}
+편집 (변전소·노드 추가·이동·삭제, 연결선 그리기) → 새 설비에 UUID 할당 → 편집 종료 시 PUT /api/substations/{id}
 시뮬레이션 버튼 → 결과 도착 → 결과 요약 표시 (ResultPanel.jsx), 단선도 오버레이 (Diagram.jsx)
                            ├→ 자동으로 POST /api/plots   → 그래프 도착하면 표시
                            └→ 자동으로 POST /api/reports → 리포트 도착하면 표시

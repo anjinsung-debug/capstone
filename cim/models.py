@@ -27,8 +27,8 @@ class Substation(BaseModel):
     id: str
     name: str
     source_voltage_pu: float = 1.0  # 변전소 모선 전압 (전압 영향 계산 기준)
-    short_circuit_mva: float | None = None  # 3상 단락용량 (없으면 고장전류를 계산하지 않음)
-    x_r_ratio: float | None = None  # 전원 임피던스 X/R (없으면 OpenDSS 기본값)
+    short_circuit_mva: float | None = None  # 3상 단락용량 (없으면 시뮬레이션이 가정값 사용, simulation/dss.py의 DEFAULT_*)
+    x_r_ratio: float | None = None  # 전원 임피던스 X/R (없으면 시뮬레이션이 가정값 사용)
 
 
 class Feeder(BaseModel):
@@ -47,21 +47,20 @@ class Node(BaseModel):
     type: NodeType
     x: float  # Neo4j에는 별도 좌표 메타데이터 노드(DiagramObject)로 저장
     y: float
-    p_kw: float | None = None  # load: 소비 전력, pv·wind: 발전 출력 (3상 합계, 한 시점 값)
+    p_kw: float | None = None  # load: 소비 전력, pv·wind: 발전 출력 (3상 합계, 한 시점 값). 시뮬레이션에는 필수
     q_kvar: float | None = None  # 없으면 0 (역률 1)
     is_open: bool = False  # switch(개폐기)만: True면 열림 → 이 노드에 닿은 연결을 끊고 계산 (CIM Switch.open)
     # 단자 1개 설비(source·load·pv·wind)가 붙은 접속점(type=bus 노드)의 id (CIM Terminal.ConnectivityNode).
     # 이 설비들은 선로(Line)로 잇지 않고 bus_id로만 연결한다. Neo4j에서는 (:Node)-[:CONNECTED_TO]->(:Node {type:'bus'})
+    # 편집 중에는 비어 있어도 저장할 수 있고, 시뮬레이션에는 필수
     bus_id: str | None = None
 
     @model_validator(mode="after")
-    def _check_power(self):
-        if self.type in ("load", "pv", "wind") and self.p_kw is None:
-            raise ValueError(f"{self.type} 노드 {self.id}에는 p_kw가 필요합니다")
+    def _check_fields(self):
         if self.is_open and self.type != "switch":
             raise ValueError(f"노드 {self.id}: 열림(is_open)은 개폐기(switch) 노드에만 쓸 수 있습니다")
-        if (self.type in ONE_TERMINAL_TYPES) != (self.bus_id is not None):
-            raise ValueError(f"노드 {self.id}: bus_id는 {'/'.join(ONE_TERMINAL_TYPES)} 노드에만, 반드시 있어야 합니다")
+        if self.bus_id is not None and self.type not in ONE_TERMINAL_TYPES:
+            raise ValueError(f"노드 {self.id}: bus_id는 {'/'.join(ONE_TERMINAL_TYPES)} 노드에만 쓸 수 있습니다")
         return self
 
 
@@ -79,11 +78,17 @@ class Line(BaseModel):
     length_km: float
     r_ohm_per_km: float  # 정상분 저항
     x_ohm_per_km: float  # 정상분 리액턴스
-    rated_current_a: float | None = None  # 허용전류 (없으면 선로 과부하를 계산하지 않음)
+    rated_current_a: float | None = None  # 허용전류 (없으면 시뮬레이션이 가정값 사용)
 
 
 class SubstationGraph(BaseModel):
-    """변전소 하나의 전체 계통 (단선도 표시, 시뮬레이션 입력)"""
+    """변전소 하나의 전체 계통 (단선도 표시, 시뮬레이션 입력)
+
+    여기서는 데이터가 깨지지 않았는지만 검사한다 (선로 양 끝, bus_id 대상, 단자 1개 설비 연결 방식).
+    빈 계통이나 만들다 만 계통도 저장·조회할 수 있도록, 계산에 필요한 완성 조건
+    (전원 노드 1개, 피더마다 차단기 1개, 부하·분산전원의 p_kw·bus_id)은 시뮬레이션 직전에
+    simulation/dss.py의 check_complete가 검사한다.
+    """
 
     substation: Substation
     feeders: list[Feeder]
@@ -92,11 +97,6 @@ class SubstationGraph(BaseModel):
 
     @model_validator(mode="after")
     def _check_topology(self):
-        if sum(n.type == "source" for n in self.nodes) != 1:
-            raise ValueError("변전소 전원(source) 노드는 하나여야 합니다")
-        for f in self.feeders:
-            if sum(n.type == "breaker" and n.feeder_id == f.id for n in self.nodes) != 1:
-                raise ValueError(f"피더 {f.id}에는 출구 차단기(breaker) 노드가 하나여야 합니다")
         types = {n.id: n.type for n in self.nodes}
         for n in self.nodes:
             if n.bus_id is not None and types.get(n.bus_id) != "bus":
@@ -109,11 +109,12 @@ class SubstationGraph(BaseModel):
         return self
 
 
-# 편집 스냅샷 저장 (제안서 4단계): 편집 중 추가한 노드·선로에는 프론트엔드가 UUID를 바로 할당하고,
-# 편집을 마치면 변전소 계통 전체를 한 번에 보낸다. 선로의 kind는 보내지 않아도 서버가 채운다.
-class SubstationSnapshot(BaseModel):
-    nodes: list[Node]
-    lines: list[Line]
+# 편집 스냅샷 저장 (제안서 4단계): 변전소·피더·노드·선로 전체를 한 번에 보낸다 (형식은 SubstationGraph와 같음).
+# 편집 중 새로 만든 변전소·피더·노드·선로에는 프론트엔드가 crypto.randomUUID()로 id를 바로 할당한다.
+# 서버에 없는 변전소 id면 새로 만들고, 있으면 고친다. 그래서 빈 계통에서 하나씩 추가해 가며 저장할 수 있다.
+# 선로의 kind는 보내지 않아도 서버가 채운다.
+class SubstationSnapshot(SubstationGraph):
+    pass
 
 
 class SnapshotSaved(BaseModel):

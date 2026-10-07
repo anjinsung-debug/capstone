@@ -3,11 +3,11 @@
 전압 영향, 선로 과부하, 역조류, 단락용량 고장전류를 계산하고 피더별 송출 전력을 구한다.
 OpenDSS 스크립트 변환은 simulation/dss.py의 to_dss_script가 맡는다.
 
-계산 순서: 방사형 검사·실제 조류 방향(dss.py의 trace) → 조류 계산(Solve) → 전압·선로 조류·손실·피더 송출 전력 읽기
+계산 순서: 완성·방사형 검사, 실제 조류 방향(dss.py의 trace) → 조류 계산(Solve) → 전압·선로 조류·손실·피더 송출 전력 읽기
           → 고장 해석(dss.py의 fault_study_script) → 각 지점 3상 단락 전류 읽기
 단락용량·X/R·허용전류가 데이터에 없으면 dss.py의 DEFAULT_* 가정값으로 계산한다.
 3상 평형이므로 상별 값 중 1상 값만 쓴다.
-루프, OpenDSS 명령 오류, 수렴 실패는 SimulationError로 알린다 (백엔드가 422로 응답).
+미완성 계통, 루프, OpenDSS 명령 오류, 수렴 실패는 SimulationError로 알린다 (백엔드가 422로 응답).
 """
 
 import threading
@@ -155,6 +155,19 @@ if __name__ == "__main__":
         pass
 
     assert all(x.energized for x in r.nodes)
+
+    # 편집 중인 미완성 계통: 저장 형식 검사는 통과하고, 시뮬레이션만 이유와 함께 거부
+    from cim.models import SubstationGraph
+    empty = SubstationGraph(substation=g.substation, feeders=[], nodes=[], lines=[])
+    unlinked = g.model_copy(deep=True)
+    next(n for n in unlinked.nodes if n.type == "load").bus_id = None  # 방금 추가해 아직 잇지 않은 부하
+    unlinked = SubstationGraph.model_validate(unlinked.model_dump())
+    for incomplete, reason in ((empty, "전원"), (unlinked, "bus_id")):
+        try:
+            simulate(incomplete)
+            raise AssertionError("미완성 계통을 잡지 못함")
+        except SimulationError as e:
+            assert reason in str(e), e
 
     # 개폐기를 열면 그 아래는 정전 (energized=False), 위쪽은 그대로
     opened = g.model_copy(deep=True)
