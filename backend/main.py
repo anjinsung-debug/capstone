@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 
 from backend.api import grid, health, report, simulation
 from cim import db
+from cim.graph import InvalidSnapshot, SubstationNotFound
 
 
 @asynccontextmanager
@@ -20,6 +21,16 @@ app = FastAPI(title="배전계통 통합 분석 플랫폼 API", lifespan=lifespa
 @app.exception_handler(NotImplementedError)
 async def not_implemented(request, exc):
     return JSONResponse(status_code=501, content={"detail": "아직 구현되지 않았습니다."})
+
+
+@app.exception_handler(SubstationNotFound)
+async def substation_not_found(request, exc):
+    return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+
+@app.exception_handler(InvalidSnapshot)
+async def invalid_snapshot(request, exc):
+    return JSONResponse(status_code=422, content={"detail": str(exc)})
 
 
 app.include_router(health.router, prefix="/api", tags=["health"])
