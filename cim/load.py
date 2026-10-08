@@ -1,4 +1,6 @@
-"""한전 CIM16 XML → 내부 계통 모델 변환·Neo4j 적재 (FR-01, 제안서 1단계)
+"""한전 CIM RDF/XML → 내부 계통 모델 변환·Neo4j 적재 (FR-01, 제안서 1단계)
+
+RDF 파싱은 rdflib (pip install rdflib). 파일 크기·개수가 늘어도 같은 코드로 읽는다.
 
 매핑 규칙은 cim/mapping.py, Neo4j 구조는 cim/graph.py 참고.
 
@@ -7,15 +9,17 @@
     python -m cim.load --reset      이 변전소의 기존 데이터를 지우고 다시 적재
     python -m cim.load --dry-run    Neo4j 없이 변환 결과만 출력 (매핑 확인용)
     python -m cim.load --file other.xml
+    python -m cim.load --file eq.xml tp.xml dl.xml   여러 파일로 나뉜 데이터(CGMES 등)는 한 번에 넘긴다
 """
 
 import argparse
 import os
 import uuid
-import xml.etree.ElementTree as ET
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from pathlib import Path
+
+import rdflib
 
 from cim import mapping
 from cim.models import ONE_TERMINAL_TYPES, Feeder, Line, Node, Substation, SubstationGraph
@@ -30,53 +34,75 @@ _ID_NS = uuid.UUID("6f1c2a4e-5b7d-4e8a-9c3f-2d1e0b9a8c7d")
 # 자동 배치 간격 (단선도 좌표 단위)
 DX, DY = 120.0, 100.0
 
-_C = "{%s}" % mapping.CIM_NS
-_R = "{%s}" % mapping.RDF_NS
-
+SUMMARY_LINES = 20  # 변환 결과 출력 때 보여줄 선로 수 (큰 계통에서 화면이 넘치지 않게)
 
 def derived_id(*parts: str) -> str:
     return str(uuid.uuid5(_ID_NS, ":".join(parts)))
 
 
-# ───────────────────────────── 1. XML 읽기 ─────────────────────────────
+# ───────────────────────────── 1. RDF 읽기 (rdflib) ─────────────────────────────
 @dataclass
 class CimObject:
-    ref: str  # XML 안 참조 키 (rdf:about 또는 "#" + rdf:ID)
+    ref: str  # RDF 안 참조 키 (객체 URI. rdf:about 값, 또는 rdf:ID를 BASE_URI 기준으로 푼 값)
     cls: str  # CIM 클래스 이름
     attrs: dict[str, str]  # {"ACLineSegment.r": "0.256", "Terminal.ConnectivityNode": "<참조 키>", ...}
 
     @property
     def mrid(self) -> str:
-        return self.attrs.get("IdentifiedObject.mRID") or self.ref.removeprefix("urn:uuid:").lstrip("#")
+        if self.attrs.get("IdentifiedObject.mRID"):
+            return self.attrs["IdentifiedObject.mRID"]
+        # mRID 속성이 없으면 URI에서 id 부분을 쓴다 (urn:uuid:xxx, ...#_xxx 둘 다)
+        return self.ref.rsplit("#", 1)[-1].removeprefix("urn:uuid:").lstrip("_")
 
 
-def _ref_of(el: ET.Element) -> str | None:
-    if el.get(_R + "about"):
-        return el.get(_R + "about")
-    if el.get(_R + "ID"):
-        return "#" + el.get(_R + "ID")
-    return None
+# 여러 파일로 나뉜 데이터(CGMES의 EQ·TP·DL 등)는 한 파일의 rdf:ID="_x"를 다른 파일이 rdf:about="#_x"로 덧붙인다.
+# 파일마다 기준 주소가 다르면 같은 객체가 다른 URI가 되므로, 모든 파일을 같은 기준 주소로 읽는다.
+BASE_URI = "urn:kepco:cim"
+
+RDF_TYPE = rdflib.RDF.type
 
 
-def read_raw(path: Path) -> dict[str, CimObject]:
-    """RDF/XML의 모든 CIM 객체를 참조 키 → CimObject로 읽는다. 중첩 정의와 rdf:resource 참조를 모두 처리한다."""
-    root = ET.parse(path).getroot()
+def _cim_local(uri) -> str | None:
+    """CIM 네임스페이스 URI면 로컬 이름("ACLineSegment.r")을, 아니면 None.
+    CIM 버전(cim16, cim17, CIM100 등)마다 네임스페이스 주소가 달라서 접두어로 판단한다."""
+    text = str(uri)
+    if not text.startswith(mapping.CIM_NS_PREFIX):
+        return None
+    return text.split("#", 1)[1] if "#" in text else None
+
+
+def read_graph(paths: list[Path]) -> rdflib.Graph:
+    """CIM RDF/XML 파일(여러 개 가능)을 하나의 rdflib 그래프로 합친다."""
+    g = rdflib.Graph()
+    for path in paths:
+        g.parse(path, format="xml", publicID=BASE_URI)
+        print(f"  {path.name}: 누적 트리플 {len(g):,}개")
+    return g
+
+
+def read_raw(paths: Path | list[Path]) -> dict[str, CimObject]:
+    """CIM RDF의 모든 객체를 참조 키 → CimObject로 읽는다.
+    rdflib이 중첩 정의, rdf:about/rdf:ID/rdf:resource, 여러 파일 병합을 모두 처리해 준다."""
+    if isinstance(paths, Path):
+        paths = [paths]
+    g = read_graph(paths)
+
     objs: dict[str, CimObject] = {}
-    for el in root.iter():
-        ref = _ref_of(el)
-        if ref is None or not el.tag.startswith(_C):
+    for subj, cls_uri in g.subject_objects(RDF_TYPE):
+        cls = _cim_local(cls_uri)
+        if cls is not None:
+            objs[str(subj)] = CimObject(str(subj), cls, {})
+
+    for subj, pred, obj in g:
+        target = objs.get(str(subj))
+        key = _cim_local(pred)
+        if target is None or key is None:
             continue
-        obj = objs.setdefault(ref, CimObject(ref, el.tag[len(_C):], {}))
-        for ch in el:
-            if not ch.tag.startswith(_C):
-                continue
-            key = ch.tag[len(_C):]
-            if ch.get(_R + "resource"):
-                obj.attrs[key] = ch.get(_R + "resource")
-            elif len(ch) and _ref_of(ch[0]):
-                obj.attrs[key] = _ref_of(ch[0])
-            elif ch.text is not None:
-                obj.attrs[key] = ch.text.strip()
+        if isinstance(obj, rdflib.Literal):
+            target.attrs[key] = str(obj).strip()
+        else:
+            # 참조(URIRef)이거나 enum 값(예: ...#PhaseCode.ABC). 참조는 objs의 키와 같은 문자열이 된다
+            target.attrs[key] = str(obj)
     return objs
 
 
@@ -363,14 +389,16 @@ def summarize(g: SubstationGraph) -> None:
     print(f"  부하 합계 {sum(n.p_kw or 0 for n in g.nodes if n.type == 'load'):.0f} kW, "
           f"PV 합계 {sum(n.p_kw or 0 for n in g.nodes if n.type == 'pv'):.0f} kW")
     names = {n.id: n.name for n in g.nodes}
-    for l in g.lines:
+    for l in g.lines[:SUMMARY_LINES]:
         print(f"  {names[l.from_node_id]} → {names[l.to_node_id]}  "
               f"[{l.kind}] {l.length_km} km, {l.r_ohm_per_km:.3f}+j{l.x_ohm_per_km:.3f} Ω/km")
+    if len(g.lines) > SUMMARY_LINES:
+        print(f"  ... 외 선로 {len(g.lines) - SUMMARY_LINES}개")
 
 
-def load(path: Path, reset: bool = False, dry_run: bool = False) -> list[SubstationGraph]:
-    print(f"[{path.name}] 읽는 중...")
-    graphs = to_substation_graphs(read_raw(path))
+def load(paths: list[Path], reset: bool = False, dry_run: bool = False) -> list[SubstationGraph]:
+    print(f"[{', '.join(p.name for p in paths)}] 읽는 중...")
+    graphs = to_substation_graphs(read_raw(paths))
     for g in graphs:
         summarize(g)
     if not dry_run:
@@ -390,20 +418,21 @@ def _read_env_file(path: Path) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="한전 CIM XML → Neo4j 적재")
-    parser.add_argument("--file", default=DEFAULT_FILE, help=f"data/ 안의 파일 이름 (기본 {DEFAULT_FILE})")
+    parser.add_argument("--file", nargs="+", default=[DEFAULT_FILE],
+                        help=f"data/ 안의 파일 이름, 여러 개 가능 (기본 {DEFAULT_FILE})")
     parser.add_argument("--reset", action="store_true", help="이 변전소의 기존 데이터를 지우고 적재")
     parser.add_argument("--dry-run", action="store_true", help="Neo4j에 쓰지 않고 변환 결과만 출력")
     args = parser.parse_args()
-    path = Path(args.file) if Path(args.file).is_absolute() else DATA_DIR / args.file
+    paths = [Path(f) if Path(f).is_absolute() else DATA_DIR / f for f in args.file]
 
     if args.dry_run:
-        load(path, dry_run=True)
+        load(paths, dry_run=True)
     else:
         from cim import db
 
         _read_env_file(ROOT_DIR / ".env")
         db.connect()
         try:
-            load(path, reset=args.reset)
+            load(paths, reset=args.reset)
         finally:
             db.close()
