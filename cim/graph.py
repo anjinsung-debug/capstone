@@ -13,6 +13,7 @@ API의 Node.x, y는 조회할 때 DiagramObject에서 읽고, 저장할 때 Diag
 
 from cim import db
 from cim.models import Feeder, Line, LineKind, Node, SnapshotSaved, Substation, SubstationGraph, SubstationSnapshot
+from cim.topology import trace_feeders
 
 
 class SubstationNotFound(LookupError):
@@ -87,15 +88,140 @@ def get_substation(substation_id: str) -> SubstationGraph:
     )
 
 
-def save_substation(substation_id: str, snapshot: SubstationSnapshot) -> SnapshotSaved:
-    """편집 스냅샷을 하나의 트랜잭션으로 저장한다 (제안서 4단계).
+class InvalidSnapshot(ValueError):
+    """편집 스냅샷이 계통 규칙에 맞지 않음. API에서는 422로 돌려준다."""
 
-    - 노드·선로를 UUID(id) 기준으로 추가·수정하고, 좌표는 DiagramObject에 저장
-    - 선로의 kind는 classify_connection으로 채움
-    - 스냅샷에 없는 기존 노드·선로와 연결이 끊긴 DiagramObject는 삭제 (가비지 컬렉션)
+
+NODE_PROPS = ("id", "substation_id", "feeder_id", "name", "type", "p_kw", "q_kvar", "is_open")
+LINE_PROPS = ("id", "substation_id", "feeder_id", "name", "kind",
+              "length_km", "r_ohm_per_km", "x_ohm_per_km", "rated_current_a")
+
+
+def _prepare_snapshot(substation: Substation, snapshot: SubstationSnapshot) -> SubstationGraph:
+    """스냅샷을 서버 기준으로 다듬고 검사한다: 소속 변전소 고정, kind·피더·선로 방향 채우기."""
+    sid = substation.id
+    nodes = {n.id: n.model_dump() for n in snapshot.nodes}
+    lines = {l.id: l.model_dump() for l in snapshot.lines}
+    if len(nodes) != len(snapshot.nodes) or len(lines) != len(snapshot.lines):
+        raise InvalidSnapshot("노드 또는 선로 id가 중복되었습니다")
+    if set(nodes) & set(lines):
+        raise InvalidSnapshot("노드와 선로가 같은 id를 쓰고 있습니다")
+
+    for n in nodes.values():
+        n["substation_id"] = sid  # 주소의 변전소가 기준 (프론트가 보낸 값은 무시)
+    for l in lines.values():
+        l["substation_id"] = sid
+        if l["from_node_id"] not in nodes or l["to_node_id"] not in nodes:
+            raise InvalidSnapshot(f"선로 {l['name']}의 양 끝 노드가 스냅샷에 없습니다")
+        # 연결 특성은 서버가 정한다 (위상 형성 논리)
+        l["kind"] = classify_connection(Node(**nodes[l["from_node_id"]]), Node(**nodes[l["to_node_id"]]))
+
+    sources = [n for n in nodes.values() if n["type"] == "source"]
+    if len(sources) != 1:
+        raise InvalidSnapshot(f"변전소 전원(source) 노드는 하나여야 합니다 (지금 {len(sources)}개)")
+    if sources[0]["bus_id"] not in nodes:
+        raise InvalidSnapshot("전원 노드의 bus_id가 스냅샷에 없는 노드를 가리킵니다")
+
+    # 선로 방향(from=전원 쪽)과 피더 소속을 다시 계산 (차단기를 추가·삭제했을 수도 있으므로)
+    feeders, _warnings = trace_feeders(sources[0], nodes, lines, sid)
+
+    try:
+        return SubstationGraph(
+            substation=substation,
+            feeders=feeders,
+            nodes=[Node(**n) for n in nodes.values()],
+            lines=[Line(**l) for l in lines.values()],
+        )
+    except ValueError as e:  # pydantic 검증 오류 (bus_id 대상, 피더별 차단기 수 등)
+        raise InvalidSnapshot(str(e)) from e
+
+
+def _write_snapshot(tx, g: SubstationGraph) -> dict[str, str]:
+    """계통 전체를 덮어쓴다. 스냅샷에 없는 기존 노드·선로·피더는 지운다. UUID → element id 대응표를 돌려준다."""
+    sid = g.substation.id
+    node_ids = [n.id for n in g.nodes]
+
+    # 다른 변전소의 노드 id를 가져다 쓰면 그 노드를 빼앗게 되므로 막는다
+    clash = tx.run(
+        "MATCH (n:Node) WHERE n.id IN $ids AND n.substation_id <> $sid RETURN n.id AS id LIMIT 5",
+        ids=node_ids, sid=sid,
+    ).data()
+    if clash:
+        raise InvalidSnapshot(f"다른 변전소에 이미 있는 노드 id입니다: {[r['id'] for r in clash]}")
+
+    # 1) 피더: 새로 계산한 것으로 교체
+    tx.run("""
+        MATCH (s:Substation {id: $sid})
+        OPTIONAL MATCH (s)-[:HAS_FEEDER]->(old:Feeder) WHERE NOT old.id IN $keep
+        DETACH DELETE old""", sid=sid, keep=[f.id for f in g.feeders])
+    tx.run("""
+        MATCH (s:Substation {id: $sid})
+        UNWIND $rows AS p
+        MERGE (f:Feeder {id: p.id}) SET f = p
+        MERGE (s)-[:HAS_FEEDER]->(f)""", sid=sid, rows=[f.model_dump() for f in g.feeders])
+
+    # 2) 선로·설비 연결은 전부 지우고 새로 만든다 (방향·양 끝이 바뀌었을 수 있음)
+    tx.run("MATCH ()-[l:LINE {substation_id: $sid}]->() DELETE l", sid=sid)
+    tx.run("MATCH (:Node {substation_id: $sid})-[c:CONNECTED_TO]->() DELETE c", sid=sid)
+
+    # 3) 스냅샷에서 빠진 노드는 좌표 노드와 함께 삭제
+    tx.run("""
+        MATCH (n:Node {substation_id: $sid}) WHERE NOT n.id IN $keep
+        OPTIONAL MATCH (n)-[:HAS_DIAGRAM]->(d:DiagramObject)
+        DETACH DELETE n, d""", sid=sid, keep=node_ids)
+
+    # 4) 노드 추가·수정 (SET n = p: 보낸 값으로 속성을 통째로 바꾼다. null이면 그 속성은 지워짐)
+    tx.run("""
+        UNWIND $rows AS row
+        MERGE (n:Node {id: row.p.id}) SET n = row.p
+        MERGE (n)-[:HAS_DIAGRAM]->(d:DiagramObject)
+        SET d.x = row.x, d.y = row.y""",
+        rows=[{"p": {k: getattr(n, k) for k in NODE_PROPS}, "x": n.x, "y": n.y} for n in g.nodes])
+
+    # 5) 설비 → 접속점 연결, 선로
+    tx.run("""
+        UNWIND $rows AS row
+        MATCH (n:Node {id: row.id}), (b:Node {id: row.bus_id})
+        CREATE (n)-[:CONNECTED_TO]->(b)""",
+        rows=[{"id": n.id, "bus_id": n.bus_id} for n in g.nodes if n.bus_id])
+    tx.run("""
+        UNWIND $rows AS row
+        MATCH (a:Node {id: row.from_id}), (b:Node {id: row.to_id})
+        CREATE (a)-[l:LINE]->(b) SET l = row.p""",
+        rows=[{"p": {k: getattr(l, k) for k in LINE_PROPS}, "from_id": l.from_node_id, "to_id": l.to_node_id}
+              for l in g.lines])
+
+    # 6) 가비지 컬렉션: 어느 노드에도 안 붙은 좌표 노드
+    tx.run("MATCH (d:DiagramObject) WHERE NOT ()-[:HAS_DIAGRAM]->(d) DELETE d")
+
+    # 7) UUID → Neo4j element id
+    rows = tx.run("""
+        MATCH (n:Node {substation_id: $sid}) RETURN n.id AS id, elementId(n) AS eid
+        UNION ALL
+        MATCH ()-[l:LINE {substation_id: $sid}]->() RETURN l.id AS id, elementId(l) AS eid""",
+        sid=sid).data()
+    return {r["id"]: r["eid"] for r in rows}
+
+
+def save_substation(substation_id: str, snapshot: SubstationSnapshot) -> SnapshotSaved:
+    """편집 스냅샷을 하나의 트랜잭션으로 저장한다 (제안서 4단계, FR-06·FR-07).
+
+    - 스냅샷 = 변전소 계통 전체. 노드·선로를 UUID(id) 기준으로 추가·수정하고, 좌표는 DiagramObject에 저장
+    - 스냅샷에 없는 기존 노드·선로·피더와, 연결이 끊긴 DiagramObject는 삭제 (가비지 컬렉션)
+    - 서버가 채우는 값: substation_id(주소 기준), 선로 kind(classify_connection),
+      선로 방향(from=전원 쪽)과 feeder_id(차단기마다 피더, topology.trace_feeders)
+    - 검사에 실패하면 아무것도 쓰지 않고 InvalidSnapshot
     - 저장된 노드·선로의 UUID → Neo4j element id 대응표를 돌려줌
     """
-    raise NotImplementedError
+    with db.get_driver().session() as session:
+        sub = session.execute_read(
+            lambda tx: tx.run("MATCH (s:Substation {id: $sid}) RETURN s{.*} AS s", sid=substation_id).single()
+        )
+        if sub is None:
+            raise SubstationNotFound(f"변전소 {substation_id}가 없습니다")
+        g = _prepare_snapshot(Substation(**sub["s"]), snapshot)
+        element_ids = session.execute_write(_write_snapshot, g)
+    return SnapshotSaved(graph=g, element_ids=element_ids)
 
 
 def classify_connection(from_node: Node, to_node: Node) -> LineKind:
