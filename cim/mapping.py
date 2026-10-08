@@ -1,4 +1,4 @@
-"""CIM16 RDF/XML → 내부 계통 모델(cim/models.py) 매핑 스키마 
+"""CIM16 RDF/XML → 내부 계통 모델(cim/models.py) 매핑 스키마 (FR-01, 제안서 1단계)
 
 load.py는 이 표를 따라 변환한다. 매핑 규칙을 바꿀 때는 이 파일만 고친다.
 기준 데이터: data/korean_distribution_cim.xml (한전 가상 계통, 변전소 1·차단기 1·선로 11·부하 8·PV 4)
@@ -38,7 +38,9 @@ load.py는 이 표를 따라 변환한다. 매핑 규칙을 바꿀 때는 이 �
 from dataclasses import dataclass
 from typing import Callable, Literal
 
-CIM_NS = "http://iec.ch/TC57/2013/CIM-schema-cim16#"
+CIM_NS = "http://iec.ch/TC57/2013/CIM-schema-cim16#"  # 현재 데이터의 CIM 버전
+# CIM 버전마다 네임스페이스 주소가 다르다 (cim16, cim17, CGMES 3.0의 CIM100 등). 이 접두어로 시작하면 CIM으로 본다
+CIM_NS_PREFIX = "http://iec.ch/TC57/"
 RDF_NS = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
 
 BASE_VOLTAGE_V = 22900.0  # VoltageLevel.BaseVoltage 허용값 (V)
