@@ -14,8 +14,7 @@ RDF 파싱은 rdflib (pip install rdflib). 파일 크기·개수가 늘어도 �
 
 import argparse
 import os
-import uuid
-from collections import defaultdict, deque
+from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -23,22 +22,16 @@ import rdflib
 
 from cim import mapping
 from cim.models import ONE_TERMINAL_TYPES, Feeder, Line, Node, Substation, SubstationGraph
+from cim.topology import derived_id, trace_feeders
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT_DIR / "data"
 DEFAULT_FILE = "korean_distribution_cim.xml"
 
-# 원본에 없는 객체(피더, 개폐기 연결선)의 id. mRID에서 결정적으로 만들어서 다시 적재해도 같은 id가 나온다
-_ID_NS = uuid.UUID("6f1c2a4e-5b7d-4e8a-9c3f-2d1e0b9a8c7d")
-
 # 자동 배치 간격 (단선도 좌표 단위)
 DX, DY = 120.0, 100.0
 
 SUMMARY_LINES = 20  # 변환 결과 출력 때 보여줄 선로 수 (큰 계통에서 화면이 넘치지 않게)
-
-def derived_id(*parts: str) -> str:
-    return str(uuid.uuid5(_ID_NS, ":".join(parts)))
-
 
 # ───────────────────────────── 1. RDF 읽기 (rdflib) ─────────────────────────────
 @dataclass
@@ -224,49 +217,11 @@ class _Builder:
             lines=[Line(**l) for l in lines.values()],
         )
 
-    # ── 위상 탐색: 선로 방향(from=전원 쪽)과 피더 소속을 정한다 ──
+    # ── 위상 탐색: 선로 방향(from=전원 쪽)과 피더 소속을 정한다 (cim/topology.py) ──
     def trace(self, source: dict, nodes: dict, lines: dict, sub_id: str) -> list[Feeder]:
-        adj: dict[str, list[str]] = defaultdict(list)  # 노드 id → 닿은 선로 id
-        for l in lines.values():
-            adj[l["from_node_id"]].append(l["id"])
-            adj[l["to_node_id"]].append(l["id"])
-
-        feeders: list[Feeder] = []
-        feeder_of: dict[str, str | None] = {source["bus_id"]: None}
-        queue = deque([source["bus_id"]])
-        used: set[str] = set()
-        loops = 0
-        while queue:
-            cur = queue.popleft()
-            cur_node = nodes[cur]
-            if cur_node["type"] == "switch" and cur_node.get("is_open"):
-                continue  # 열린 개폐기 너머는 이 경로로 내려가지 않음
-            for lid in adj[cur]:
-                if lid in used:
-                    continue
-                used.add(lid)
-                l = lines[lid]
-                nxt = l["to_node_id"] if l["from_node_id"] == cur else l["from_node_id"]
-                if nxt in feeder_of:
-                    loops += 1  # 이미 방문한 노드로 돌아오는 선로 → 루프 (방향은 원본 유지)
-                    continue
-                l["from_node_id"], l["to_node_id"] = cur, nxt
-                fid = feeder_of[cur]
-                if nodes[nxt]["type"] == "breaker":  # 출구 차단기 = 새 피더 시작
-                    fid = derived_id(nxt, "feeder")
-                    feeders.append(Feeder(id=fid, substation_id=sub_id, name=nodes[nxt]["name"]))
-                feeder_of[nxt] = fid
-                l["feeder_id"] = fid
-                queue.append(nxt)
-
-        for n in nodes.values():
-            key = n.get("bus_id", n["id"])
-            n["feeder_id"] = feeder_of.get(key)
-        unreached = [n["name"] for n in nodes.values() if n.get("bus_id", n["id"]) not in feeder_of]
-        if loops:
-            print(f"  [경고] 루프 선로 {loops}개: 방사형이 아닙니다 (열린 개폐기 확인)")
-        if unreached:
-            print(f"  [경고] 전원에서 닿지 않는 노드 {len(unreached)}개: {', '.join(unreached[:10])}")
+        feeders, warnings = trace_feeders(source, nodes, lines, sub_id)
+        for w in warnings:
+            print(f"  [경고] {w}")
         return feeders
 
     # ── 단선도 자동 배치: 전원을 뿌리로 하는 위→아래 트리 ──
