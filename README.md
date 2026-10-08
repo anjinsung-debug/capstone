@@ -14,11 +14,15 @@
 | `simulation/` | 계통 → OpenDSS 변환, 4대 시뮬레이션, 결과 그래프 (matplotlib) | 안진성 |
 | `ai_report/` | LLM 리포트 생성 | 고영민, 최민준 |
 | `data/` | 한전 제공 원본 CIM XML (공개 허락받은 파일만 git에 올림) | 공용 |
+| `docs/` | OpenDSS 시뮬레이션 데이터 대응표, 전기·전자 용어표 | 공용 |
 
 ```
 capstone/
+├── docs/
+│   ├── opendss_simulation_data.md  시뮬레이션별 입력·가정·설정·결과 대응표
+│   └── electrical_glossary.md     전기·전자 용어표
 ├── backend/
-│   ├── main.py              앱 생성, 시작·종료 시 Neo4j 연결·해제, 미구현 함수 → 501, 시뮬레이션 불가 → 422
+│   ├── main.py              앱 생성, 시작·종료 시 Neo4j 연결·해제, 오류 → HTTP 상태 (미구현 501, 없는 변전소 404, 잘못된 스냅샷·시뮬레이션 불가 422)
 │   └── api/
 │       ├── health.py        GET /api/health: 서버·Neo4j 상태
 │       ├── grid.py          변전소 계통 조회·스냅샷 저장 API → cim/graph.py
@@ -26,7 +30,8 @@ capstone/
 │       └── report.py        리포트 API → cim/graph.py, ai_report/report.py
 ├── cim/
 │   ├── models.py            계통 데이터 형식 (Substation, Feeder, Node, Line, SubstationGraph, 편집 스냅샷)
-│   ├── graph.py             Neo4j 조회·스냅샷 저장·연결 특성 구분 함수, Neo4j 구조 설명
+│   ├── graph.py             Neo4j 변전소 목록·계통 조회·스냅샷 저장, 연결 특성 구분, Neo4j 구조 설명
+│   ├── topology.py          위상 계산: 선로 방향(전원 쪽 = from)과 피더 소속 (load.py, graph.py가 같이 씀)
 │   ├── mapping.py           CIM XML → 공통 모델 매핑 가이드 (클래스·속성 대응표, 단위 환산, 위상 규칙)
 │   ├── load.py              한전 CIM XML → 공통 모델 변환·Neo4j 적재 (python -m cim.load)
 │   ├── db.py                Neo4j 연결
@@ -86,23 +91,23 @@ README, `requirements.txt`, `docker-compose.yml`, `.env.example` 같은 공용 �
 | 기능 | 위치 | 상태 |
 |------|------|------|
 | 서버 실행, Neo4j 연결 | `backend/main.py`, `cim/db.py`, `backend/api/health.py` | 동작 |
-| 계통 입력 검사 (저장: 선로 양 끝, `bus_id` 대상, 개폐기만 `is_open`) | `cim/models.py` | 동작 (API 요청·응답 시 자동 검사, 잘못되면 422). 미완성 계통도 저장 가능 |
+| 계통 입력 검사 (선로 양 끝, `bus_id` 대상, 개폐기만 `is_open`) | `cim/models.py` | 동작 (API 요청·응답 시 자동 검사, 잘못되면 422). 저장 API는 여기에 더해 전원 1개를 요구 (`cim/graph.py`) |
 | 계통 완성 검사 (전원 1개, 피더별 차단기 1개, 부하·분산전원 출력·`bus_id`) | `simulation/dss.py`의 `check_complete` | 동작 (시뮬레이션 직전, 부족하면 422와 빠진 항목) |
 | 프론트엔드 → 백엔드 API 호출 | `frontend/src/api/client.js` | 동작 |
 | 한전 데이터 적재 | `cim/load.py`, `cim/mapping.py` | 동작 (`--dry-run`이면 Neo4j 없이 변환 결과만 출력) |
-| 변전소 계통 조회 | `cim/graph.py`의 `list_substations`, `get_substation` | 틀만 있음 |
-| 편집 스냅샷 저장 (4단계) | `cim/graph.py`의 `save_substation` | 틀만 있음 |
+| 변전소 계통 조회 | `cim/graph.py`의 `list_substations`, `get_substation` | 동작 (없는 변전소는 404) |
+| 편집 스냅샷 저장 (4단계) | `cim/graph.py`의 `save_substation` | 동작 (이미 있는 변전소만, 전원 노드 1개 필요) |
 | 연결 특성 자동 구분 (위상 형성 논리) | `cim/graph.py`의 `classify_connection` | 동작 (차단기·개폐기에 닿으면 `switch`, 그 외 `line`) |
 | OpenDSS 스크립트 변환 (2단계) | `simulation/dss.py` | 동작 |
-| 4대 시뮬레이션 (3단계) | `simulation/simulate.py` | 동작 (한전 CIM XML로 자체 점검 통과: 역조류 방향, 루프 검출, 정전 구간, 오류 처리 포함. API로 쓰려면 `get_substation` 구현 필요) |
+| 4대 시뮬레이션 (3단계) | `simulation/simulate.py` | 동작 (한전 CIM XML로 자체 점검 통과: 역조류 방향, 루프 검출, 정전 구간, 오류 처리 포함) |
 | 결과 그래프 (matplotlib) | `simulation/plot.py` | 동작 (전압 프로파일, 선로별 조류·역조류·과부하) |
 | AI 리포트 | `ai_report/report.py` | 틀만 있음 |
-| 화면 흐름 (선택 → 시뮬레이션 → 결과·리포트) | `frontend/src/App.jsx` | 동작 (API 구현 전에는 501 메시지 표시) |
+| 화면 흐름 (선택 → 시뮬레이션 → 결과·리포트) | `frontend/src/App.jsx` | 동작 (리포트 API 구현 전에는 501 메시지 표시) |
 | 다크모드 단선도 표시 (Cytoscape.js) | `frontend/src/components/Diagram.jsx` | 기본 표시만 있음 |
 | 단선도 편집 UI, 결과 오버레이 | `frontend/src/components/Diagram.jsx` | 틀만 있음 (TODO) |
 | 결과·그래프·리포트 표시 | `frontend/src/components/ResultPanel.jsx` | 동작 |
 
-틀만 있는 함수는 `NotImplementedError`를 내고, 해당 API는 501을 돌려줍니다. 시뮬레이션이 계산할 수 없는 계통(미완성, 루프, 잘못된 값, 수렴 실패)은 `SimulationError`로 422와 이유를 돌려줍니다 (`backend/main.py`).
+틀만 있는 함수는 `NotImplementedError`를 내고, 해당 API는 501을 돌려줍니다. 없는 변전소는 `SubstationNotFound`로 404, 규칙에 맞지 않는 편집 스냅샷은 `InvalidSnapshot`으로 422를 돌려줍니다. 시뮬레이션이 계산할 수 없는 계통(미완성, 루프, 잘못된 값, 수렴 실패)은 `SimulationError`로 422와 이유를 돌려줍니다 (`backend/main.py`).
 
 ## 작동 방식
 
@@ -119,15 +124,15 @@ frontend ──HTTP──▶ backend ────────┤ cim/graph.py (�
                       └──▶ ai_report/report.py   ──▶ AI 리포트 (계통 정보 + 시뮬레이션 결과)
 ```
 
-1. **적재** (FR-01, 02): `python -m cim.load` 실행 → `cim/load.py`가 `data/`의 한전 원본 CIM XML을 읽어(`read_raw`) 매핑 가이드(`cim/mapping.py`)대로 공통 모델로 변환하고(`to_substation_graphs`) Neo4j에 저장(`save_to_neo4j`). 웹이 아니라 명령어로 실행
-2. **조회** (FR-02, 05): 변전소 단위로 읽음. `GET /api/substations` → `GET /api/substations/{id}` → `cim/graph.py`의 `get_substation`이 피더·노드·선로를 위상 탐색 쿼리로 읽고, 좌표는 DiagramObject에서 읽어 `Node.x`, `y`로 돌려줌
-   - **편집 스냅샷 저장** (FR-06, 07, 제안서 4단계): 편집 중 새로 만든 변전소·피더·노드·선로에는 프론트엔드가 `crypto.randomUUID()`로 UUID를 바로 할당 → 편집을 마치면 변전소·피더·노드·선로 전체(`SubstationSnapshot`, 형식은 `SubstationGraph`와 같음)를 `PUT /api/substations/{id}`로 보냄 → `save_substation`이 한 트랜잭션으로 저장
-     - 없는 변전소 id면 새로 만듦. 빈 계통에서 변전소 → 노드 → 선로 순으로 하나씩 추가하며 저장할 수 있음
-     - 저장할 때는 데이터가 깨졌는지만 검사 (선로 양 끝, `bus_id` 대상 등). 전원·차단기·출력·`bus_id`가 빠진 미완성 계통도 저장되고, 시뮬레이션할 때 빠진 항목을 422로 알려 줌
+1. **적재** (FR-01, 02): `python -m cim.load` 실행 → `cim/load.py`가 `data/`의 한전 원본 CIM XML을 rdflib로 읽어(`read_raw`) 매핑 가이드(`cim/mapping.py`)대로 공통 모델로 변환하고(`to_substation_graphs`, 선로 방향·피더 소속은 `cim/topology.py`) Neo4j에 저장(`save_to_neo4j`). 웹이 아니라 명령어로 실행
+2. **조회** (FR-02, 05): 변전소 단위로 읽음. `GET /api/substations` → `GET /api/substations/{id}` → `cim/graph.py`의 `get_substation`이 피더·노드·선로를 읽고, 좌표는 DiagramObject에서, `bus_id`는 `CONNECTED_TO` 관계에서 읽어 돌려줌
+   - **편집 스냅샷 저장** (FR-06, 07, 제안서 4단계): 편집 중 새로 만든 노드·선로에는 프론트엔드가 `crypto.randomUUID()`로 UUID를 바로 할당 → 편집을 마치면 변전소 계통 전체(`SubstationSnapshot`, 형식은 `SubstationGraph`와 같음)를 `PUT /api/substations/{id}`로 보냄 → `save_substation`이 한 트랜잭션으로 저장
+     - 이미 Neo4j에 있는 변전소만 저장할 수 있음 (없는 id는 404). 변전소 속성은 저장된 값을 그대로 쓰고, 스냅샷의 `substation`은 주소 id 확인에만 씀
+     - 전원(source) 노드가 정확히 1개이고 그 `bus_id`가 스냅샷 안의 노드여야 저장됨 (아니면 422). 노드·선로 id 중복, 선로 양 끝 누락도 422
      - 주소의 id와 `substation.id`가 다르면 422 (`backend/api/grid.py`)
-     - 선로의 연결 특성(`kind`)은 양 끝 설비 종류로 `classify_connection`이 자동 구분
+     - 서버가 다시 계산하는 값: 선로의 연결 특성(`kind`, `classify_connection`), 선로 방향(전원 쪽 = from)과 피더 소속(차단기마다 피더 하나, `cim/topology.py`). 스냅샷의 `feeders`는 쓰지 않음
      - 좌표는 설비 노드와 분리된 좌표 메타데이터 노드(DiagramObject)에 저장
-     - 스냅샷에 없는 기존 노드·선로와 연결이 끊긴 DiagramObject는 삭제 (가비지 컬렉션)
+     - 스냅샷에 없는 기존 피더·노드·선로와 연결이 끊긴 DiagramObject는 삭제 (가비지 컬렉션)
      - 응답으로 UUID → Neo4j element id 대응표(`element_ids`)를 돌려줌
 3. **시뮬레이션** (FR-03, 04): 프론트엔드 → `POST /api/substations/{id}/simulations` → 백엔드가 `cim/graph.py`로 계통을 읽어 `simulation/simulate.py`에 넘김 → `simulation/dss.py`가 OpenDSS 스크립트로 변환 → `simulate.py`가 실행해 결과 반환 → 결과를 프론트엔드가 단선도에 표시
    - **OpenDSS 변환** (`dss.py`): 접속점·차단기·개폐기 노드가 OpenDSS 버스가 되고, 전원·부하·분산전원은 `bus_id`의 버스에 붙음. 열린 개폐기에 닿은 선로는 `enabled=no`로 끊어 그 아래 구간은 전압 0
@@ -177,6 +182,7 @@ frontend ──HTTP──▶ backend ────────┤ cim/graph.py (�
 |------|-----------|
 | 프론트엔드 → 백엔드 API | `frontend/src/api/client.js`, `backend/api/` (형식은 http://localhost:8000/docs) |
 | 계통 데이터 형식, Neo4j 구조 | `cim/models.py`, `cim/graph.py`, `cim/schema.cypher` |
+| 선로 방향·피더 소속 계산 | `cim/topology.py`의 `trace_feeders` (`cim/load.py` 적재, `cim/graph.py` 저장이 같이 씀) |
 | Neo4j 연결 | `cim/db.py` (접속 정보는 `.env`) |
 | 한전 데이터 → Neo4j 적재 | `cim/load.py` (명령어 `python -m cim.load`, `cim/mapping.py` 대응표대로 `cim/models.py` 형식으로 저장) |
 | 시뮬레이션 결과 형식 | `simulation/models.py` |
@@ -275,7 +281,7 @@ cd frontend
 npm run dev
 ```
 
-http://localhost:5173 에 "서버 ok, Neo4j connected"가 보이면 정상입니다. 조회 기능을 구현하기 전에는 "변전소 목록을 불러오지 못했습니다 (HTTP 501)"이 함께 표시되는 것이 정상입니다.
+http://localhost:5173 에 "서버 ok, Neo4j connected"가 보이면 정상입니다. 변전소 목록이 비어 있으면 `python -m cim.load`로 데이터를 먼저 적재합니다.
 
 `.env` 항목
 
