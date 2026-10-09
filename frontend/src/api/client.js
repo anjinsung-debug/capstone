@@ -1,11 +1,27 @@
 // 백엔드 API 호출 함수. 개발 중에는 Vite 프록시가 /api 를 http://localhost:8000 으로 전달한다.
+// 실패하면 백엔드가 보낸 이유(FastAPI의 detail)를 메시지에 붙인다. 예: 시뮬레이션 422 "계통이 완성되지 않아 ..."
+// 상태 코드 뜻 (backend/main.py): 404 없는 변전소, 422 계통 규칙 위반·계산 불가(이유 포함), 501 아직 구현 안 된 함수
+// detail이 배열이면 FastAPI 입력 검사 오류(pydantic)라서 각 항목의 msg를 이어 붙인다
+async function toError(res) {
+  let detail = ''
+  try {
+    const body = await res.json()
+    detail = typeof body.detail === 'string' ? body.detail : (body.detail ?? []).map((d) => d.msg).join('; ')
+  } catch {
+    // 본문이 JSON이 아니면 상태 코드만 쓴다
+  }
+  const error = new Error(detail ? `HTTP ${res.status}: ${detail}` : `HTTP ${res.status}`)
+  error.status = res.status
+  return error
+}
+
 async function request(method, path, body) {
   const res = await fetch(`/api${path}`, {
     method,
     headers: body ? { 'Content-Type': 'application/json' } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  if (!res.ok) throw await toError(res)
   return res.status === 204 ? null : res.json()
 }
 
@@ -32,7 +48,7 @@ export async function createPlot(simulationResult) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(simulationResult),
   })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  if (!res.ok) throw await toError(res)
   return URL.createObjectURL(await res.blob())
 }
 

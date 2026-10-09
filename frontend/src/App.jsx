@@ -1,4 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+// 화면 전체 흐름과 상태 (제안서 3·4·5단계, FR-03~09). 담당: 프론트엔드 (고영민, 최민준)
+//
+// 데이터 흐름 (계통의 원본은 이 파일의 graph 상태 하나뿐):
+//   변전소 선택 → GET /api/substations/{id} → graph
+//   편집 → Diagram/PropertyPanel이 lib/graphEdit.js로 새 graph를 만들어 onChange로 올림 → graph 교체
+//   저장 → toSnapshot(graph) → PUT /api/substations/{id} → 서버가 돌려준 graph로 교체
+//   시뮬레이션 → POST …/simulations → result → (동시에) POST /api/plots, POST /api/reports
+// 서버 쪽 규칙은 cim/graph.py(조회·저장), simulation/dss.py(완성 검사), backend/main.py(오류 → 404·422·501)에 있다.
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   createPlot,
   createReport,
@@ -6,92 +14,287 @@ import {
   getSubstation,
   listSubstations,
   runSimulation,
+  saveSubstation,
 } from './api/client.js'
 import Diagram from './components/Diagram.jsx'
-import ResultPanel from './components/ResultPanel.jsx'
+import EditToolbar from './components/EditToolbar.jsx'
+import PropertyPanel from './components/PropertyPanel.jsx'
+import ResultPanel, { Legend } from './components/ResultPanel.jsx'
+import { emptyGraph, removeElements, toSnapshot } from './lib/graphEdit.js'
 
-// 변전소 선택 → 단선도 표시 → 시뮬레이션 → 결과·그래프·AI 리포트 표시
+// ponytail: 되돌리기는 브라우저 메모리에 이전 계통을 최대 50개 통째로 보관한다 (새로고침하면 사라짐).
+// 계통이 수천 개 노드로 커져 느려지면 바뀐 부분(diff)만 저장하는 방식으로 바꾼다
+const HISTORY_LIMIT = 50
+
+// 변전소 선택 → 단선도 표시·편집 → 저장 → 시뮬레이션 → 결과·그래프·AI 리포트 표시
 export default function App() {
-  const [health, setHealth] = useState('확인 중...')
+  const [health, setHealth] = useState({ ok: null, text: '확인 중...' })
   const [substations, setSubstations] = useState([])
-  const [graph, setGraph] = useState(null)
+  const [graph, setGraph] = useState(null) // 화면에 있는 계통 (편집 중이면 저장 전 값)
+  const [dirty, setDirty] = useState(false) // 저장하지 않은 편집이 있는지
+  const [editing, setEditing] = useState(false)
+  const [tool, setTool] = useState('select')
+  const [selectedIds, setSelectedIds] = useState([])
+  const [labelMode, setLabelMode] = useState('voltage') // 노드 아래 표시: voltage | fault | name
+  const [busy, setBusy] = useState('') // 진행 중인 작업 이름
   const [result, setResult] = useState(null)
   const [plotUrl, setPlotUrl] = useState(null)
+  const [plotMessage, setPlotMessage] = useState('')
   const [report, setReport] = useState(null)
-  const [message, setMessage] = useState('')
   const [reportMessage, setReportMessage] = useState('')
-  const runId = useRef(0) // 마지막 요청의 결과만 표시하기 위한 번호 (변전소 선택·시뮬레이션마다 증가)
+  const [message, setMessage] = useState({ text: '', kind: 'info' })
+  // 마지막 요청의 결과만 표시하기 위한 번호 (변전소 선택·시뮬레이션·편집마다 증가).
+  // 리포트(LLM)는 수십 초 걸릴 수 있어서, 그사이 편집·재시뮬레이션하면 늦게 온 옛 결과를 버린다
+  const runId = useRef(0)
+  const history = useRef([]) // 되돌리기용 이전 계통들
+
+  const info = (text) => setMessage({ text, kind: 'info' })
+  const fail = (text) => setMessage({ text, kind: 'error' })
+
+  useEffect(() => {
+    if (message.kind !== 'info' || !message.text) return undefined
+    const t = setTimeout(() => setMessage({ text: '', kind: 'info' }), 6000)
+    return () => clearTimeout(t)
+  }, [message])
+
+  const refreshList = () =>
+    listSubstations()
+      .then(setSubstations)
+      .catch((e) => fail(`변전소 목록을 불러오지 못했습니다 (${e.message})`))
 
   useEffect(() => {
     getHealth()
-      .then((h) => setHealth(`서버 ${h.status}, Neo4j ${h.neo4j}`))
-      .catch((e) => setHealth(`백엔드 연결 실패 (${e.message})`))
-    listSubstations()
-      .then(setSubstations)
-      .catch((e) => setMessage(`변전소 목록을 불러오지 못했습니다 (${e.message})`))
+      .then((h) => setHealth({ ok: h.neo4j === 'connected' || h.neo4j === 'mock', text: `서버 ${h.status} · Neo4j ${h.neo4j}` }))
+      .catch((e) => setHealth({ ok: false, text: `백엔드 연결 실패 (${e.message})` }))
+    refreshList()
   }, [])
 
   function clearResult() {
+    ++runId.current
     setResult(null)
     setPlotUrl(null)
+    setPlotMessage('')
     setReport(null)
     setReportMessage('')
-    setMessage('')
   }
 
-  async function selectSubstation(substationId) {
-    ++runId.current
+  function confirmDiscard() {
+    return !dirty || window.confirm('저장하지 않은 편집이 있습니다. 버리고 계속할까요?')
+  }
+
+  // 단선도에서 편집이 일어날 때마다 호출: 이전 결과는 계통과 맞지 않으므로 지운다
+  const graphRef = useRef(graph)
+  graphRef.current = graph
+  const onChange = useCallback((g) => {
+    if (graphRef.current) history.current = [...history.current.slice(-HISTORY_LIMIT + 1), graphRef.current]
+    setGraph(g)
+    setDirty(true)
     clearResult()
+  }, [])
+
+  async function selectSubstation(substationId) {
+    if (!confirmDiscard()) return
+    clearResult()
+    info('')
     try {
       setGraph(await getSubstation(substationId))
+      setDirty(false)
+      setSelectedIds([])
+      history.current = []
     } catch (e) {
-      setMessage(`계통을 불러오지 못했습니다 (${e.message})`)
+      fail(`계통을 불러오지 못했습니다 (${e.message})`)
+    }
+  }
+
+  // 빈 계통에서 새 변전소를 만든다 (프론트가 UUID 발급).
+  // 구현 참고 (한승우 확인 필요): 진짜 백엔드의 save_substation은 이미 있는 변전소만 저장하고(없으면 404),
+  // 전원(source) 노드가 정확히 1개여야 저장된다(아니면 422). 그래서 지금은 "새 변전소"가 모의 서버에서만 저장된다.
+  // 웹에서 새 변전소를 만들게 할지(서버에서 생성 허용), 이 버튼을 숨길지 팀에서 정해야 한다
+  function newSubstation() {
+    if (!confirmDiscard()) return
+    const name = window.prompt('새 변전소 이름', '새 변전소')
+    if (!name) return
+    clearResult()
+    setGraph(emptyGraph(name.trim()))
+    setDirty(true)
+    setEditing(true)
+    setTool('source')
+    setSelectedIds([])
+    history.current = []
+    info('왼쪽 도구에서 설비를 고르고 빈 곳을 누르세요. 다 만들면 저장하세요')
+  }
+
+  // 편집 스냅샷 전체 저장 (PUT). 성공하면 서버가 돌려준 계통으로 바꾼다.
+  // 서버(cim/graph.py의 _prepare_snapshot)가 선로 kind·방향·feeder_id를 다시 계산하므로 화면 값보다 서버 값이 기준이다.
+  // 실패 이유(전원 개수, bus_id 대상 등)는 client.js가 서버 detail을 붙여 주므로 그대로 알림에 보인다
+  async function save() {
+    setBusy('저장 중')
+    try {
+      const saved = await saveSubstation(graph.substation.id, toSnapshot(graph))
+      setGraph(saved.graph)
+      setDirty(false)
+      info('저장했습니다')
+      refreshList()
+      return true
+    } catch (e) {
+      fail(`저장 실패 (${e.message})`)
+      return false
+    } finally {
+      setBusy('')
     }
   }
 
   async function simulate() {
-    const id = ++runId.current
+    // 시뮬레이션은 서버(Neo4j)에 저장된 계통으로 계산하므로, 편집 중이면 먼저 저장한다
+    if (dirty && !(await save())) return
     clearResult()
+    const id = runId.current
+    setBusy('시뮬레이션 중')
     let res
     try {
       res = await runSimulation(graph.substation.id)
     } catch (e) {
-      if (id === runId.current) setMessage(`시뮬레이션 실패 (${e.message})`)
+      if (id === runId.current) fail(`시뮬레이션 실패 (${e.message})`)
       return
+    } finally {
+      setBusy('')
     }
     if (id !== runId.current) return
+    info('')
     setResult(res)
-    setReportMessage('AI 리포트 생성 중...')
+    setEditing(false)
+    setPlotMessage('그래프 그리는 중...')
+    setReportMessage('AI 리포트 생성 중... (수 초~수십 초)')
     createPlot(res)
       .then((url) => id === runId.current && setPlotUrl(url))
-      .catch(() => {})
+      .catch((e) => id === runId.current && setPlotMessage(`그래프 실패 (${e.message})`))
     createReport(res)
       .then((r) => id === runId.current && setReport(r))
       .catch((e) => id === runId.current && setReportMessage(`AI 리포트 실패 (${e.message})`))
   }
 
+  const deleteSelected = useCallback(() => {
+    if (!selectedIds.length) return
+    onChange(removeElements(graph, selectedIds))
+    setSelectedIds([])
+  }, [graph, selectedIds, onChange])
+
+  const undo = useCallback(() => {
+    const prev = history.current.pop()
+    if (!prev) return
+    setGraph(prev)
+    setDirty(true)
+    clearResult()
+  }, [])
+
+  // 단축키: Delete 삭제, Ctrl+Z 되돌리기, Esc 선택 도구 (입력칸에 쓰는 중에는 무시)
+  useEffect(() => {
+    if (!editing) return undefined
+    const onKey = (e) => {
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault()
+        deleteSelected()
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault()
+        undo()
+      } else if (e.key === 'Escape') setTool('select')
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [editing, deleteSelected, undo])
+
+  // 저장 안 한 채 창을 닫으려 하면 경고
+  useEffect(() => {
+    if (!dirty) return undefined
+    const warn = (e) => e.preventDefault()
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [dirty])
+
+  const isNew = graph && !substations.some((s) => s.id === graph.substation.id)
+
   return (
-    <main style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <h1 style={{ margin: 0 }}>배전계통 통합 분석 플랫폼</h1>
-      <p style={{ margin: 0 }}>백엔드 상태: {health}</p>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <select defaultValue="" onChange={(e) => selectSubstation(e.target.value)}>
-          <option value="" disabled>
-            변전소 선택
-          </option>
-          {substations.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name}
+    <div className="app">
+      <header className="topbar">
+        <div className="brand">
+          <span className="logo">⚡</span>
+          <div>
+            <h1>배전계통 통합 분석 플랫폼</h1>
+            <small className={health.ok === false ? 'health bad' : 'health'}>{health.text}</small>
+          </div>
+        </div>
+        <div className="actions">
+          <select value={isNew ? '' : (graph?.substation.id ?? '')} onChange={(e) => selectSubstation(e.target.value)}>
+            <option value="" disabled>
+              {isNew ? `${graph.substation.name} (저장 전)` : '변전소 선택'}
             </option>
-          ))}
-        </select>
-        <button type="button" disabled={!graph} onClick={simulate}>
-          시뮬레이션
-        </button>
+            {substations.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+          <button type="button" onClick={newSubstation}>
+            + 새 변전소
+          </button>
+          <span className="sep" />
+          <button type="button" className={editing ? 'toggle on' : 'toggle'} disabled={!graph} onClick={() => setEditing(!editing)}>
+            {editing ? '편집 끝내기' : '편집'}
+          </button>
+          <button type="button" disabled={!graph || !dirty || !!busy} onClick={save} className={dirty ? 'primary-outline' : ''}>
+            저장{dirty ? ' •' : ''}
+          </button>
+          <button type="button" className="primary" disabled={!graph || !!busy} onClick={simulate}>
+            {busy || '시뮬레이션'}
+          </button>
+        </div>
+      </header>
+
+      {/* 알림은 화면 아래에 띄워 단선도 위치가 밀리지 않게 한다 (위치가 밀리면 클릭 좌표가 어긋남) */}
+      {message.text && (
+        <div className={`toast ${message.kind}`} role="status">
+          <span>{message.text}</span>
+          <button type="button" onClick={() => info('')} aria-label="닫기">
+            ✕
+          </button>
+        </div>
+      )}
+
+      <div className={editing ? 'workspace editing' : 'workspace'}>
+        {editing && <EditToolbar tool={tool} onTool={(t) => { setTool(t); info('') }} onDelete={deleteSelected} canDelete={selectedIds.length > 0} />}
+        <div className="center">
+          <div className="diagram-bar">
+            {result ? <Legend /> : <span className="muted">{editing ? '편집 중 · Delete 삭제 · Ctrl+Z 되돌리기 · Esc 선택 도구' : '시뮬레이션을 실행하면 결과가 단선도에 표시됩니다'}</span>}
+            {result && (
+              <div className="seg">
+                {[
+                  ['voltage', '전압'],
+                  ['fault', '고장전류'],
+                  ['name', '이름만'],
+                ].map(([k, label]) => (
+                  <button key={k} type="button" className={labelMode === k ? 'on' : ''} onClick={() => setLabelMode(k)}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <Diagram
+            graph={graph}
+            result={result}
+            editing={editing}
+            tool={tool}
+            labelMode={labelMode}
+            onChange={onChange}
+            onSelect={setSelectedIds}
+            onMessage={info}
+          />
+        </div>
+        <PropertyPanel graph={graph} selectedIds={selectedIds} result={result} editing={editing} onChange={onChange} />
       </div>
-      {message && <p style={{ margin: 0 }}>{message}</p>}
-      <Diagram graph={graph} result={result} />
-      <ResultPanel graph={graph} result={result} plotUrl={plotUrl} report={report} reportMessage={reportMessage} />
-    </main>
+
+      <ResultPanel graph={graph} result={result} plotUrl={plotUrl} plotMessage={plotMessage} report={report} reportMessage={reportMessage} />
+    </div>
   )
 }

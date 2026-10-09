@@ -48,10 +48,17 @@ capstone/
 │   ├── src/
 │   │   ├── main.jsx         React 시작점
 │   │   ├── App.jsx          화면 흐름: 변전소 선택 → 단선도 → 시뮬레이션 → 결과·그래프·리포트
+│   │   ├── styles.css       다크모드 화면 스타일 (색은 맨 위 변수)
 │   │   ├── components/
 │   │   │   ├── Diagram.jsx      다크모드 단선도 뷰어·편집기 (Cytoscape.js), 결과 오버레이
-│   │   │   └── ResultPanel.jsx  피더별 송출 전력(MW·MVAr), 결과 그래프, AI 리포트 표시
-│   │   └── api/client.js    백엔드 API 호출 함수
+│   │   │   ├── EditToolbar.jsx  편집 도구 (선택·이동, 연결, 설비 7종 추가, 삭제)
+│   │   │   ├── PropertyPanel.jsx 선택한 설비·선로·변전소 속성 편집, 계산값, 시뮬레이션 전 빠진 항목
+│   │   │   └── ResultPanel.jsx  결과 요약·피더별 송출 전력(MW·MVAr)·범례, 결과 그래프, AI 리포트 표시
+│   │   ├── lib/
+│   │   │   ├── graphEdit.js     편집 로직 (노드·선로 추가·삭제, 피더·선로 방향 정리, 저장 스냅샷)
+│   │   │   └── overlay.js       시뮬레이션 결과 → 단선도 색·두께·화살표, 판정 기준
+│   │   └── api/client.js    백엔드 API 호출 함수 (실패 시 백엔드의 이유를 메시지에 포함)
+│   ├── mock/mock_server.py  프론트엔드 개발용 모의 백엔드 (Neo4j·OpenDSS·LLM 없이 한전 XML로 응답)
 │   ├── vite.config.js       /api 요청을 백엔드(localhost:8000)로 전달
 │   └── package.json         프론트엔드 라이브러리 (react, cytoscape)
 ├── data/                    한전 제공 원본 (korean_distribution_cim.xml, 출처 NOTICE.md)
@@ -74,6 +81,17 @@ README, `requirements.txt`, `docker-compose.yml`, `.env.example` 같은 공용 �
 
 `cim/models.py`, `simulation/models.py`, `ai_report/models.py`, `frontend/src/api/client.js`는 여러 폴더가 함께 쓰는 약속입니다.
 이 파일을 바꿀 때는 먼저 팀에 알리고, PR로 영향받는 담당자의 확인을 받은 뒤 합칩니다.
+
+### 주석 규칙
+
+Claude Code가 코드를 읽고 맥락을 파악하거나 우리에게 되물을 수 있도록, 코드에 이유와 연결 관계를 주석으로 남깁니다 (2026-10-09 팀 합의).
+
+| 표시 | 쓰는 곳 | 예시 |
+|------|---------|------|
+| 파일 맨 위 설명 | 이 파일이 하는 일, 담당, 연결된 다른 파일 | `cim/graph.py`, `frontend/src/App.jsx` 머리말 |
+| `ponytail:` | 일부러 단순하게 만든 부분 + 언제 바꿀지 | `# ponytail: OpenDSS 엔진은 프로세스에 하나라 … 느려지면 요청별 프로세스로 분리` |
+| `구현 참고 (이름):` | 다른 담당자가 알아야 하거나 확인해 줘야 할 것 | `// 구현 참고 (한승우 확인 필요): …` |
+| `<파일>의 <함수>와 같은 규칙` | 다른 폴더와 값·규칙을 맞춘 곳 (바꾸면 같이 고칠 곳) | `// simulation/dss.py의 check_complete와 같은 규칙` |
 
 ### README 갱신 규칙
 
@@ -103,9 +121,11 @@ README, `requirements.txt`, `docker-compose.yml`, `.env.example` 같은 공용 �
 | 결과 그래프 (matplotlib) | `simulation/plot.py` | 동작 (전압 프로파일, 선로별 조류·역조류·과부하) |
 | AI 리포트 | `ai_report/report.py` | 틀만 있음 |
 | 화면 흐름 (선택 → 시뮬레이션 → 결과·리포트) | `frontend/src/App.jsx` | 동작 (리포트 API 구현 전에는 501 메시지 표시) |
-| 다크모드 단선도 표시 (Cytoscape.js) | `frontend/src/components/Diagram.jsx` | 기본 표시만 있음 |
-| 단선도 편집 UI, 결과 오버레이 | `frontend/src/components/Diagram.jsx` | 틀만 있음 (TODO) |
-| 결과·그래프·리포트 표시 | `frontend/src/components/ResultPanel.jsx` | 동작 |
+| 다크모드 단선도 표시 (Cytoscape.js) | `frontend/src/components/Diagram.jsx` | 동작 (설비 종류별 모양·색, 직각 선로, 붙임선 점선) |
+| 단선도 편집 UI | `Diagram.jsx`, `EditToolbar.jsx`, `PropertyPanel.jsx`, `lib/graphEdit.js` | 동작 (설비 추가, 연결, 격자·가이드라인 정렬, 속성 편집, 삭제, 되돌리기, 스냅샷 저장. 진짜 백엔드는 이미 있는 변전소만 저장하므로 "새 변전소"는 모의 서버에서만 저장됨) |
+| 결과 오버레이 | `Diagram.jsx`, `lib/overlay.js` | 동작 (전압 색, 부하율 굵기, 역조류·조류 방향 화살표, 정전 흐림, 고장전류 표시 전환, 차단기 옆 피더 송출 MW·MVAr) |
+| 결과·그래프·리포트 표시 | `frontend/src/components/ResultPanel.jsx` | 동작 (요약 카드, 문제 항목 목록, 범례) |
+| 프론트엔드 모의 백엔드 | `frontend/mock/mock_server.py` | 동작 (조회·저장·근사 시뮬레이션·그래프·예시 리포트. Neo4j·Docker 없이 화면 개발용, 진짜 백엔드와 다른 점은 파일 맨 위 설명) |
 
 틀만 있는 함수는 `NotImplementedError`를 내고, 해당 API는 501을 돌려줍니다. 없는 변전소는 `SubstationNotFound`로 404, 규칙에 맞지 않는 편집 스냅샷은 `InvalidSnapshot`으로 422를 돌려줍니다. 시뮬레이션이 계산할 수 없는 계통(미완성, 루프, 잘못된 값, 수렴 실패)은 `SimulationError`로 422와 이유를 돌려줍니다 (`backend/main.py`).
 
@@ -279,6 +299,9 @@ uvicorn backend.main:app --reload --port 8000 --env-file .env
 # 프론트엔드
 cd frontend
 npm run dev
+
+# (선택) Neo4j·Docker 없이 화면만 개발할 때: 위 백엔드 대신 모의 백엔드 실행
+python frontend/mock/mock_server.py
 ```
 
 http://localhost:5173 에 "서버 ok, Neo4j connected"가 보이면 정상입니다. 변전소 목록이 비어 있으면 `python -m cim.load`로 데이터를 먼저 적재합니다.
