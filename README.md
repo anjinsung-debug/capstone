@@ -51,9 +51,11 @@ capstone/
 │   │   ├── styles.css       다크모드 화면 스타일 (색은 맨 위 변수)
 │   │   ├── components/
 │   │   │   ├── Diagram.jsx      다크모드 단선도 뷰어·편집기 (Cytoscape.js), 결과 오버레이
-│   │   │   ├── EditToolbar.jsx  편집 도구 (선택·이동, 연결, 설비 7종 추가, 삭제)
+│   │   │   ├── EditToolbar.jsx  왼쪽 편집 메뉴 (로고 옆 메뉴 버튼으로 여닫음: 선택·이동, 노드 7종 추가, 선로 연결, 삭제)
+│   │   │   ├── Legend.jsx       단선도 범례 (Diagram.jsx 안에 표시)
+│   │   │   ├── NewSubstationDialog.jsx 새 변전소 이름 입력 창
 │   │   │   ├── PropertyPanel.jsx 선택한 설비·선로·변전소 속성 편집, 계산값, 시뮬레이션 전 빠진 항목
-│   │   │   └── ResultPanel.jsx  결과 요약·피더별 송출 전력(MW·MVAr)·범례, 결과 그래프, AI 리포트 표시
+│   │   │   └── ResultPanel.jsx  오른쪽 패널의 결과 탭: 요약(피더별 송출 전력·문제 지점·지점별 결과), 그래프, AI 리포트. 위치 버튼을 누르면 단선도가 그 위치로 이동
 │   │   ├── lib/
 │   │   │   ├── graphEdit.js     편집 로직 (노드·선로 추가·삭제, 피더·선로 방향 정리, 저장 스냅샷)
 │   │   │   └── overlay.js       시뮬레이션 결과 → 단선도 색·두께·화살표, 판정 기준
@@ -120,11 +122,11 @@ Claude Code가 코드를 읽고 맥락을 파악하거나 우리에게 되물을
 | 4대 시뮬레이션 (3단계) | `simulation/simulate.py` | 동작 (한전 CIM XML로 자체 점검 통과: 역조류 방향, 루프 검출, 정전 구간, 오류 처리 포함) |
 | 결과 그래프 (matplotlib) | `simulation/plot.py` | 동작 (전압 프로파일, 선로별 조류·역조류·과부하) |
 | AI 리포트 | `ai_report/report.py` | 틀만 있음 |
-| 화면 흐름 (선택 → 시뮬레이션 → 결과·리포트) | `frontend/src/App.jsx` | 동작 (리포트 API 구현 전에는 501 메시지 표시) |
+| 화면 흐름 (선택 → 시뮬레이션 → 결과·리포트) | `frontend/src/App.jsx` | 동작 (결과는 시뮬레이션 직후 오른쪽 패널에 바로 표시, 리포트 API 구현 전에는 501 메시지 표시) |
 | 다크모드 단선도 표시 (Cytoscape.js) | `frontend/src/components/Diagram.jsx` | 동작 (설비 종류별 모양·색, 직각 선로, 붙임선 점선) |
-| 단선도 편집 UI | `Diagram.jsx`, `EditToolbar.jsx`, `PropertyPanel.jsx`, `lib/graphEdit.js` | 동작 (설비 추가, 연결, 격자·가이드라인 정렬, 속성 편집, 삭제, 되돌리기, 스냅샷 저장. 진짜 백엔드는 이미 있는 변전소만 저장하므로 "새 변전소"는 모의 서버에서만 저장됨) |
+| 단선도 편집 UI | `Diagram.jsx`, `EditToolbar.jsx`, `PropertyPanel.jsx`, `lib/graphEdit.js` | 동작 (로고 옆 메뉴 버튼으로 편집 메뉴 열기, 설비 추가, 연결, 격자·가이드라인 정렬, 속성 편집, 삭제, 되돌리기, 편집할 때마다 자동 저장(스냅샷). 진짜 백엔드는 이미 있는 변전소만, 전원 노드가 1개일 때만 저장하므로 그 전에는 상단에 "저장 안 됨"으로 표시되고 "새 변전소"는 모의 서버에서만 저장됨) |
 | 결과 오버레이 | `Diagram.jsx`, `lib/overlay.js` | 동작 (전압 색, 부하율 굵기, 역조류·조류 방향 화살표, 정전 흐림, 고장전류 표시 전환, 차단기 옆 피더 송출 MW·MVAr) |
-| 결과·그래프·리포트 표시 | `frontend/src/components/ResultPanel.jsx` | 동작 (요약 카드, 문제 항목 목록, 범례) |
+| 결과·그래프·리포트 표시 | `frontend/src/components/ResultPanel.jsx` | 동작 (요약 카드, 문제 지점 버튼, 지점별 전압·고장전류 표, 그래프·리포트 탭. 범례는 단선도 안) |
 | 프론트엔드 모의 백엔드 | `frontend/mock/mock_server.py` | 동작 (조회·저장·근사 시뮬레이션·그래프·예시 리포트. Neo4j·Docker 없이 화면 개발용, 진짜 백엔드와 다른 점은 파일 맨 위 설명) |
 
 틀만 있는 함수는 `NotImplementedError`를 내고, 해당 API는 501을 돌려줍니다. 없는 변전소는 `SubstationNotFound`로 404, 규칙에 맞지 않는 편집 스냅샷은 `InvalidSnapshot`으로 422를 돌려줍니다. 시뮬레이션이 계산할 수 없는 계통(미완성, 루프, 잘못된 값, 수렴 실패)은 `SimulationError`로 422와 이유를 돌려줍니다 (`backend/main.py`).
@@ -185,8 +187,8 @@ frontend ──HTTP──▶ backend ────────┤ cim/graph.py (�
 
 ```
 변전소 선택 → GET /api/substations/{id} → 다크모드 단선도 표시 (Diagram.jsx)
-편집 (변전소·노드 추가·이동·삭제, 연결선 그리기) → 새 설비에 UUID 할당 → 편집 종료 시 PUT /api/substations/{id}
-시뮬레이션 버튼 → 결과 도착 → 결과 요약 표시 (ResultPanel.jsx), 단선도 오버레이 (Diagram.jsx)
+편집 (로고 옆 메뉴 버튼 → 노드 추가·이동·삭제, 선로 연결) → 새 설비에 UUID 할당 → 편집이 멈추면(약 0.8초) 자동으로 PUT /api/substations/{id}
+시뮬레이션 버튼 → 결과 도착 → 오른쪽 패널의 결과 탭에 요약 표시 (ResultPanel.jsx), 단선도 오버레이 (Diagram.jsx)
                            ├→ 자동으로 POST /api/plots   → 그래프 도착하면 표시
                            └→ 자동으로 POST /api/reports → 리포트 도착하면 표시
 ```
@@ -209,7 +211,7 @@ frontend ──HTTP──▶ backend ────────┤ cim/graph.py (�
 | 리포트 형식 | `ai_report/models.py` |
 | 백엔드 → 각 모듈 함수 | `cim/graph.py`, `simulation/simulate.py`, `simulation/plot.py`, `ai_report/report.py` |
 | 시뮬레이션 → OpenDSS 변환 | `simulation/simulate.py` → `simulation/dss.py`의 `to_dss_script`, `fault_study_script` |
-| 화면 → 화면 부품 | `frontend/src/App.jsx` → `components/Diagram.jsx`(단선도), `components/ResultPanel.jsx`(결과·그래프·리포트) |
+| 화면 → 화면 부품 | `frontend/src/App.jsx` → `components/Diagram.jsx`(단선도·범례), `components/ResultPanel.jsx`(결과·그래프·리포트) |
 
 ## 한전 데이터 → CIM 모델 정하기
 
