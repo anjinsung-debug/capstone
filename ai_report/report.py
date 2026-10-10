@@ -25,11 +25,15 @@ from simulation.models import OVERLOAD_PCT, VOLTAGE_MAX_PU, VOLTAGE_MIN_PU, Simu
 
 # ponytail: 모델은 회의록 "AI 리포트 구성"에서 아직 정하지 않았다. 확정되면 기본값을 바꾸거나 .env의 ANTHROPIC_MODEL로 지정한다
 DEFAULT_MODEL = "claude-sonnet-5-5"
+# ponytail: 출력 한도·대기 시간·재시도(2회)를 고정값으로 두었다. 리포트가 잘리거나 변전소가 커져 느려지면 이 값부터 올린다
 MAX_TOKENS = 2000
 TIMEOUT_SEC = 60.0
-MAX_ROWS = 120  # 프롬프트에 넣는 지점·선로 표의 최대 줄 수. 넘으면 문제가 큰 순으로 자른다
+# ponytail: 표가 길면 앞 120줄만 넣고 나머지는 "생략"으로 알린다 (정렬이 문제 큰 순이라 중요한 줄은 남는다).
+#   변전소가 커져 정상 지점이 필요하거나 입력 토큰이 부담되면 요약 통계로 바꾼다
+MAX_ROWS = 120  # 프롬프트에 넣는 지점·선로 표의 최대 줄 수
 TOOL_NAME = "submit_report"
 
+# ponytail: 등급은 3단계 고정이고 LLM이 아니라 코드가 정한다 (같은 결과면 항상 같은 등급). 세분화하거나 점수제로 바꿀 때는 check_findings의 규칙과 README를 같이 고친다
 GRADES = ("양호", "주의", "개선 필요")
 
 
@@ -77,6 +81,7 @@ def check_findings(graph: SubstationGraph, result: SimulationResult) -> dict:
     low.sort(key=lambda x: x[1])
     high.sort(key=lambda x: -x[1])
     overload.sort(key=lambda x: -x[1])
+    # ponytail: 항목 개수와 상관없이 하나라도 있으면 같은 등급이다. 심각도 가중치가 필요해지면 그때 점수 계산을 넣는다
     # 등급: 전압·부하율 기준을 넘는 항목이 있으면 개선 필요, 역조류·정전만 있으면 주의, 없으면 양호
     if low or high or overload:
         grade = GRADES[2]
@@ -102,6 +107,7 @@ def _assumptions(graph: SubstationGraph) -> list[str]:
 
 
 def _limit(rows: list[str], total: int, what: str) -> list[str]:
+    # ponytail: 단순 자르기. 호출하는 쪽이 이미 문제 큰 순으로 정렬해 두었다는 전제다
     if len(rows) <= MAX_ROWS:
         return rows
     return rows[:MAX_ROWS] + [f"(... {what} {total - MAX_ROWS}개는 문제가 작아 생략)"]
@@ -197,10 +203,12 @@ def _make_client():
         import anthropic
     except ImportError as e:
         raise ReportError("anthropic 라이브러리가 설치되지 않았습니다 (pip install -r requirements.txt)") from e
+    # ponytail: 호출마다 클라이언트를 새로 만든다 (리포트는 시뮬레이션 뒤 한 번만 부르므로). 요청이 잦아지면 하나를 재사용한다
     return anthropic.Anthropic(timeout=TIMEOUT_SEC, max_retries=2)
 
 
 def _parse(response, substation_id: str) -> Report:
+    # ponytail: 형식 검사는 직접 쓴 최소 검사다. 필드가 늘면 Report(pydantic)로 바로 검증하게 바꾼다
     """tool use 응답에서 리포트를 꺼낸다. 형식이 맞지 않으면 ReportError"""
     if getattr(response, "stop_reason", None) == "max_tokens":
         raise ReportError("AI 응답이 길어서 중간에 잘렸습니다. 다시 시도해 주세요")
@@ -237,6 +245,7 @@ def generate_report(graph: SubstationGraph, result: SimulationResult, client=Non
         )
     except ReportError:
         raise
+    # ponytail: 자동 재시도 없이 오류를 그대로 사용자에게 알린다 (SDK가 네트워크 오류는 2회 재시도함). 실패가 잦으면 오류 종류별로 나눈다
     except Exception as e:  # 네트워크·인증·한도 등 API 오류는 종류와 상관없이 같은 방식으로 알린다
         raise ReportError(f"AI 호출에 실패했습니다 ({type(e).__name__}: {e})") from e
     return _parse(response, result.substation_id)
