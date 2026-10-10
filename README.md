@@ -22,7 +22,7 @@ capstone/
 │   ├── opendss_simulation_data.md  시뮬레이션별 입력·가정·설정·결과 대응표
 │   └── electrical_glossary.md     전기·전자 용어표
 ├── backend/
-│   ├── main.py              앱 생성, 시작·종료 시 Neo4j 연결·해제, 오류 → HTTP 상태 (미구현 501, 없는 변전소 404, 잘못된 스냅샷·시뮬레이션 불가 422)
+│   ├── main.py              앱 생성, 시작·종료 시 Neo4j 연결·해제, 오류 → HTTP 상태 (미구현 501, 없는 변전소 404, 잘못된 스냅샷·시뮬레이션 불가 422, 리포트 생성 실패 503)
 │   └── api/
 │       ├── health.py        GET /api/health: 서버·Neo4j 상태
 │       ├── grid.py          변전소 계통 조회·스냅샷 저장 API → cim/graph.py
@@ -43,7 +43,7 @@ capstone/
 │   └── plot.py              결과 그래프 함수 (matplotlib → PNG)
 ├── ai_report/
 │   ├── models.py            리포트 형식 (진단, 원인, 솔루션)
-│   └── report.py            리포트 생성 함수
+│   └── report.py            리포트 생성: 판정 기준으로 문제 항목 계산 → 프롬프트 구성 → Claude 호출(tool use) → Report (자체 점검: python -m ai_report.report)
 ├── frontend/
 │   ├── src/
 │   │   ├── main.jsx         React 시작점
@@ -121,15 +121,15 @@ Claude Code가 코드를 읽고 맥락을 파악하거나 우리에게 되물을
 | OpenDSS 스크립트 변환 (2단계) | `simulation/dss.py` | 동작 |
 | 4대 시뮬레이션 (3단계) | `simulation/simulate.py` | 동작 (한전 CIM XML로 자체 점검 통과: 역조류 방향, 루프 검출, 정전 구간, 오류 처리 포함) |
 | 결과 그래프 (matplotlib) | `simulation/plot.py` | 동작 (전압 프로파일, 선로별 조류·역조류·과부하) |
-| AI 리포트 | `ai_report/report.py` | 틀만 있음 |
-| 화면 흐름 (선택 → 시뮬레이션 → 결과·리포트) | `frontend/src/App.jsx` | 동작 (결과는 시뮬레이션 직후 오른쪽 패널에 바로 표시, 리포트 API 구현 전에는 501 메시지 표시) |
+| AI 리포트 | `ai_report/report.py` | 동작 (프로토타입. 확정된 점검 결과를 코드가 계산해 LLM에 넘기고, 실패하면 503과 이유. 실제 API 호출은 `ANTHROPIC_API_KEY`가 있는 환경에서 `python -m ai_report.report --call`로 확인) |
+| 화면 흐름 (선택 → 시뮬레이션 → 결과·리포트) | `frontend/src/App.jsx` | 동작 (결과는 시뮬레이션 직후 오른쪽 패널에 바로 표시, 리포트 생성에 실패하면 이유를 "AI 리포트 실패" 메시지로 표시) |
 | 다크모드 단선도 표시 (Cytoscape.js) | `frontend/src/components/Diagram.jsx` | 동작 (설비 종류별 모양·색, 직각 선로, 붙임선 점선) |
 | 단선도 편집 UI | `Diagram.jsx`, `EditToolbar.jsx`, `PropertyPanel.jsx`, `lib/graphEdit.js` | 동작 (로고 옆 메뉴 버튼으로 편집 메뉴 열기, 설비 추가, 연결, 격자·가이드라인 정렬, 속성 편집, 삭제, 되돌리기, 편집할 때마다 자동 저장(스냅샷). 진짜 백엔드는 이미 있는 변전소만, 전원 노드가 1개일 때만 저장하므로 그 전에는 상단에 "저장 안 됨"으로 표시되고 "새 변전소"는 모의 서버에서만 저장됨) |
 | 결과 오버레이 | `Diagram.jsx`, `lib/overlay.js` | 동작 (전압 색, 부하율 굵기, 역조류·조류 방향 화살표, 정전 흐림, 고장전류 표시 전환, 차단기 옆 피더 송출 MW·MVAr) |
 | 결과·그래프·리포트 표시 | `frontend/src/components/ResultPanel.jsx` | 동작 (요약 카드, 문제 지점 버튼, 지점별 전압·고장전류 표, 그래프·리포트 탭. 범례는 단선도 안) |
 | 프론트엔드 모의 백엔드 | `frontend/mock/mock_server.py` | 동작 (조회·저장·근사 시뮬레이션·그래프·예시 리포트. Neo4j·Docker 없이 화면 개발용, 진짜 백엔드와 다른 점은 파일 맨 위 설명) |
 
-틀만 있는 함수는 `NotImplementedError`를 내고, 해당 API는 501을 돌려줍니다. 없는 변전소는 `SubstationNotFound`로 404, 규칙에 맞지 않는 편집 스냅샷은 `InvalidSnapshot`으로 422를 돌려줍니다. 시뮬레이션이 계산할 수 없는 계통(미완성, 루프, 잘못된 값, 수렴 실패)은 `SimulationError`로 422와 이유를 돌려줍니다 (`backend/main.py`).
+틀만 있는 함수는 `NotImplementedError`를 내고, 해당 API는 501을 돌려줍니다. 없는 변전소는 `SubstationNotFound`로 404, 규칙에 맞지 않는 편집 스냅샷은 `InvalidSnapshot`으로 422를 돌려줍니다. 시뮬레이션이 계산할 수 없는 계통(미완성, 루프, 잘못된 값, 수렴 실패)은 `SimulationError`로 422와 이유를 돌려줍니다. 리포트를 만들 수 없을 때(API 키 없음, AI 호출 실패, 응답 형식 오류)는 `ReportError`로 503과 이유를 돌려줍니다 (`backend/main.py`).
 
 ## 작동 방식
 
@@ -180,6 +180,11 @@ frontend ──HTTP──▶ backend ────────┤ cim/graph.py (�
    - **결과 그래프**: 프론트엔드가 받은 결과를 `POST /api/plots`로 보냄 → 백엔드가 계통 정보와 함께 `simulation/plot.py`에 넘김 → matplotlib으로 그린 PNG를 받아 화면에 표시
      - 위: 변전소로부터 거리별 전압 프로파일 (정상 범위 밖은 빨간 점, 정전 구간은 그리지 않음) / 아래: 선로별 유효전력 조류 (역조류 주황, 과부하 빨강, 부하율 %)
 4. **AI 리포트** (FR-08, 09): 프론트엔드가 받은 시뮬레이션 결과를 `POST /api/reports`로 보냄 → 백엔드가 `cim/graph.py`로 같은 계통 정보를 읽어 결과와 함께 `ai_report/report.py`에 넘김 → 진단·원인·솔루션 리포트 생성
+   - **확정된 사실은 코드가 계산** (`check_findings`): 저전압·과전압·과부하·역조류·정전 항목과 건강도 등급(양호·주의·개선 필요)을 `simulation/models.py`의 판정 기준으로 먼저 정해 프롬프트에 "확정된 점검 결과"로 넣음. LLM은 이 사실을 쉬운 말로 풀어 설명만 하고 등급을 바꾸지 않음 (환각 대응, 제안서 10장)
+   - **프롬프트** (`build_prompt`): 확정된 점검 결과, 피더별 송출 전력, 부하·분산전원이 붙은 접속점, 지점별 전압·단락전류, 선로별 연결·부하율·조류. 표가 길면(120줄 초과) 문제가 큰 순으로 자름
+   - **형식 고정**: Claude tool use(`submit_report`)로 진단 1개, 원인 목록, 솔루션 목록을 받음. 형식이 어긋나면 `ReportError`
+   - **가정값 표시**: 허용전류·단락용량이 데이터에 없어 `simulation/dss.py`의 `DEFAULT_*`로 계산된 경우 그 사실을 프롬프트에 넣어 리포트에 "가정값 기준"이라고 밝히게 함
+   - 모델은 `.env`의 `ANTHROPIC_MODEL`, 없으면 `DEFAULT_MODEL`. 회의록의 "사용할 Claude 모델"이 정해지면 바꿈
 
 ### 편집 → 시뮬레이션 → 리포트
 
@@ -314,6 +319,7 @@ http://localhost:5173 에 "서버 ok, Neo4j connected"가 보이면 정상입니
 |------|---------|
 | `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` | Docker(Neo4j), 백엔드, `python -m cim.load` |
 | `ANTHROPIC_API_KEY` | AI 리포트 (`ai_report/report.py`). 백엔드만 읽으며, 프론트엔드 코드에는 넣지 않음 |
+| `ANTHROPIC_MODEL` | (선택) AI 리포트에 쓸 모델 이름. 비우면 `DEFAULT_MODEL` |
 
 ## Neo4j 연결
 
