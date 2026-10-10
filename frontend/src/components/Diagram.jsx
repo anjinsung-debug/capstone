@@ -9,6 +9,13 @@ import cytoscape from 'cytoscape'
 import { useEffect, useRef, useState } from 'react'
 import { NODE_TYPES, addNode, attachEdgeId, connect, snap, updateNode } from '../lib/graphEdit.js'
 import { COLORS, buildOverlay } from '../lib/overlay.js'
+import Legend from './Legend.jsx'
+
+const LABEL_MODES = [
+  ['voltage', '전압'],
+  ['fault', '고장전류'],
+  ['name', '이름만'],
+]
 
 const TYPE_STYLE = {
   source: { shape: 'round-rectangle', color: '#b388ff', size: 34 },
@@ -45,6 +52,8 @@ const STYLE = [
   // 오버레이: 전압 판정 색으로 테두리 (설비 종류 색은 유지해서 모양·색으로 종류를 구분)
   { selector: 'node.ov', style: { 'border-width': 3, 'border-color': 'data(ovColor)' } },
   { selector: 'node.ov-outage', style: { opacity: 0.45 } },
+  // 결과 패널의 위치 버튼으로 이동했을 때 잠깐 강조
+  { selector: '.flash', style: { 'overlay-color': '#ffffff', 'overlay-opacity': 0.35, 'overlay-padding': 10 } },
   { selector: 'node.pending', style: { 'border-width': 3, 'border-color': '#ffffff', 'border-style': 'dashed' } },
   { selector: 'node:selected', style: { 'border-width': 3, 'border-color': '#ffffff' } },
   // 피더 송출 전력 (차단기 옆 황색 글자)
@@ -124,7 +133,7 @@ function findAlign(cy, node, pos) {
   return { ax, ay }
 }
 
-export default function Diagram({ graph, result, editing, tool, labelMode, onChange, onSelect, onMessage }) {
+export default function Diagram({ graph, result, editing, tool, labelMode, focus, onLabelMode, onChange, onSelect, onMessage }) {
   const containerRef = useRef(null)
   const cyRef = useRef(null)
   const pendingRef = useRef(null) // 연결 모드에서 먼저 누른 노드 id
@@ -310,11 +319,39 @@ export default function Diagram({ graph, result, editing, tool, labelMode, onCha
     })
   }, [graph, result, labelMode])
 
+  // 결과 패널에서 위치 버튼을 누르면 그 설비·선로로 화면을 옮기고 잠깐 강조한다 (focus.nonce가 바뀔 때마다)
+  useEffect(() => {
+    const cy = cyRef.current
+    if (!cy || !focus) return undefined
+    const el = cy.getElementById(focus.id)
+    if (el.empty()) return undefined
+    cy.animate({ center: { eles: el }, zoom: Math.max(cy.zoom(), 1.2) }, { duration: 350 })
+    el.addClass('flash')
+    const t = setTimeout(() => el.removeClass('flash'), 1800)
+    return () => {
+      clearTimeout(t)
+      el.removeClass('flash')
+    }
+  }, [focus])
+
   const fit = () => cyRef.current.fit(undefined, 40)
 
   return (
     <div className="diagram">
       <div ref={containerRef} className="diagram-canvas" />
+      {/* 범례·표시 전환은 단선도 위에 겹쳐 둔다 */}
+      <div className="diagram-hud">
+        {result ? <Legend /> : <span className="muted">{editing ? '편집 중 · Delete 삭제 · Ctrl+Z 되돌리기 · Esc 선택 도구' : '시뮬레이션을 실행하면 결과가 단선도에 표시됩니다'}</span>}
+        {result && (
+          <div className="seg">
+            {LABEL_MODES.map(([k, label]) => (
+              <button key={k} type="button" className={labelMode === k ? 'on' : ''} onClick={() => onLabelMode(k)}>
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
       {guides.x !== null && <div className="guide guide-v" style={{ left: guides.x }} />}
       {guides.y !== null && <div className="guide guide-h" style={{ top: guides.y }} />}
       {!graph && <div className="diagram-empty">변전소를 선택하거나 새 변전소를 만드세요</div>}
