@@ -10,13 +10,19 @@ LLM 환각을 줄이는 방법 (제안서 10장 리스크 대응):
     3. 허용전류·단락용량이 데이터에 없어 가정값으로 계산된 경우, 그 사실을 프롬프트에 넣어 리포트에 밝히게 한다
     4. 출력은 tool use의 JSON 형식(진단 1개, 원인 목록, 솔루션 목록)으로 고정한다
 
-환경 변수 (.env): ANTHROPIC_API_KEY (필수), ANTHROPIC_MODEL (선택, 기본 DEFAULT_MODEL)
+환경 변수 (.env):
+    AI_PROVIDER      anthropic(기본) 또는 gemini
+    anthropic일 때   ANTHROPIC_API_KEY (필수), ANTHROPIC_MODEL (선택, 기본 DEFAULT_MODEL)
+    gemini일 때      GEMINI_API_KEY (필수), GEMINI_MODEL (선택, 기본 GEMINI_DEFAULT_MODEL)
 
 자체 점검 (API 호출 없이 프롬프트만 확인): python -m ai_report.report
                    (실제로 호출까지: python -m ai_report.report --call)
 """
 
+import json
 import os
+import urllib.error
+import urllib.request
 
 from ai_report.models import Report
 from cim.models import BASE_KV, SubstationGraph
@@ -32,6 +38,10 @@ TIMEOUT_SEC = 60.0
 #   변전소가 커져 정상 지점이 필요하거나 입력 토큰이 부담되면 요약 통계로 바꾼다
 MAX_ROWS = 120  # 프롬프트에 넣는 지점·선로 표의 최대 줄 수
 TOOL_NAME = "submit_report"
+# ponytail: Gemini는 SDK 없이 REST로 부른다 (설치할 패키지를 늘리지 않으려고). 모델 이름은 Google AI Studio의 모델 목록에서 확인해 GEMINI_MODEL로 바꾼다.
+#   Gemini를 계속 쓰기로 정해지면 공식 SDK(google-genai)로 바꾸고 requirements.txt에 추가한다
+GEMINI_DEFAULT_MODEL = "gemini-2.5-flash"
+GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 # ponytail: 등급은 3단계 고정이고 LLM이 아니라 코드가 정한다 (같은 결과면 항상 같은 등급). 세분화하거나 점수제로 바꿀 때는 check_findings의 규칙과 README를 같이 고친다
 GRADES = ("양호", "주의", "개선 필요")
@@ -207,22 +217,86 @@ def _make_client():
     return anthropic.Anthropic(timeout=TIMEOUT_SEC, max_retries=2)
 
 
-def _parse(response, substation_id: str) -> Report:
+def _build_report(data, substation_id: str) -> Report:
+    """모델이 돌려준 {diagnosis, causes, solutions}를 검사해 Report로 만든다. 형식이 맞지 않으면 ReportError (Claude·Gemini 공통)"""
+    if not isinstance(data, dict):
+        raise ReportError("AI 응답 형식이 올바르지 않습니다. 다시 시도해 주세요")
+    diagnosis = data.get("diagnosis")
+    causes = data.get("causes")
+    solutions = data.get("solutions")
     # ponytail: 형식 검사는 직접 쓴 최소 검사다. 필드가 늘면 Report(pydantic)로 바로 검증하게 바꾼다
-    """tool use 응답에서 리포트를 꺼낸다. 형식이 맞지 않으면 ReportError"""
+    ok = isinstance(diagnosis, str) and diagnosis.strip() and isinstance(causes, list) and isinstance(solutions, list)
+    if not ok or not all(isinstance(x, str) for x in causes + solutions):
+        raise ReportError("AI 응답 형식이 올바르지 않습니다. 다시 시도해 주세요")
+    return Report(substation_id=substation_id, diagnosis=diagnosis.strip(), causes=[c.strip() for c in causes if c.strip()], solutions=[x.strip() for x in solutions if x.strip()])
+
+
+def _parse(response, substation_id: str) -> Report:
+    """Claude tool use 응답에서 리포트를 꺼낸다. 형식이 맞지 않으면 ReportError"""
     if getattr(response, "stop_reason", None) == "max_tokens":
         raise ReportError("AI 응답이 길어서 중간에 잘렸습니다. 다시 시도해 주세요")
     for block in response.content:
         if getattr(block, "type", None) == "tool_use" and block.name == TOOL_NAME:
-            data = block.input
-            diagnosis = data.get("diagnosis")
-            causes = data.get("causes")
-            solutions = data.get("solutions")
-            ok = isinstance(diagnosis, str) and diagnosis.strip() and isinstance(causes, list) and isinstance(solutions, list)
-            if not ok or not all(isinstance(x, str) for x in causes + solutions):
-                raise ReportError("AI 응답 형식이 올바르지 않습니다. 다시 시도해 주세요")
-            return Report(substation_id=substation_id, diagnosis=diagnosis.strip(), causes=[c.strip() for c in causes if c.strip()], solutions=[s.strip() for s in solutions if s.strip()])
+            return _build_report(block.input, substation_id)
     raise ReportError("AI가 리포트를 돌려주지 않았습니다. 다시 시도해 주세요")
+
+
+def _gemini_schema(node):
+    """REPORT_TOOL의 JSON 스키마를 Gemini 형식(type 이름이 대문자, description 유지)으로 바꾼다"""
+    out = {"type": node["type"].upper()}
+    if "description" in node:
+        out["description"] = node["description"]
+    if "properties" in node:
+        out["properties"] = {k: _gemini_schema(v) for k, v in node["properties"].items()}
+    if "items" in node:
+        out["items"] = _gemini_schema(node["items"])
+    if "required" in node:
+        out["required"] = node["required"]
+    return out
+
+
+def _call_gemini(prompt: str, post=None) -> dict:
+    """Gemini REST 호출 (JSON 형식 고정). post: 테스트용 (url, headers, body 바이트) → 응답 dict. 없으면 실제로 호출한다"""
+    key = os.environ.get("GEMINI_API_KEY")
+    if not key:
+        raise ReportError("GEMINI_API_KEY가 설정되지 않았습니다 (.env 확인 후 백엔드를 다시 시작하세요)")
+    model = os.environ.get("GEMINI_MODEL") or GEMINI_DEFAULT_MODEL
+    body = json.dumps(
+        {
+            "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "maxOutputTokens": MAX_TOKENS,
+                "responseMimeType": "application/json",
+                "responseSchema": _gemini_schema(REPORT_TOOL["input_schema"]),
+            },
+        }
+    ).encode("utf-8")
+    headers = {"Content-Type": "application/json", "x-goog-api-key": key}
+    url = GEMINI_URL.format(model=model)
+
+    def real_post(url, headers, body):
+        req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=TIMEOUT_SEC) as res:
+            return json.loads(res.read().decode("utf-8"))
+
+    try:
+        data = (post or real_post)(url, headers, body)
+    except urllib.error.HTTPError as e:
+        # 키가 틀렸거나(400/403) 무료 한도를 넘었을 때(429)의 이유를 그대로 보여 준다. 키 값은 메시지에 넣지 않는다
+        detail = e.read().decode("utf-8", "replace")[:300]
+        raise ReportError(f"AI 호출에 실패했습니다 (Gemini HTTP {e.code}: {detail})") from e
+    except Exception as e:
+        raise ReportError(f"AI 호출에 실패했습니다 ({type(e).__name__}: {e})") from e
+    try:
+        cand = data["candidates"][0]
+        if cand.get("finishReason") == "MAX_TOKENS":
+            raise ReportError("AI 응답이 길어서 중간에 잘렸습니다. 다시 시도해 주세요")
+        return json.loads(cand["content"]["parts"][0]["text"])
+    except ReportError:
+        raise
+    except (KeyError, IndexError, TypeError, ValueError) as e:
+        raise ReportError("AI 응답 형식이 올바르지 않습니다. 다시 시도해 주세요") from e
 
 
 def generate_report(graph: SubstationGraph, result: SimulationResult, client=None) -> Report:
@@ -233,6 +307,8 @@ def generate_report(graph: SubstationGraph, result: SimulationResult, client=Non
     if not result.converged:
         raise ReportError("계산이 수렴하지 않은 결과로는 리포트를 만들 수 없습니다")
     prompt = build_prompt(graph, result)
+    if os.environ.get("AI_PROVIDER", "anthropic").strip().lower() == "gemini":
+        return _build_report(_call_gemini(prompt), result.substation_id)
     client = client or _make_client()
     try:
         response = client.messages.create(

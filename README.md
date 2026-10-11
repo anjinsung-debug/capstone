@@ -320,6 +320,8 @@ http://localhost:5173 에 "서버 ok, Neo4j connected"가 보이면 정상입니
 | `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` | Docker(Neo4j), 백엔드, `python -m cim.load` |
 | `ANTHROPIC_API_KEY` | AI 리포트 (`ai_report/report.py`). 백엔드만 읽으며, 프론트엔드 코드에는 넣지 않음 |
 | `ANTHROPIC_MODEL` | (선택) AI 리포트에 쓸 모델 이름. 비우면 `DEFAULT_MODEL` |
+| `AI_PROVIDER` | (선택) AI 리포트에 쓸 서비스. `anthropic`(기본) 또는 `gemini`. Gemini는 시험용 무료 키를 쓰려는 용도이며 팀 합의 전까지 기본값은 Claude |
+| `GEMINI_API_KEY`, `GEMINI_MODEL` | (선택) `AI_PROVIDER=gemini`일 때만 사용. 모델을 비우면 `GEMINI_DEFAULT_MODEL` |
 
 ## Neo4j 연결
 
