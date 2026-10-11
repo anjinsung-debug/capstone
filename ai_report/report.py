@@ -15,7 +15,7 @@ LLM 환각을 줄이는 방법 (제안서 10장 리스크 대응):
     anthropic일 때   ANTHROPIC_API_KEY (필수), ANTHROPIC_MODEL (선택, 기본 DEFAULT_MODEL)
     gemini일 때      GEMINI_API_KEY (필수), GEMINI_MODEL (선택, 기본 GEMINI_DEFAULT_MODEL)
 
-자체 점검 (API 호출 없이 프롬프트만 확인): python -m ai_report.report
+자체 점검 (API 호출 없이 프롬프트만 확인): python -m ai_report.report  (저장소 루트의 .env를 자동으로 읽음)
                    (실제로 호출까지: python -m ai_report.report --call)
 """
 
@@ -386,8 +386,29 @@ def _sample() -> tuple[SubstationGraph, SimulationResult]:
     return graph, result
 
 
+def _load_dotenv(path) -> None:
+    """저장소 루트의 .env를 읽어 환경 변수로 넣는다 (이미 설정된 값은 덮어쓰지 않는다).
+    ponytail: 자체 점검(python -m ai_report.report)에서만 쓴다. 백엔드는 uvicorn --env-file .env로 읽는다.
+    따옴표·export 같은 복잡한 형식은 처리하지 않으니, 필요해지면 python-dotenv를 requirements.txt에 추가한다"""
+    try:
+        text = open(path, encoding="utf-8").read()
+    except OSError:
+        return
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key, value = key.strip(), value.strip()
+        if key and value and key not in os.environ:
+            os.environ[key] = value
+
+
 if __name__ == "__main__":
     import sys
+    from pathlib import Path
+
+    _load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
     g, r = _sample()
     print(build_prompt(g, r))
