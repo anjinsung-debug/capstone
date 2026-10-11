@@ -180,6 +180,7 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
+        return True  # 응답을 보냈다는 표시 (None이면 do_GET이 정적 파일로 한 번 더 응답해 WinError 10053이 났음)
 
     def _body(self):
         n = int(self.headers.get("Content-Length") or 0)

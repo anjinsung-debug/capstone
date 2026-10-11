@@ -11,6 +11,7 @@
   --danger: #ff5d5d;
   --warn: #ffb020;
   --feeder: #ffd84d;
+  --work-h: max(460px, calc(100vh - 92px)); /* 단선도·메뉴·속성 패널 높이: 화면 아래까지 */
   color-scheme: dark;
 }
 
@@ -94,15 +95,45 @@ button.toggle.on {
   margin: 0;
   font-size: 16px;
 }
-.logo {
-  font-size: 22px;
-  color: var(--feeder);
+/* 로고 자리의 메뉴 버튼 (☰): 왼쪽 편집 메뉴를 연다 */
+.menu-btn {
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
 }
-.health {
-  color: var(--accent);
+.menu-btn span {
+  display: block;
+  width: 18px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--text);
+  transition: transform 0.15s, opacity 0.15s;
 }
-.health.bad {
-  color: var(--danger);
+.menu-btn.on {
+  border-color: var(--accent);
+  background: #1d3a2e;
+}
+.menu-btn.on span:nth-child(1) {
+  transform: translateY(6px) rotate(45deg);
+}
+.menu-btn.on span:nth-child(2) {
+  opacity: 0;
+}
+.menu-btn.on span:nth-child(3) {
+  transform: translateY(-6px) rotate(-45deg);
+}
+.icon-btn {
+  padding: 4px 9px;
+  line-height: 1.2;
+}
+button.mini {
+  padding: 3px 10px;
+  font-size: 12px;
 }
 .actions {
   display: flex;
@@ -146,36 +177,147 @@ button.toggle.on {
   border: 0;
 }
 
-/* 작업 영역: [도구] 단선도 [속성] */
+.sub-picker {
+  display: flex;
+  gap: 4px;
+}
+/* 자동 저장 상태 표시 */
+.save-state {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 104px;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: default;
+}
+.save-state i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.save-state.saved i {
+  background: var(--accent);
+}
+.save-state.pending i,
+.save-state.saving i {
+  background: var(--warn);
+  animation: blink 0.9s infinite;
+}
+.save-state.error {
+  color: #ffb3b3;
+  border-color: #5a2a2e;
+  cursor: pointer;
+}
+.save-state.error i {
+  background: var(--danger);
+}
+@keyframes blink {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* 작업 영역: [편집 메뉴] 단선도 [속성]. 메뉴는 닫혀 있으면 폭 0 */
 .workspace {
   display: grid;
-  grid-template-columns: 1fr 280px;
-  gap: 12px;
+  grid-template-columns: 0 1fr 280px;
+  gap: 0 12px;
   padding: 12px;
+  transition: grid-template-columns 0.18s ease;
 }
-.workspace.editing {
-  grid-template-columns: 150px 1fr 280px;
+.workspace.nav-open {
+  grid-template-columns: 210px 1fr 280px;
 }
-.center {
+
+/* 왼쪽 편집 메뉴 */
+.nav {
+  overflow: hidden;
+  visibility: hidden;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  min-width: 0;
+  gap: 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  height: var(--work-h);
+  overflow-y: auto;
+  margin-left: -12px; /* 닫혔을 때 grid gap만큼 당김 */
+  opacity: 0;
+  transition: opacity 0.15s;
 }
-.diagram-bar {
+.nav.open {
+  visibility: visible;
+  margin-left: 0;
+  opacity: 1;
+}
+.nav-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  min-height: 32px;
-  flex-wrap: wrap;
+}
+.nav-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.nav-title {
+  color: var(--muted);
+  font-size: 11px;
+  margin-bottom: 2px;
+}
+.nav .tool {
+  white-space: nowrap;
+}
+.nav-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+.nav-note,
+.nav-foot {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.nav-foot {
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+.tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+.tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 4px 6px;
   font-size: 12px;
+  cursor: grab;
+}
+.tile:active {
+  cursor: grabbing;
+}
+.tile.active {
+  border-color: var(--accent);
+  background: #1d3a2e;
+}
+.tile-icon {
+  font-size: 18px;
+  line-height: 1;
 }
 
 .diagram {
   position: relative;
-  height: 62vh;
-  min-height: 420px;
+  height: var(--work-h);
+  min-width: 0;
   background: #0e1519;
   background-image: radial-gradient(#1c272e 1px, transparent 1px);
   background-size: 20px 20px;
@@ -218,24 +360,77 @@ button.toggle.on {
   right: 10px;
   bottom: 10px;
   padding: 4px 9px;
+  z-index: 2;
+}
+.diagram.editing {
+  border-color: #2c5a45;
 }
 
-/* 편집 도구 */
-.toolbar {
+/* 단선도 위에 겹쳐 띄우는 것: 위쪽 요약 줄·표시 전환, 왼쪽 아래 범례 */
+.ov-top {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
   display: flex;
-  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 8px;
+  pointer-events: none; /* 빈 곳 클릭은 단선도로 */
+  z-index: 2;
 }
-.toolbar-group {
+.ov-top > * {
+  pointer-events: auto;
+}
+.ov-bottom {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  right: 56px;
+  pointer-events: none;
+  z-index: 2;
+}
+.ov-bottom > * {
+  pointer-events: auto;
+}
+.strip {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.toolbar-title {
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  padding: 6px 8px 6px 12px;
+  background: rgba(18, 26, 31, 0.92);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 12px;
   color: var(--muted);
-  font-size: 11px;
-  margin-top: 4px;
+  backdrop-filter: blur(4px);
 }
+.strip .kv b {
+  color: var(--text);
+  font-size: 14px;
+  margin: 0 2px;
+}
+.strip .kv b.feeder {
+  color: var(--feeder);
+}
+.strip .kv.bad {
+  color: var(--warn);
+  font-weight: 700;
+}
+.strip .kv.good {
+  color: var(--accent);
+}
+.strip-note.warn {
+  color: var(--warn);
+}
+.ov-top .seg {
+  flex-shrink: 0;
+  background: rgba(18, 26, 31, 0.92);
+  border-radius: 6px;
+}
+
+/* 편집 메뉴 버튼 */
 .tool {
   display: flex;
   align-items: center;
@@ -269,8 +464,7 @@ button.toggle.on {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 12px;
-  align-self: start;
-  max-height: calc(62vh + 40px);
+  height: var(--work-h);
   overflow: auto;
 }
 .props h3 {
@@ -385,9 +579,30 @@ button.toggle.on {
 
 /* 범례·표시 전환 */
 .legend {
-  display: flex;
+  display: inline-flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 4px 12px;
+  padding: 6px 10px;
+  font-size: 11px;
+  background: rgba(18, 26, 31, 0.92);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.legend-width {
+  gap: 8px !important;
+  color: var(--muted);
+}
+.legend-width em {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-style: normal;
+}
+.legend .legend-width i {
+  width: 18px;
+  border-radius: 2px;
+  background: var(--muted);
 }
 .legend span {
   display: flex;
@@ -418,13 +633,399 @@ button.toggle.on {
   border-color: var(--accent);
 }
 
-/* 결과 */
-.results {
+/* 가운데 창 (새 변전소·이름 바꾸기·결과) */
+.modal-back {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(3, 6, 8, 0.6);
+  backdrop-filter: blur(2px);
+}
+.modal {
+  width: min(460px, 100%);
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+}
+.modal.wide {
+  width: min(1180px, 100%);
+  height: min(860px, calc(100vh - 48px));
+}
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px 12px 18px;
+  border-bottom: 1px solid var(--line);
+}
+.modal-head h2 {
+  margin: 0;
+  font-size: 16px;
+}
+.modal-actions {
+  display: flex;
+  gap: 6px;
+}
+.modal-body {
+  padding: 16px 18px 18px;
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+}
+.modal.wide .modal-body {
+  padding: 0;
+  display: flex;
+}
+.dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dialog-form .field-input input {
+  padding: 8px 10px;
+  font-size: 14px;
+}
+.choice-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.choice {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--text);
+  cursor: pointer;
+}
+.choice input {
+  position: absolute;
+  opacity: 0;
+}
+.choice small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.choice.on {
+  border-color: var(--accent);
+  background: #16302a;
+}
+.choice:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* 결과 창 내용 (가운데 창·새 창 공통) */
+.rview {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 8px 14px 0;
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+}
+.tabs button {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  padding: 8px 14px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.tabs button.on {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+  font-weight: 700;
+}
+.tabs small {
+  color: var(--accent);
+}
+.tab-body {
+  flex: 1;
+  overflow: auto;
+  padding: 16px 18px 24px;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 0 12px 24px;
 }
+.small {
+  font-size: 12px;
+  margin: 0;
+}
+h3.sub {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 500;
+}
+.filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.filters .field {
+  margin: 0;
+}
+.chips {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.chip {
+  padding: 1px 8px;
+  font-size: 11px;
+  border-radius: 999px;
+}
+.rtable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.rtable th {
+  position: sticky;
+  top: -16px;
+  background: var(--panel);
+  text-align: left;
+  font-weight: 500;
+  color: var(--muted);
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.rtable td {
+  padding: 4px 8px;
+  border-bottom: 1px solid #1a252b;
+}
+.rtable .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.rtable tr.bad td {
+  background: rgba(255, 176, 32, 0.06);
+}
+.rtable tr.hl td {
+  background: #1a2a31;
+}
+.state {
+  font-weight: 700;
+}
+.focus-btn {
+  padding: 0 7px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+img.plot {
+  max-width: 100%;
+  border-radius: 6px;
+  background: #fff;
+  align-self: flex-start;
+}
+
+/* 건강도·원인·솔루션 탭 */
+.lead {
+  margin: 0;
+  font-size: 13px;
+}
+.badge {
+  display: inline-block;
+  padding: 0 8px;
+  border: 1px solid;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+}
+.rtable.health td {
+  padding: 7px 8px;
+  font-size: 13px;
+}
+.rtable tr.warn td {
+  background: rgba(255, 176, 32, 0.07);
+}
+.rtable tr.danger td {
+  background: rgba(255, 93, 93, 0.09);
+}
+.strip .overall {
+  font-weight: 700;
+}
+.ai-box {
+  border: 1px solid #24435a;
+  background: #102029;
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+.ai-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  color: #8fd0ff;
+}
+.ai-box p,
+.ai-box ul,
+.ai-box ol {
+  margin: 0;
+}
+.cause-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cause {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid;
+  border-left-width: 4px;
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+.cause small {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+.cause-obs {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+}
+.cause .arrow {
+  color: var(--muted);
+  font-size: 18px;
+}
+.cause-q span {
+  font-size: 12px;
+}
+.flow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.flow span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.flow i {
+  font-style: normal;
+}
+
+/* 결과 기록 그래프 (작은 그래프 여러 개) */
+.history {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.hcharts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+}
+.hchart {
+  margin: 0;
+  padding: 8px 10px 4px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.hchart figcaption {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--muted);
+}
+.hchart figcaption b {
+  color: var(--text);
+}
+.hchart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.hgrid {
+  stroke: #24323a;
+  stroke-width: 1;
+}
+.hlimit {
+  stroke: #4da3ff;
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}
+.hcross {
+  stroke: #8a989f;
+  stroke-width: 1;
+}
+.hline {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+.hdot {
+  fill: var(--accent);
+  stroke: var(--panel-2);
+  stroke-width: 2;
+}
+.hdot.on {
+  fill: #fff;
+}
+.htick {
+  fill: var(--muted);
+  font-size: 9px;
+}
+
+/* 브라우저 새 창으로 연 결과 */
+body.popup {
+  height: 100vh;
+  overflow: hidden;
+}
+.popup-wrap {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+}
+.popup-title {
+  margin: 0;
+  padding: 12px 18px 4px;
+  font-size: 16px;
+}
+
 .cards {
   display: flex;
   flex-wrap: wrap;
@@ -480,27 +1081,6 @@ button.toggle.on {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.result-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-.panel {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 12px 16px;
-  min-width: 0;
-}
-.panel h3 {
-  margin: 0 0 8px;
-  font-size: 15px;
-}
-.panel img {
-  width: 100%;
-  border-radius: 6px;
-  background: #fff;
-}
 .report h4 {
   margin: 12px 0 4px;
   color: var(--accent);
@@ -512,13 +1092,21 @@ button.toggle.on {
 
 @media (max-width: 1000px) {
   .workspace,
-  .workspace.editing,
-  .result-grid {
+  .workspace.nav-open {
     grid-template-columns: 1fr;
+    gap: 12px;
   }
-  .toolbar,
-  .toolbar-group {
-    flex-direction: row;
-    flex-wrap: wrap;
+  .nav {
+    display: none;
+    height: auto;
+  }
+  .nav.open {
+    display: flex;
+  }
+  .diagram {
+    height: 70vh;
+  }
+  .choice-row {
+    grid-template-columns: 1fr;
   }
 }
