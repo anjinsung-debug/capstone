@@ -14,6 +14,7 @@ LLM 환각을 줄이는 방법 (제안서 10장 리스크 대응):
     AI_PROVIDER      anthropic(기본) 또는 gemini
     anthropic일 때   ANTHROPIC_API_KEY (필수), ANTHROPIC_MODEL (선택, 기본 DEFAULT_MODEL)
     gemini일 때      GEMINI_API_KEY (필수), GEMINI_MODEL (선택, 기본 GEMINI_DEFAULT_MODEL)
+    AI_TIMEOUT_SEC   (선택) AI 응답을 기다리는 최대 시간(초), 기본 TIMEOUT_SEC
 
 자체 점검 (API 호출 없이 프롬프트만 확인): python -m ai_report.report  (저장소 루트의 .env를 자동으로 읽음)
                    (실제로 호출까지: python -m ai_report.report --call)
@@ -34,7 +35,17 @@ from simulation.models import OVERLOAD_PCT, VOLTAGE_MAX_PU, VOLTAGE_MIN_PU, Simu
 DEFAULT_MODEL = "claude-sonnet-5-5"
 # ponytail: 출력 한도·대기 시간·재시도(2회)를 고정값으로 두었다. 리포트가 잘리거나 변전소가 커져 느려지면 이 값부터 올린다
 MAX_TOKENS = 2000
-TIMEOUT_SEC = 60.0
+TIMEOUT_SEC = 120.0  # AI 응답을 기다리는 최대 시간(초). .env의 AI_TIMEOUT_SEC로 바꿀 수 있다
+
+
+def _timeout() -> float:
+    """대기 시간. 진짜 계통은 입력이 커서 Gemini 응답이 60초를 넘길 수 있어 기본 120초로 늘렸다 (TimeoutError가 났음).
+    .env는 실행 중에 읽히는 경우가 있어 값을 쓰는 순간에 읽는다. 숫자가 아니거나 0 이하면 기본값."""
+    try:
+        value = float(os.environ.get("AI_TIMEOUT_SEC") or TIMEOUT_SEC)
+    except ValueError:
+        return TIMEOUT_SEC
+    return value if value > 0 else TIMEOUT_SEC
 # ponytail: 표가 길면 앞 120줄만 넣고 나머지는 "생략"으로 알린다 (정렬이 문제 큰 순이라 중요한 줄은 남는다).
 #   변전소가 커져 정상 지점이 필요하거나 입력 토큰이 부담되면 요약 통계로 바꾼다
 MAX_ROWS = 120  # 프롬프트에 넣는 지점·선로 표의 최대 줄 수
@@ -229,7 +240,7 @@ def _make_client():
     except ImportError as e:
         raise ReportError("anthropic 라이브러리가 설치되지 않았습니다 (pip install -r requirements.txt)") from e
     # ponytail: 호출마다 클라이언트를 새로 만든다 (리포트는 시뮬레이션 뒤 한 번만 부르므로). 요청이 잦아지면 하나를 재사용한다
-    return anthropic.Anthropic(timeout=TIMEOUT_SEC, max_retries=2)
+    return anthropic.Anthropic(timeout=_timeout(), max_retries=2)
 
 
 def _build_report(data, substation_id: str) -> Report:
@@ -292,7 +303,7 @@ def _call_gemini(prompt: str, post=None) -> dict:
 
     def real_post(url, headers, body):
         req = urllib.request.Request(url, data=body, headers=headers, method="POST")
-        with urllib.request.urlopen(req, timeout=TIMEOUT_SEC) as res:
+        with urllib.request.urlopen(req, timeout=_timeout()) as res:
             return json.loads(res.read().decode("utf-8"))
 
     try:
