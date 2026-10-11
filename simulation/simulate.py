@@ -82,6 +82,9 @@ def simulate(graph: SubstationGraph) -> SimulationResult:
                 p_kw=p,
                 q_kvar=q,
                 loading_pct=amps / rated_current(line) * 100,
+                # ponytail: 역조류는 방향만 본다 (크기 기준 없음, 1 kW도 역조류). 제안서에 수치가 없어 비워 두었다.
+                #   기준이 필요함: ① 아주 작은 값(계산 오차) 무시 ② 피더 송출 전력 < 0(변전소 뱅크 역송)은 위험으로 따로 판정.
+                #   한전 자문으로 기준이 정해지면 여기와 frontend/src/lib/overlay.js의 healthCheck, ai_report/report.py의 check_findings를 같이 고친다
                 reverse_flow=(p > 0) if line.id in reversed_ids else (p < 0),  # 실제 전원 쪽에서 멀어지는 방향이 정상
             ))
         loss_kw = dss.Circuit.Losses()[0] / 1000  # W → kW

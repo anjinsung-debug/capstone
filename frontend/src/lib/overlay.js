@@ -195,6 +195,8 @@ export function healthCheck(graph, result) {
   }
 
   // 3) 역조류: 거꾸로 흐르는 전력이 가장 큰 선로
+  // ponytail: 크기와 상관없이 역조류가 있으면 '주의'다 (제안서에 수치 없음). 기준이 필요함: 아주 작은 값 무시,
+  //   피더 송출 전력 < 0(변전소 뱅크 역송)은 '위험'. 정해지면 simulation/simulate.py의 reverse_flow, ai_report/report.py의 check_findings와 같은 규칙으로 고친다
   const rev = result.lines.filter((r) => r.reverse_flow && lineById[r.line_id])
   const rWorst = rev.reduce((a, r) => (!a || Math.abs(r.p_kw) > Math.abs(a.p_kw) ? r : a), null)
   const reverse = {

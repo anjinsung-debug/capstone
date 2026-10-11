@@ -111,6 +111,8 @@ def check_findings(graph: SubstationGraph, result: SimulationResult) -> dict:
     outage = [names.get(r.node_id, r.node_id) for r in result.nodes if not r.energized]
     overload = [(line_names.get(r.line_id, r.line_id), r.loading_pct) for r in result.lines if r.loading_pct is not None and r.loading_pct > OVERLOAD_PCT]
     watch = [(line_names.get(r.line_id, r.line_id), r.loading_pct) for r in result.lines if r.loading_pct is not None and LOADING_WATCH_PCT <= r.loading_pct <= OVERLOAD_PCT]
+    # ponytail: 역조류는 크기와 상관없이 '주의'다 (제안서에 수치 없음). 기준이 필요함: 아주 작은 값 무시,
+    #   피더 송출 전력 < 0(변전소 뱅크 역송)은 '위험'. 정해지면 simulation/simulate.py의 reverse_flow, frontend/src/lib/overlay.js의 healthCheck와 같은 규칙으로 고친다
     reverse = [(line_names.get(r.line_id, r.line_id), r.p_kw) for r in result.lines if r.reverse_flow]
     # 3상 단락용량(MVA) = √3 × 선간전압(kV) × 단락전류(kA). 정전 지점은 단락전류가 없으니 뺀다
     fault = [
