@@ -62,6 +62,8 @@ TOOL_NAME = "submit_report"
 #   Gemini를 계속 쓰기로 정해지면 공식 SDK(google-genai)로 바꾸고 requirements.txt에 추가한다
 GEMINI_DEFAULT_MODEL = "gemini-3.8-flash"
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+# Gemini는 생각(thinking) 토큰도 출력 한도에 들어간다. 2000으로는 생각 1500여 토큰 + 리포트 400여 토큰에서 잘렸다 (2026-10-11 실측)
+GEMINI_MAX_TOKENS = 8192
 
 # ponytail: 등급은 3단계 고정이고 LLM이 아니라 코드가 정한다 (같은 결과면 항상 같은 등급). 세분화하거나 점수제로 바꿀 때는 check_findings의 규칙과 README를 같이 고친다
 # 이름과 규칙은 화면 진단표(frontend/src/lib/overlay.js의 healthCheck, LEVELS)와 같다. 바꾸면 두 곳을 함께 고친다
@@ -302,7 +304,7 @@ def _call_gemini(prompt: str, post=None) -> dict:
             "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
             "contents": [{"role": "user", "parts": [{"text": prompt}]}],
             "generationConfig": {
-                "maxOutputTokens": MAX_TOKENS,
+                "maxOutputTokens": GEMINI_MAX_TOKENS,
                 "responseMimeType": "application/json",
                 "responseSchema": _gemini_schema(REPORT_TOOL["input_schema"]),
             },
