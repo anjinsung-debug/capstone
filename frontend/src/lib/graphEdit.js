@@ -37,6 +37,38 @@ export function emptyGraph(name) {
   }
 }
 
+// 새 변전소 기본 구성: 전원 → 모선(접속점) → 출구 차단기 → 접속점.
+// 진짜 백엔드는 전원이 정확히 1개여야 저장되므로(cim/graph.py), 빈 계통보다 이 구성으로 시작하면 바로 자동 저장된다
+export function starterGraph(name, substationPatch = {}) {
+  let g = emptyGraph(name)
+  g = updateSubstation(g, substationPatch)
+  const add = (type, x, y) => {
+    const r = addNode(g, type, x, y)
+    g = r.graph
+    return r.node
+  }
+  const src = add('source', 120, 80)
+  const mainBus = add('bus', 240, 80)
+  const brk = add('breaker', 240, 200)
+  const bus = add('bus', 240, 320)
+  g = updateNode(g, mainBus.id, { name: '모선' })
+  g = connect(g, src.id, mainBus.id).graph
+  g = connect(g, mainBus.id, brk.id).graph
+  g = connect(g, brk.id, bus.id).graph
+  return g
+}
+
+// 계산에 영향을 주는 값만 뽑은 문자열. 노드를 끌어 옮기기만 했을 때(x, y만 바뀜)는 다시 계산하지 않으려고 쓴다
+export function electricalKey(graph) {
+  const snap = toSnapshot(graph)
+  const { name: _name, ...substation } = snap.substation
+  return JSON.stringify({
+    substation,
+    nodes: snap.nodes.map(({ x, y, name, ...rest }) => rest),
+    lines: snap.lines.map(({ name, ...rest }) => rest),
+  })
+}
+
 function nextName(graph, type) {
   const short = NODE_TYPES[type].short
   const used = new Set(graph.nodes.map((n) => n.name))

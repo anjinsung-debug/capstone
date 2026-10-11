@@ -5,17 +5,14 @@
 // 데이터 흐름: 계통의 원본은 App의 graph 상태 하나뿐이다.
 //   화면 조작(노드 추가·이동·연결) → lib/graphEdit.js 함수로 새 계통을 만들어 onChange로 App에 올림
 //   → App이 graph를 바꾸면 아래 동기화 effect가 Cytoscape 요소를 추가·수정·삭제한다 (단선도를 새로 그리지 않음)
+// 편집 메뉴(NavDrawer)의 노드 칸을 끌어다 놓으면 onDrop에서 그 위치에 노드를 추가한다.
+// 결과 창의 ⌖ 버튼은 focus prop({ id, n })으로 와서 그 요소로 화면을 옮기고 선택한다.
+// children: 단선도 위에 겹쳐 띄울 것(결과 요약 줄, 범례, 표시 전환 버튼)
 import cytoscape from 'cytoscape'
 import { useEffect, useRef, useState } from 'react'
 import { NODE_TYPES, addNode, attachEdgeId, connect, snap, updateNode } from '../lib/graphEdit.js'
-import { COLORS, buildOverlay } from '../lib/overlay.js'
-import Legend from './Legend.jsx'
-
-const LABEL_MODES = [
-  ['voltage', '전압'],
-  ['fault', '고장전류'],
-  ['name', '이름만'],
-]
+import { DRAG_TYPE } from './NavDrawer.jsx'
+import { buildOverlay } from '../lib/overlay.js'
 
 const TYPE_STYLE = {
   source: { shape: 'round-rectangle', color: '#b388ff', size: 34 },
@@ -49,26 +46,29 @@ const STYLE = [
   })),
   // 열린 개폐기: 속을 비운다
   { selector: 'node[type="switch"][?isOpen]', style: { 'background-opacity': 0.1, 'border-width': 2, 'border-color': '#7fd1ff' } },
-  // 오버레이: 전압 판정 색으로 테두리 (설비 종류 색은 유지해서 모양·색으로 종류를 구분)
+  // 오버레이 (lib/overlay.js의 buildOverlay): 모드별 판정 색으로 테두리. 접속점은 속까지 칠한다 (전압·단락용량 모드)
+  // 설비 종류 색은 유지해서 모양·색으로 종류를 구분
   { selector: 'node.ov', style: { 'border-width': 3, 'border-color': 'data(ovColor)' } },
+  { selector: 'node[ovFill]', style: { 'background-color': 'data(ovFill)' } },
   { selector: 'node.ov-outage', style: { opacity: 0.45 } },
-  // 결과 패널의 위치 버튼으로 이동했을 때 잠깐 강조
-  { selector: '.flash', style: { 'overlay-color': '#ffffff', 'overlay-opacity': 0.35, 'overlay-padding': 10 } },
   { selector: 'node.pending', style: { 'border-width': 3, 'border-color': '#ffffff', 'border-style': 'dashed' } },
   { selector: 'node:selected', style: { 'border-width': 3, 'border-color': '#ffffff' } },
-  // 피더 송출 전력 (차단기 옆 황색 글자)
+  // 결과 창에서 위치 버튼으로 찾아온 요소를 잠깐 강조
+  { selector: 'node.flash', style: { 'overlay-color': '#ffffff', 'overlay-opacity': 0.25, 'overlay-padding': 10 } },
+  { selector: 'edge.flash', style: { 'overlay-color': '#ffffff', 'overlay-opacity': 0.25, 'overlay-padding': 8 } },
+  // 피더 송출 전력 (차단기 옆 황색 글자)과 문제 위치 말풍선 (슬라이드 10 '계통 건강도 맵'의 "0.92 pu 전압저하" 상자)
   {
     selector: 'node.annot',
     style: {
       shape: 'round-rectangle',
-      'background-color': '#2a2410',
-      'background-opacity': 0.9,
-      'border-width': 1,
-      'border-color': COLORS.feeder,
-      width: 86,
+      'background-color': '#151c20',
+      'background-opacity': 0.94,
+      'border-width': 1.5,
+      'border-color': 'data(color)',
+      width: 96,
       height: 34,
       label: 'data(name)',
-      color: COLORS.feeder,
+      color: 'data(color)',
       'font-size': 11,
       'font-weight': 'bold',
       'text-valign': 'center',
@@ -96,6 +96,7 @@ const STYLE = [
   { selector: 'edge[kind="switch"]', style: { 'line-color': '#7a8890', width: 2 } },
   // 붙임선: 부하·PV·전원이 접속점에 붙은 관계 (선로가 아님, bus_id)
   { selector: 'edge.attach', style: { 'line-style': 'dashed', 'line-dash-pattern': [4, 3], width: 1, 'line-color': '#6b7a83', 'curve-style': 'straight' } },
+  { selector: 'node.annot.feeder', style: { 'background-color': '#2a2410', width: 86 } },
   { selector: 'edge.ov', style: { 'line-color': 'data(ovColor)', width: 'data(ovWidth)', 'arrow-scale': 0.9 } },
   { selector: 'edge.ov.fwd', style: { 'target-arrow-shape': 'triangle', 'target-arrow-color': 'data(ovColor)' } },
   { selector: 'edge.ov.bwd', style: { 'source-arrow-shape': 'triangle', 'source-arrow-color': 'data(ovColor)' } },
@@ -133,7 +134,7 @@ function findAlign(cy, node, pos) {
   return { ax, ay }
 }
 
-export default function Diagram({ graph, result, editing, tool, labelMode, focus, onLabelMode, onChange, onSelect, onMessage }) {
+export default function Diagram({ graph, result, editing, tool, mode, focus, onChange, onSelect, onMessage, children }) {
   const containerRef = useRef(null)
   const cyRef = useRef(null)
   const pendingRef = useRef(null) // 연결 모드에서 먼저 누른 노드 id
@@ -168,7 +169,7 @@ export default function Diagram({ graph, result, editing, tool, labelMode, focus
       if (evt.target !== cy || !p.editing) return
       if (NODE_TYPES[p.tool]) {
         const { graph: g, node } = addNode(p.graph, p.tool, evt.position.x, evt.position.y)
-        p.onChange(g)
+        p.onChange(g, `${NODE_TYPES[p.tool].short} 추가`)
         setTimeout(() => cy.$id(node.id).select(), 0)
       }
       if (pendingRef.current) {
@@ -195,7 +196,7 @@ export default function Diagram({ graph, result, editing, tool, labelMode, focus
       if (error) p.onMessage(error)
       else {
         p.onMessage('')
-        p.onChange(g)
+        p.onChange(g, '연결')
       }
     })
 
@@ -228,7 +229,7 @@ export default function Diagram({ graph, result, editing, tool, labelMode, focus
           g = updateNode(g, id, { x, y })
         }
         moved.clear()
-        p.onChange(g)
+        p.onChange(g, '위치 이동')
       })
     })
 
@@ -299,67 +300,81 @@ export default function Diagram({ graph, result, editing, tool, labelMode, focus
     const cy = cyRef.current
     cy.batch(() => {
       cy.$('.annot').remove()
-      cy.elements().removeClass('ov ov-outage fwd bwd').removeData('ovColor ovWidth ovSub')
+      cy.elements().removeClass('ov ov-outage fwd bwd').removeData('ovColor ovWidth ovSub ovFill')
       if (!graph || !result) return
-      const ov = buildOverlay(graph, result, labelMode)
+      const ov = buildOverlay(graph, result, mode)
       for (const [id, o] of Object.entries(ov.nodes)) {
         const n = cy.getElementById(id)
         if (n.empty()) continue
         n.addClass('ov').data({ ovColor: o.color, ovSub: o.sub })
-        if (o.state === 'outage') n.addClass('ov-outage')
+        if (o.fill) n.data('ovFill', o.fill)
+        if (o.dim) n.addClass('ov-outage')
       }
       for (const [id, o] of Object.entries(ov.lines)) {
         const e = cy.getElementById(id)
         if (e.empty()) continue
-        e.addClass(`ov ${o.forward ? 'fwd' : 'bwd'}`).data({ ovColor: o.color, ovWidth: o.width, ovSub: labelMode === 'name' ? '' : o.sub })
+        e.addClass(o.arrow ? `ov ${o.arrow}` : 'ov').data({ ovColor: o.color, ovWidth: o.width })
+        if (o.sub) e.data('ovSub', o.sub)
       }
-      for (const f of ov.feederLabels) {
-        cy.add({ group: 'nodes', classes: 'annot', data: { id: f.id, name: f.label }, position: { x: f.x, y: f.y }, selectable: false, grabbable: false })
+      for (const a of ov.labels) {
+        cy.add({ group: 'nodes', classes: `annot ${a.kind}`, data: { id: a.id, name: a.label, color: a.color }, position: { x: a.x, y: a.y }, selectable: false, grabbable: false })
       }
     })
-  }, [graph, result, labelMode])
+  }, [graph, result, mode])
 
-  // 결과 패널에서 위치 버튼을 누르면 그 설비·선로로 화면을 옮기고 잠깐 강조한다 (focus.nonce가 바뀔 때마다)
+  // 결과 창의 위치 버튼: 그 요소로 화면을 옮기고 선택한다 (속성 패널에 그 요소의 값이 보임)
   useEffect(() => {
     const cy = cyRef.current
-    if (!cy || !focus) return undefined
+    if (!focus) return undefined
     const el = cy.getElementById(focus.id)
     if (el.empty()) return undefined
-    cy.animate({ center: { eles: el }, zoom: Math.max(cy.zoom(), 1.2) }, { duration: 350 })
+    cy.$(':selected').unselect()
+    el.select()
+    cy.animate({ center: { eles: el }, zoom: Math.max(cy.zoom(), 1.3) }, { duration: 350 })
     el.addClass('flash')
-    const t = setTimeout(() => el.removeClass('flash'), 1800)
+    const t = setTimeout(() => el.removeClass('flash'), 1500)
     return () => {
       clearTimeout(t)
       el.removeClass('flash')
     }
   }, [focus])
 
+  // 편집 메뉴에서 끌어온 노드 칸을 놓으면 그 자리에 추가 (화면 좌표 → 단선도 좌표: (화면 - 이동량) / 확대율)
+  const onDragOver = (e) => {
+    if (!editing || !e.dataTransfer.types.includes(DRAG_TYPE)) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'copy'
+  }
+  const onDrop = (e) => {
+    const type = e.dataTransfer.getData(DRAG_TYPE)
+    if (!editing || !NODE_TYPES[type]) return
+    e.preventDefault()
+    const cy = cyRef.current
+    const rect = containerRef.current.getBoundingClientRect()
+    const pan = cy.pan()
+    const z = cy.zoom()
+    const { graph: g, node } = addNode(graph, type, (e.clientX - rect.left - pan.x) / z, (e.clientY - rect.top - pan.y) / z)
+    onChange(g, `${NODE_TYPES[type].short} 추가`)
+    setTimeout(() => {
+      cy.$(':selected').unselect()
+      cy.$id(node.id).select()
+    }, 0)
+  }
+
   const fit = () => cyRef.current.fit(undefined, 40)
 
   return (
-    <div className="diagram">
+    <div className={editing ? 'diagram editing' : 'diagram'} onDragOver={onDragOver} onDrop={onDrop}>
       <div ref={containerRef} className="diagram-canvas" />
-      {/* 범례·표시 전환은 단선도 위에 겹쳐 둔다 */}
-      <div className="diagram-hud">
-        {result ? <Legend /> : <span className="muted">{editing ? '편집 중 · Delete 삭제 · Ctrl+Z 되돌리기 · Esc 선택 도구' : '시뮬레이션을 실행하면 결과가 단선도에 표시됩니다'}</span>}
-        {result && (
-          <div className="seg">
-            {LABEL_MODES.map(([k, label]) => (
-              <button key={k} type="button" className={labelMode === k ? 'on' : ''} onClick={() => onLabelMode(k)}>
-                {label}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
       {guides.x !== null && <div className="guide guide-v" style={{ left: guides.x }} />}
       {guides.y !== null && <div className="guide guide-h" style={{ top: guides.y }} />}
       {!graph && <div className="diagram-empty">변전소를 선택하거나 새 변전소를 만드세요</div>}
       {graph && graph.nodes.length === 0 && (
         <div className="diagram-empty">
-          빈 계통입니다. 편집을 켜고 왼쪽 도구에서 전원 → 접속점 → 차단기 순서로 추가해 보세요
+          빈 계통입니다. 왼쪽 위 ☰ 메뉴를 열고 전원 → 접속점 → 차단기 순서로 끌어다 놓아 보세요
         </div>
       )}
+      {children}
       <button type="button" className="fit-btn" onClick={fit} title="화면에 맞추기">
         ⤢
       </button>
