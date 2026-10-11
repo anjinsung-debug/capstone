@@ -99,12 +99,18 @@ export function summarize(graph, result) {
   return {
     minV,
     maxFault,
+    // refs: 단선도에서 그 위치로 이동하기 위한 { id, name } (결과 패널의 위치 버튼이 씀)
     items: [
-      { key: 'low', label: '저전압', count: low.length, color: COLORS.low, names: low.map((r) => names[r.node_id]) },
-      { key: 'high', label: '과전압', count: high.length, color: COLORS.high, names: high.map((r) => names[r.node_id]) },
-      { key: 'overload', label: '과부하 선로', count: overload.length, color: COLORS.overload, names: overload.map((r) => lineNames[r.line_id]) },
-      { key: 'reverse', label: '역조류 선로', count: reverse.length, color: COLORS.reverse, names: reverse.map((r) => lineNames[r.line_id]) },
-      { key: 'outage', label: '정전 지점', count: outage.length, color: COLORS.outage, names: outage.map((r) => names[r.node_id]) },
-    ],
+      { key: 'low', label: '저전압', color: COLORS.low, refs: low.map((r) => ({ id: r.node_id, name: names[r.node_id] })) },
+      { key: 'high', label: '과전압', color: COLORS.high, refs: high.map((r) => ({ id: r.node_id, name: names[r.node_id] })) },
+      { key: 'overload', label: '과부하 선로', color: COLORS.overload, refs: overload.map((r) => ({ id: r.line_id, name: lineNames[r.line_id] })) },
+      { key: 'reverse', label: '역조류 선로', color: COLORS.reverse, refs: reverse.map((r) => ({ id: r.line_id, name: lineNames[r.line_id] })) },
+      { key: 'outage', label: '정전 지점', color: COLORS.outage, refs: outage.map((r) => ({ id: r.node_id, name: names[r.node_id] })) },
+    ].map((it) => ({ ...it, count: it.refs.length })),
+    // 지점별 결과 (전압 낮은 순). 정전 지점은 전압 0이라 맨 앞에 온다
+    nodes: nodeRes
+      .map((r) => ({ id: r.node_id, name: names[r.node_id], voltage: r.energized ? r.voltage_pu : null, fault: r.fault_current_ka, state: voltageState(r) }))
+      .filter((r) => r.name)
+      .sort((a, b) => (a.voltage ?? -1) - (b.voltage ?? -1)),
   }
 }

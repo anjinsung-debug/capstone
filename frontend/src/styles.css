@@ -71,7 +71,8 @@ button.toggle.on {
 .app {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 /* 상단 바 */
@@ -95,8 +96,34 @@ button.toggle.on {
   font-size: 16px;
 }
 .logo {
-  font-size: 22px;
+  font-size: 20px;
   color: var(--feeder);
+}
+.menu-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+}
+.menu-btn.on {
+  background: #1d3a2e;
+  border-color: var(--accent);
+}
+.menu-lines {
+  font-size: 18px;
+  line-height: 1;
+}
+.save-status {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.save-status.ok {
+  color: var(--accent);
+}
+.save-status.warn {
+  color: var(--warn);
+  cursor: help;
 }
 .health {
   color: var(--accent);
@@ -148,34 +175,26 @@ button.toggle.on {
 
 /* 작업 영역: [도구] 단선도 [속성] */
 .workspace {
+  flex: 1;
+  min-height: 0;
   display: grid;
-  grid-template-columns: 1fr 280px;
+  grid-template-columns: minmax(0, 1fr) 300px;
   gap: 12px;
   padding: 12px;
 }
-.workspace.editing {
-  grid-template-columns: 150px 1fr 280px;
+.workspace.nav-open {
+  grid-template-columns: 190px minmax(0, 1fr) 300px;
 }
-.center {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
+.workspace:has(.side.wide) {
+  grid-template-columns: minmax(0, 1fr) 440px;
 }
-.diagram-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-height: 32px;
-  flex-wrap: wrap;
-  font-size: 12px;
+.workspace.nav-open:has(.side.wide) {
+  grid-template-columns: 190px minmax(0, 1fr) 440px;
 }
 
 .diagram {
   position: relative;
-  height: 62vh;
-  min-height: 420px;
+  min-height: 0;
   background: #0e1519;
   background-image: radial-gradient(#1c272e 1px, transparent 1px);
   background-size: 20px 20px;
@@ -186,6 +205,31 @@ button.toggle.on {
 .diagram-canvas {
   position: absolute;
   inset: 0;
+}
+.diagram-hud {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  z-index: 2;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  pointer-events: none;
+}
+.diagram-hud > * {
+  pointer-events: auto;
+  background: rgba(14, 21, 25, 0.82);
+  backdrop-filter: blur(4px);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 5px 10px;
+}
+.diagram-hud > .seg {
+  padding: 0;
+  flex: none;
 }
 .diagram-empty {
   position: absolute;
@@ -225,6 +269,23 @@ button.toggle.on {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-height: 0;
+  overflow: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+}
+.toolbar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.icon-btn {
+  padding: 0 8px;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
 }
 .toolbar-group {
   display: flex;
@@ -237,9 +298,7 @@ button.toggle.on {
   margin-top: 4px;
 }
 .tool {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  display: block;
   text-align: left;
   padding: 6px 8px;
   font-size: 13px;
@@ -251,27 +310,28 @@ button.toggle.on {
 .tool.danger:not(:disabled) {
   color: var(--danger);
 }
-.tool-icon {
-  width: 18px;
-  text-align: center;
-}
-.t-source { color: #b388ff; }
-.t-breaker { color: #ff7a7a; }
-.t-switch { color: #7fd1ff; }
-.t-bus { color: #8c979d; }
-.t-load { color: #c9d1d5; }
-.t-pv { color: #f5c542; }
-.t-wind { color: #5ee0c8; }
 
 /* 속성 패널 */
-.props {
+.side {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 12px;
-  align-self: start;
-  max-height: calc(62vh + 40px);
+  overflow: hidden;
+}
+.side-tabs {
+  margin: 10px 12px 0;
+}
+.side-body {
+  flex: 1;
+  min-height: 0;
   overflow: auto;
+  padding: 12px;
+}
+.props {
+  display: block;
 }
 .props h3 {
   margin: 0 0 10px;
@@ -417,32 +477,60 @@ button.toggle.on {
   background: #1d3a2e;
   border-color: var(--accent);
 }
+.seg-wide button {
+  flex: 1;
+  padding: 5px 10px;
+  font-size: 13px;
+}
+.dot-busy {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--feeder);
+  animation: pulse 1s ease-in-out infinite;
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.25;
+  }
+}
 
-/* 결과 */
+/* 결과 (오른쪽 패널 안) */
 .results {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 0 12px 24px;
+  gap: 10px;
+}
+.results-body h4 {
+  margin: 14px 0 6px;
+  font-size: 13px;
+  color: var(--muted);
 }
 .cards {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
 .card {
-  background: var(--panel);
+  background: var(--panel-2);
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 8px 14px;
+  padding: 8px 12px;
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
   font-size: 12px;
   color: var(--muted);
 }
 .card b {
-  font-size: 18px;
+  font-size: 16px;
   color: var(--text);
+}
+button.card.feeder {
+  grid-column: 1 / -1;
 }
 .card.feeder {
   border-color: #4d4316;
@@ -452,18 +540,17 @@ button.toggle.on {
 }
 .checks {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-  gap: 8px;
+  gap: 6px;
 }
 .check {
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
-  gap: 2px 8px;
-  background: var(--panel);
+  gap: 4px 8px;
+  background: var(--panel-2);
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 8px 12px;
+  padding: 6px 10px;
 }
 .check.bad {
   border-color: #4a3a22;
@@ -473,30 +560,50 @@ button.toggle.on {
   height: 10px;
   border-radius: 50%;
 }
-.check small {
+.chips {
   grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.chip {
+  padding: 1px 8px;
+  font-size: 12px;
+  border-radius: 999px;
+}
+.node-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.node-table th {
+  text-align: left;
   color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.result-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-.panel {
+  font-weight: 500;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: -12px;
   background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 12px 16px;
-  min-width: 0;
 }
-.panel h3 {
-  margin: 0 0 8px;
-  font-size: 15px;
+.node-table td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--panel-2);
 }
-.panel img {
+.node-table tbody tr {
+  cursor: pointer;
+}
+.node-table tbody tr:hover {
+  background: var(--panel-2);
+}
+.node-table i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+}
+.results-body img {
   width: 100%;
   border-radius: 6px;
   background: #fff;
@@ -505,20 +612,70 @@ button.toggle.on {
   margin: 12px 0 4px;
   color: var(--accent);
 }
+.report h4:first-child {
+  margin-top: 0;
+}
 .report p,
 .report ul {
   margin: 0;
 }
 
+/* 새 변전소 창 */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  background: rgba(5, 9, 11, 0.65);
+  backdrop-filter: blur(2px);
+}
+.modal {
+  width: min(420px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+}
+.modal h2 {
+  margin: 0;
+  font-size: 17px;
+}
+.modal p {
+  margin: 0;
+  font-size: 13px;
+}
+.modal .field {
+  margin: 0;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
 @media (max-width: 1000px) {
+  .app {
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
   .workspace,
-  .workspace.editing,
-  .result-grid {
+  .workspace.nav-open,
+  .workspace:has(.side.wide),
+  .workspace.nav-open:has(.side.wide) {
     grid-template-columns: 1fr;
   }
-  .toolbar,
-  .toolbar-group {
-    flex-direction: row;
-    flex-wrap: wrap;
+  .diagram {
+    height: 60vh;
+    min-height: 360px;
+  }
+  .side {
+    max-height: 70vh;
   }
 }

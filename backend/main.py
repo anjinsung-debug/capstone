@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
+from ai_report.report import ReportError
 from backend.api import grid, health, report, simulation
 from cim import db
 from cim.graph import InvalidSnapshot, SubstationNotFound
@@ -37,6 +38,12 @@ async def invalid_snapshot(request, exc):
 @app.exception_handler(SimulationError)
 async def simulation_failed(request, exc):
     return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+
+@app.exception_handler(ReportError)
+async def report_failed(request, exc):
+    # 키 없음, AI 호출 실패, 응답 형식 오류. 시뮬레이션 결과는 그대로 쓸 수 있으므로 화면은 이 이유만 보여 준다
+    return JSONResponse(status_code=503, content={"detail": str(exc)})
 
 
 app.include_router(health.router, prefix="/api", tags=["health"])
