@@ -2,7 +2,7 @@
 // 시뮬레이션 결과가 있으면 그 설비의 계산값(전압, 고장전류, 조류, 부하율)도 함께 보여 준다.
 import { useState } from 'react'
 import { NODE_TYPES, findIssues, updateLine, updateNode, updateSubstation } from '../lib/graphEdit.js'
-import { COLORS, voltageState } from '../lib/overlay.js'
+import { COLORS, OVERLOAD_PCT, loadingColor, mvaOf, voltageColor } from '../lib/overlay.js'
 
 // 숫자 입력: 입력 중에는 글자 그대로 두고, 포커스를 잃거나 Enter일 때 숫자로 반영 (빈칸 = 값 없음)
 // 빈칸(null)은 "데이터 없음"이라 시뮬레이션이 가정값을 쓴다 (단락용량 300 MVA, X/R 10, 허용전류 400 A — simulation/dss.py의 DEFAULT_*)
@@ -113,8 +113,11 @@ function NodeProps({ graph, node, result, editing, onChange }) {
         <div className="stats">
           {r.energized ? (
             <>
-              <Stat label="전압" value={`${r.voltage_pu.toFixed(4)} pu`} color={COLORS[voltageState(r)]} />
-              <Stat label="3상 단락전류" value={r.fault_current_ka != null ? `${r.fault_current_ka.toFixed(2)} kA` : '-'} />
+              <Stat label="① 전압" value={`${r.voltage_pu.toFixed(4)} pu`} color={voltageColor(r)} />
+              <Stat
+                label="④ 단락전류·용량"
+                value={r.fault_current_ka != null ? `${r.fault_current_ka.toFixed(2)} kA · ${mvaOf(r.fault_current_ka).toFixed(0)} MVA` : '-'}
+              />
             </>
           ) : (
             <Stat label="상태" value="정전 (전원에서 끊김)" color={COLORS.outage} />
@@ -152,8 +155,8 @@ function LineProps({ graph, line, result, editing, onChange }) {
         <div className="stats">
           <Stat label="유효전력" value={`${r.p_kw.toFixed(0)} kW`} />
           <Stat label="무효전력" value={`${r.q_kvar.toFixed(0)} kvar`} />
-          <Stat label="부하율" value={r.loading_pct != null ? `${r.loading_pct.toFixed(1)} %` : '-'} color={r.loading_pct > 100 ? COLORS.overload : undefined} />
-          <Stat label="역조류" value={r.reverse_flow ? '있음' : '없음'} color={r.reverse_flow ? COLORS.reverse : undefined} />
+          <Stat label="② 부하율" value={r.loading_pct != null ? `${r.loading_pct.toFixed(1)} %` : '-'} color={r.loading_pct > OVERLOAD_PCT ? COLORS.red : r.loading_pct != null ? loadingColor(r.loading_pct) : undefined} />
+          <Stat label="③ 역조류" value={r.reverse_flow ? '있음' : '없음'} color={r.reverse_flow ? COLORS.red : undefined} />
         </div>
       )}
     </>
