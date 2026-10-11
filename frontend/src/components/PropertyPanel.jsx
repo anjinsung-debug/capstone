@@ -171,9 +171,10 @@ function SubstationProps({ graph, editing, onChange }) {
     <>
       <h3>변전소</h3>
       <TextField key={`${s.id}-name`} label="이름" value={s.name} disabled={!editing} onCommit={(v) => set({ name: v })} />
-      <NumberField key={`${s.id}-v`} label="모선 전압" unit="pu" value={s.source_voltage_pu} disabled={!editing} required onCommit={(v) => set({ source_voltage_pu: v ?? 1 })} />
-      <NumberField key={`${s.id}-sc`} label="3상 단락용량" unit="MVA" value={s.short_circuit_mva} disabled={!editing} onCommit={(v) => set({ short_circuit_mva: v })} />
-      <NumberField key={`${s.id}-xr`} label="X/R" value={s.x_r_ratio} disabled={!editing} onCommit={(v) => set({ x_r_ratio: v })} />
+      {/* 변전소는 이름만 고칠 수 있다. 아래 값은 시뮬레이션 결과를 바꾸므로 적재 데이터 값을 보여 주기만 한다 (cim/graph.py의 save_substation과 같은 규칙) */}
+      <NumberField key={`${s.id}-v`} label="모선 전압" unit="pu" value={s.source_voltage_pu} disabled />
+      <NumberField key={`${s.id}-sc`} label="3상 단락용량" unit="MVA" value={s.short_circuit_mva} disabled />
+      <NumberField key={`${s.id}-xr`} label="X/R" value={s.x_r_ratio} disabled />
       <dl className="meta">
         <dt>규모</dt>
         <dd>
