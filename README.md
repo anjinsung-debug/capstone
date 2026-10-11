@@ -116,7 +116,31 @@ npm run dev
 python frontend/mock/mock_server.py
 ```
 
+<<<<<<< HEAD
 http://localhost:5173 에 "서버 ok, Neo4j connected"가 보이면 정상입니다. Neo4j 웹 콘솔은 http://localhost:7474 입니다.
+=======
+http://localhost:5173 에 "서버 ok, Neo4j connected"가 보이면 정상입니다. 변전소 목록이 비어 있으면 `python -m cim.load`로 데이터를 먼저 적재합니다.
+
+`.env` 항목
+
+| 항목 | 쓰는 곳 |
+|------|---------|
+| `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` | Docker(Neo4j), 백엔드, `python -m cim.load` |
+| `ANTHROPIC_API_KEY` | AI 리포트 (`ai_report/report.py`). 백엔드만 읽으며, 프론트엔드 코드에는 넣지 않음 |
+| `ANTHROPIC_MODEL` | (선택) AI 리포트에 쓸 모델 이름. 비우면 `DEFAULT_MODEL` |
+| `AI_PROVIDER` | (선택) AI 리포트에 쓸 서비스. `anthropic`(기본) 또는 `gemini`. Gemini는 시험용 무료 키를 쓰려는 용도이며 팀 합의 전까지 기본값은 Claude |
+| `GEMINI_API_KEY`, `GEMINI_MODEL` | (선택) `AI_PROVIDER=gemini`일 때만 사용. 모델을 비우면 `GEMINI_DEFAULT_MODEL` |
+
+## Neo4j 연결
+
+| 항목 | 내용 |
+|------|------|
+| 실행 | `docker compose up -d` (Neo4j 5.26 + APOC). 끄기 `docker compose down`, 데이터까지 초기화 `docker compose down -v` |
+| 접속 정보 | `.env`의 `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`. Docker와 백엔드(`--env-file .env`)가 같은 값을 읽음 |
+| 코드에서 사용 | `from cim.db import get_driver`. 백엔드가 시작할 때 연결하고 종료할 때 닫음 |
+| 연결 확인 | http://localhost:8000/api/health 의 `"neo4j": "connected"` |
+| 웹 콘솔 | http://localhost:7474 (`.env`의 아이디·비밀번호로 로그인) |
+>>>>>>> 071089b5833513961db60cbcf930c0c633eca7b9
 
 처음 한 번, 그리고 `cim/schema.cypher`가 바뀌었을 때 제약조건을 적용합니다.
 
