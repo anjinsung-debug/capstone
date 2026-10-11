@@ -2,7 +2,9 @@
 
 팀 으라차차: 안진성, 고영민, 최민준, 한승우
 
-이 README는 항상 현재 저장소의 디렉토리 구성과 작동 방식을 나타냅니다. 바꾸는 방법은 아래 [README 갱신 규칙](#readme-갱신-규칙)을 따릅니다.
+22.9kV 배전계통을 웹에서 단선도로 보고 편집하면, 조류 계산·고장 해석(4대 시뮬레이션: 전압 영향, 선로 과부하, 역조류, 단락용량 고장전류)을 자동으로 다시 돌려 결과를 단선도 위에 표시하고, AI가 진단·원인·솔루션 리포트로 설명해 주는 플랫폼입니다. 한전이 제공한 CIM XML 계통 데이터를 Neo4j에 적재해 사용합니다.
+
+협업 규칙과 구현 상태는 [CONTRIBUTING.md](CONTRIBUTING.md), 한전 데이터 → CIM 매핑 기준은 [docs/cim_mapping.md](docs/cim_mapping.md)에 있습니다.
 
 ## 디렉토리 구성
 
@@ -14,13 +16,14 @@
 | `simulation/` | 계통 → OpenDSS 변환, 4대 시뮬레이션, 결과 그래프 (matplotlib) | 안진성 |
 | `ai_report/` | LLM 리포트 생성 | 고영민, 최민준 |
 | `data/` | 한전 제공 원본 CIM XML (공개 허락받은 파일만 git에 올림) | 공용 |
-| `docs/` | OpenDSS 시뮬레이션 데이터 대응표, 전기·전자 용어표 | 공용 |
+| `docs/` | OpenDSS 시뮬레이션 데이터 대응표, 전기·전자 용어표, 한전 데이터 → CIM 매핑 기준 | 공용 |
 
 ```
 capstone/
 ├── docs/
 │   ├── opendss_simulation_data.md  시뮬레이션별 입력·가정·설정·결과 대응표
-│   └── electrical_glossary.md     전기·전자 용어표
+│   ├── electrical_glossary.md     전기·전자 용어표
+│   └── cim_mapping.md             한전 데이터 → CIM 모델 항목·매핑 기준, 각자 데이터 준비
 ├── backend/
 │   ├── main.py              앱 생성, 시작·종료 시 Neo4j 연결·해제, 오류 → HTTP 상태 (미구현 501, 없는 변전소 404, 잘못된 스냅샷·시뮬레이션 불가 422, 리포트 생성 실패 503)
 │   └── api/
@@ -65,72 +68,13 @@ capstone/
 │   ├── vite.config.js       /api 요청을 백엔드(localhost:8000)로 전달
 │   └── package.json         프론트엔드 라이브러리 (react, cytoscape)
 ├── data/                    한전 제공 원본 (korean_distribution_cim.xml, 출처 NOTICE.md)
+├── CONTRIBUTING.md          협업 규칙, 구현 상태, 폴더 간 연결
 ├── docker-compose.yml       Neo4j 실행 설정
 ├── requirements.txt         Python 라이브러리
 └── .env.example             접속 정보·API 키 양식 (.env로 복사해서 사용)
 ```
 
 `.gitignore`, `frontend/index.html`, `frontend/.oxlintrc.json` 같은 기본 설정 파일은 생략했습니다.
-
-## 협업 규칙
-
-### 담당 폴더 규칙
-
-각자 위 표에서 자신이 담당한 폴더의 코드만 수정합니다.
-다른 담당자의 폴더를 고쳐야 할 때는 직접 수정하지 않고 그 담당자에게 요청합니다.
-README, `requirements.txt`, `docker-compose.yml`, `.env.example` 같은 공용 파일은 아래 공유 형식 파일과 같은 방식으로 팀에 알리고 PR로 합칩니다.
-
-### 공유 형식 파일 변경 규칙
-
-`cim/models.py`, `simulation/models.py`, `ai_report/models.py`, `frontend/src/api/client.js`는 여러 폴더가 함께 쓰는 약속입니다.
-이 파일을 바꿀 때는 먼저 팀에 알리고, PR로 영향받는 담당자의 확인을 받은 뒤 합칩니다.
-
-### 주석 규칙
-
-Claude Code가 코드를 읽고 맥락을 파악하거나 우리에게 되물을 수 있도록, 코드에 이유와 연결 관계를 주석으로 남깁니다 (2026-10-09 팀 합의).
-
-| 표시 | 쓰는 곳 | 예시 |
-|------|---------|------|
-| 파일 맨 위 설명 | 이 파일이 하는 일, 담당, 연결된 다른 파일 | `cim/graph.py`, `frontend/src/App.jsx` 머리말 |
-| `ponytail:` | 일부러 단순하게 만든 부분 + 언제 바꿀지 | `# ponytail: OpenDSS 엔진은 프로세스에 하나라 … 느려지면 요청별 프로세스로 분리` |
-| `구현 참고 (이름):` | 다른 담당자가 알아야 하거나 확인해 줘야 할 것 | `// 구현 참고 (한승우 확인 필요): …` |
-| `<파일>의 <함수>와 같은 규칙` | 다른 폴더와 값·규칙을 맞춘 곳 (바꾸면 같이 고칠 곳) | `// simulation/dss.py의 check_complete와 같은 규칙` |
-
-### README 갱신 규칙
-
-아래가 바뀌면 같은 PR에서 README도 함께 고칩니다.
-
-| 바뀐 것 | 고칠 곳 |
-|---------|---------|
-| 파일·폴더 추가, 삭제, 이름 변경 | 디렉토리 구성 |
-| 기능 구현 완료, 새 기능 추가 | 구현 상태 |
-| API 경로, 데이터 흐름 | 작동 방식, 폴더 간 연결 |
-| 실행 방법, 라이브러리, 환경 변수 | 실행, Neo4j 연결 |
-
-## 구현 상태
-
-| 기능 | 위치 | 상태 |
-|------|------|------|
-| 서버 실행, Neo4j 연결 | `backend/main.py`, `cim/db.py`, `backend/api/health.py` | 동작 |
-| 계통 입력 검사 (선로 양 끝, `bus_id` 대상, 개폐기만 `is_open`) | `cim/models.py` | 동작 (API 요청·응답 시 자동 검사, 잘못되면 422). 저장 API는 여기에 더해 전원 1개를 요구 (`cim/graph.py`) |
-| 계통 완성 검사 (전원 1개, 피더별 차단기 1개, 부하·분산전원 출력·`bus_id`) | `simulation/dss.py`의 `check_complete` | 동작 (시뮬레이션 직전, 부족하면 422와 빠진 항목) |
-| 프론트엔드 → 백엔드 API 호출 | `frontend/src/api/client.js` | 동작 |
-| 한전 데이터 적재 | `cim/load.py`, `cim/mapping.py` | 동작 (`--dry-run`이면 Neo4j 없이 변환 결과만 출력) |
-| 변전소 계통 조회 | `cim/graph.py`의 `list_substations`, `get_substation` | 동작 (없는 변전소는 404) |
-| 편집 스냅샷 저장 (4단계) | `cim/graph.py`의 `save_substation` | 동작 (이미 있는 변전소만, 전원 노드 1개 필요) |
-| 연결 특성 자동 구분 (위상 형성 논리) | `cim/graph.py`의 `classify_connection` | 동작 (차단기·개폐기에 닿으면 `switch`, 그 외 `line`) |
-| OpenDSS 스크립트 변환 (2단계) | `simulation/dss.py` | 동작 |
-| 4대 시뮬레이션 (3단계) | `simulation/simulate.py` | 동작 (한전 CIM XML로 자체 점검 통과: 역조류 방향, 루프 검출, 정전 구간, 오류 처리 포함) |
-| 결과 그래프 (matplotlib) | `simulation/plot.py` | 동작 (전압 프로파일, 선로별 조류·역조류·과부하) |
-| AI 리포트 | `ai_report/report.py` | 동작 (프로토타입. 확정된 점검 결과를 코드가 계산해 LLM에 넘기고, 실패하면 503과 이유. 실제 API 호출은 `ANTHROPIC_API_KEY`가 있는 환경에서 `python -m ai_report.report --call`로 확인) |
-| 화면 흐름 (선택 → 시뮬레이션 → 결과·리포트) | `frontend/src/App.jsx` | 동작 (편집하면 자동 저장 후 자동 재계산, AI 리포트는 결과 창 버튼으로 생성하고 실패하면 이유를 "AI 리포트 실패" 메시지로 표시) |
-| 다크모드 단선도 표시 (Cytoscape.js) | `frontend/src/components/Diagram.jsx` | 동작 (설비 종류별 모양·색, 직각 선로, 붙임선 점선) |
-| 단선도 편집 UI | `Diagram.jsx`, `NavDrawer.jsx`, `PropertyPanel.jsx`, `lib/graphEdit.js` | 동작 (☰ 메뉴에서 설비 끌어다 놓기, 선로 그리기, 격자·가이드라인 정렬, 속성 편집, 삭제, 되돌리기, 변전소 이름 바꾸기, **바꿀 때마다 자동 저장 → 자동 재계산**. 진짜 백엔드는 이미 있는 변전소만 저장하므로 "새 변전소"는 모의 서버에서만 저장됨) |
-| 결과 오버레이 | `Diagram.jsx`, `lib/overlay.js` | 동작 (전압 색, 부하율 굵기, 역조류·조류 방향 화살표, 정전 흐림, 고장전류 표시 전환, 차단기 옆 피더 송출 MW·MVAr) |
-| 결과·그래프·리포트 표시 | `frontend/src/components/ResultPanel.jsx`, `lib/overlay.js` | 동작 (제안서 슬라이드 8·10~13 기준: 단선도 표시 모드 건강도/① 전압/② 과부하/③ 역조류/④ 단락용량, 계통건강도 진단표(정상·주의·위험), 원인 분석, 솔루션 제언, 요소별 결과와 위치 이동 버튼, 시점별 기록. AI 해설은 버튼으로 생성) |
-| 프론트엔드 모의 백엔드 | `frontend/mock/mock_server.py` | 동작 (조회·저장·근사 시뮬레이션·그래프·예시 리포트. Neo4j·Docker 없이 화면 개발용, 진짜 백엔드와 다른 점은 파일 맨 위 설명) |
-
-틀만 있는 함수는 `NotImplementedError`를 내고, 해당 API는 501을 돌려줍니다. 없는 변전소는 `SubstationNotFound`로 404, 규칙에 맞지 않는 편집 스냅샷은 `InvalidSnapshot`으로 422를 돌려줍니다. 시뮬레이션이 계산할 수 없는 계통(미완성, 루프, 잘못된 값, 수렴 실패)은 `SimulationError`로 422와 이유를 돌려줍니다. 리포트를 만들 수 없을 때(API 키 없음, AI 호출 실패, 응답 형식 오류)는 `ReportError`로 503과 이유를 돌려줍니다 (`backend/main.py`).
 
 ## 작동 방식
 
@@ -206,78 +150,6 @@ frontend ──HTTP──▶ backend ────────┤ cim/graph.py (�
 - 리포트가 만들어지는 중에 새 시뮬레이션이 끝나거나 변전소를 바꾸면, 이전 결과·그래프·리포트는 버리고 마지막 요청의 것만 표시 (`App.jsx`의 `runId`)
 - 리포트에는 계통 정보(설비 이름·종류·연결)와 해석 수치(전압 pu, 선로 부하율, 고장전류, 역조류, 피더별 송출 전력)가 구조화된 텍스트로 들어가므로 "어느 구간이 왜 문제인지"를 설명할 수 있음
 - 시뮬레이션마다 LLM을 호출하므로 API 사용량을 확인하고, 한전 수치를 외부 LLM에 보내도 되는지 한전 측에 확인
-
-## 폴더 간 연결
-
-| 연결 | 정의된 곳 |
-|------|-----------|
-| 프론트엔드 → 백엔드 API | `frontend/src/api/client.js`, `backend/api/` (형식은 http://localhost:8000/docs) |
-| 계통 데이터 형식, Neo4j 구조 | `cim/models.py`, `cim/graph.py`, `cim/schema.cypher` |
-| 선로 방향·피더 소속 계산 | `cim/topology.py`의 `trace_feeders` (`cim/load.py` 적재, `cim/graph.py` 저장이 같이 씀) |
-| Neo4j 연결 | `cim/db.py` (접속 정보는 `.env`) |
-| 한전 데이터 → Neo4j 적재 | `cim/load.py` (명령어 `python -m cim.load`, `cim/mapping.py` 대응표대로 `cim/models.py` 형식으로 저장) |
-| 시뮬레이션 결과 형식 | `simulation/models.py` |
-| 리포트 형식 | `ai_report/models.py` |
-| 백엔드 → 각 모듈 함수 | `cim/graph.py`, `simulation/simulate.py`, `simulation/plot.py`, `ai_report/report.py` |
-| 시뮬레이션 → OpenDSS 변환 | `simulation/simulate.py` → `simulation/dss.py`의 `to_dss_script`, `fault_study_script` |
-| 화면 → 화면 부품 | `frontend/src/App.jsx` → `components/Diagram.jsx`(단선도·범례), `components/ResultPanel.jsx`(결과·그래프·리포트) |
-
-## 한전 데이터 → CIM 모델 정하기
-
-원본 데이터는 한전이 제공한 가상 계통의 CIM16 XML(`data/korean_distribution_cim.xml`)입니다. 변전소 1개, 배전선로 1개(이진트리, 선로 11·부하 8·태양광 4)이고, 출처는 `data/NOTICE.md`에 있습니다. 매핑 가이드(CIM 클래스·속성 → 공통 모델 필드 대응표)는 한전에서 받지 않고 팀이 CIM 기준으로 작성했으며 `cim/mapping.py`에 있습니다.
-
-1. **매핑 가이드** (`cim/mapping.py`): CIM 클래스·속성 → `cim/models.py` 필드 대응표, 단위 환산, XML에 없는 값의 출처. 매핑 규칙을 바꿀 때는 이 파일만 고침
-2. **`cim/models.py`**: 대응표에 필요한 필드가 없으면 추가 (공유 형식 파일 변경 규칙대로)
-3. **적재 코드** (`cim/load.py`): `read_raw`(CIM XML 읽기), `to_substation_graphs`(대응표대로 변환), `save_to_neo4j`(저장)
-
-### 항목을 정하는 기준
-
-| 쓰는 곳 | 필요한 정보 | 현재 모델 필드 |
-|---------|-------------|----------------|
-| 조류 계산·전압 영향 | 기준 전압, 변전소 모선 전압, 연결 관계(선로, 설비가 붙은 접속점), 선로 길이·정상분 임피던스, 부하 크기(3상 합계, 한 시점) | `BASE_KV`(22.9 고정), `Substation.source_voltage_pu`, `from_node_id`, `to_node_id`, `bus_id`, `length_km`, `r_ohm_per_km`, `x_ohm_per_km`, `p_kw`, `q_kvar` |
-| 선로 과부하 | 선로 허용전류 | `Line.rated_current_a` |
-| 역조류 | 분산전원(태양광·풍력) 출력, 평소 조류 방향 | `type`이 `pv`·`wind`인 노드의 `p_kw`·`q_kvar`, 선로의 `from_node_id`(전원 쪽) |
-| 3상 단락 고장전류 | 변전소 전원 3상 단락용량, X/R | `Substation.short_circuit_mva`, `Substation.x_r_ratio` |
-| 단선도 화면 | 위치, 이름, 종류, 변전소 출구 차단기(CB), 개폐기 열림·닫힘, 소속 피더 | `x`, `y`(DiagramObject), `name`, `type`(`breaker`·`switch` 포함), `is_open`, `feeder_id` |
-| AI 리포트 | 설비 이름·종류·연결 관계 (시뮬레이션 결과와 함께 사용) | `name`, `type`, `kind`, `from_node_id`, `to_node_id` |
-
-현재 모델은 제안서 요구를 반영해 두었고, 남은 설계 항목은 모두 아래 기본값으로 정했습니다. CIM XML과 형태가 다른 부분은 매핑 가이드에 적고 `cim/load.py`에서 변환합니다.
-
-| 항목 | 기본값 | 코드 |
-|------|--------|------|
-| 계통 구조 | 방사형 (열린 개폐기로 끊은 뒤 기준) | `cim/models.py` 설명 |
-| 설비 종류 | source·breaker·switch·bus·load·pv·wind 7종 (변압기 없음). 개폐기(`switch`)는 열림·닫힘(`is_open`)을 가짐 | `NodeType`, `Node.is_open` |
-| 설비 연결 | 단자 1개 설비(source·load·pv·wind)는 선로 없이 `bus_id`로 접속점(`bus`)에 붙음 (CIM `Terminal.ConnectivityNode`, Neo4j `CONNECTED_TO`). 차단기·개폐기·접속점끼리는 선로(`Line`)로 연결 | `Node.bus_id`, `ONE_TERMINAL_TYPES` |
-| 연결 특성 | 차단기·개폐기에 닿은 연결은 `switch`(OpenDSS `Line switch=yes`), 그 외 `line`. 열린 개폐기에 닿은 연결은 끊고 계산 | `LineKind`, `classify_connection` |
-| 판정 기준 | 전압 0.95~1.05 pu (OpenDSS 기본 정상 범위), 부하율 100% 초과면 과부하 | `simulation/models.py`의 `VOLTAGE_MIN_PU`, `VOLTAGE_MAX_PU`, `OVERLOAD_PCT` |
-| Neo4j 이름 | 내부 이름(`Node`, `LINE`)을 쓰고 CIM 클래스는 주석으로 대응 | `cim/models.py`, `cim/graph.py` |
-
-현재 모델의 구조:
-
-- 해석 범위: 22.9kV(`BASE_KV`), 3상 평형, 방사형, 한 시점, 3상 단락만. 전력은 3상 합계, 임피던스는 정상분, 선로 정전용량은 무시
-- 선로의 `from_node_id`는 전원 쪽. 조류가 to → from으로 흐르면 역조류
-- 허용전류·단락용량이 없으면 시뮬레이션이 가정값(`simulation/dss.py`의 `DEFAULT_*`)으로 계산
-- 설비 종류: 변전소 전원(`source`), 출구 차단기(`breaker`), 선로 중간 개폐기(`switch`, 열림·닫힘 `is_open`), 접속점(`bus`), 부하(`load`), 분산전원 태양광(`pv`)·풍력(`wind`). CIM 클래스 대응은 `cim/models.py` 주석
-- 좌표(x, y)는 설비 속성과 분리된 좌표 메타데이터 노드(DiagramObject)에 저장
-- 변전소 하나에 피더 여러 개, 피더는 출구 차단기 하나에서 시작
-
-### 매핑 결과 요약 (자세한 표는 `cim/mapping.py`)
-
-- 클래스: `ConnectivityNode` → `bus`, `BusbarSection` → `source`, 변전소 안 `Breaker` → `breaker`(피더 시작점), 그 밖의 `Breaker`·`LoadBreakSwitch`·`Recloser`·`Disconnector`·`Fuse` → `switch`, `ACLineSegment` → 선로, `EnergyConsumer` → `load`, `SolarGeneratingUnit`·`PhotoVoltaicUnit` → `pv`, `WindGeneratingUnit` → `wind`
-- 단위 환산: 전력은 W·var → kW·kvar (÷1000), 임피던스는 구간 전체 Ω → Ω/km (÷ 길이). `Conductor.length`는 값 범위로 보아 km
-- 위상: 단자 1개 설비는 `bus_id`, 차단기·개폐기는 양쪽 접속점과 길이 0인 `switch` 선로 2개로 연결. 선로 방향(전원 쪽 = from)은 전원에서 너비 우선 탐색으로 정함
-- `id`는 `IdentifiedObject.mRID`
-- XML에 없어 만들어 내는 값: 피더(차단기마다 하나, 열린 개폐기 전까지 소속), 단선도 좌표(전원을 뿌리로 한 트리 배치), 태양광 한 시점 출력(정격 `nominalP` 사용)
-- XML에 없어 비워 두는 값: 변전소 3상 단락용량·X/R, 선로 허용전류. 시뮬레이션은 이 값이 없으면 가정값(300 MVA, X/R 10, 400 A)으로 계산
-
-시뮬레이션 담당과 프론트엔드 담당은 필요한 항목이 빠지지 않았는지 확인합니다.
-
-### 각자 데이터 준비
-
-1. `git pull`로 `data/korean_distribution_cim.xml` 받기 (저장소에 포함)
-2. 저장소 루트에서 `python -m cim.load` 실행해 자기 PC의 Neo4j에 저장 (다시 적재할 때는 `--reset`)
-
-같은 원본과 같은 적재 코드를 쓰므로 모두 같은 데이터를 갖게 됩니다. 웹에서 편집한 내용은 자기 DB에만 남고, 다시 적재하면 처음 상태로 돌아갑니다.
 
 ## 실행
 
