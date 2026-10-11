@@ -4,19 +4,27 @@
       → Claude 호출 (tool use로 형식 고정) → Report(진단, 원인, 솔루션)
 
 LLM 환각을 줄이는 방법 (제안서 10장 리스크 대응):
-    1. 문제 항목(저전압·과전압·과부하·역조류·정전)과 건강도 등급은 LLM이 아니라 이 파일의 코드가 판정 기준
+    1. 문제 항목(저전압·과전압·과부하·역조류·단락용량·정전)과 건강도 등급은 LLM이 아니라 이 파일의 코드가 판정 기준
        (simulation/models.py의 VOLTAGE_MIN_PU 등)으로 계산해서 "확정된 사실"로 넘긴다. LLM은 그 사실을 풀어서 설명만 한다
     2. 프롬프트에 없는 수치·설비는 쓰지 말라고 지시하고, 원인에는 설비 이름과 수치를 인용하게 한다
     3. 허용전류·단락용량이 데이터에 없어 가정값으로 계산된 경우, 그 사실을 프롬프트에 넣어 리포트에 밝히게 한다
     4. 출력은 tool use의 JSON 형식(진단 1개, 원인 목록, 솔루션 목록)으로 고정한다
 
-환경 변수 (.env): ANTHROPIC_API_KEY (필수), ANTHROPIC_MODEL (선택, 기본 DEFAULT_MODEL)
+환경 변수 (.env):
+    AI_PROVIDER      anthropic(기본) 또는 gemini
+    anthropic일 때   ANTHROPIC_API_KEY (필수), ANTHROPIC_MODEL (선택, 기본 DEFAULT_MODEL)
+    gemini일 때      GEMINI_API_KEY (필수), GEMINI_MODEL (선택, 기본 GEMINI_DEFAULT_MODEL)
+    AI_TIMEOUT_SEC   (선택) AI 응답을 기다리는 최대 시간(초), 기본 TIMEOUT_SEC
 
-자체 점검 (API 호출 없이 프롬프트만 확인): python -m ai_report.report
+자체 점검 (API 호출 없이 프롬프트만 확인): python -m ai_report.report  (저장소 루트의 .env를 자동으로 읽음)
                    (실제로 호출까지: python -m ai_report.report --call)
 """
 
+import json
+import math
 import os
+import urllib.error
+import urllib.request
 
 from ai_report.models import Report
 from cim.models import BASE_KV, SubstationGraph
@@ -27,11 +35,29 @@ from simulation.models import OVERLOAD_PCT, VOLTAGE_MAX_PU, VOLTAGE_MIN_PU, Simu
 DEFAULT_MODEL = "claude-sonnet-5-5"
 # ponytail: 출력 한도·대기 시간·재시도(2회)를 고정값으로 두었다. 리포트가 잘리거나 변전소가 커져 느려지면 이 값부터 올린다
 MAX_TOKENS = 2000
-TIMEOUT_SEC = 60.0
+TIMEOUT_SEC = 120.0  # AI 응답을 기다리는 최대 시간(초). .env의 AI_TIMEOUT_SEC로 바꿀 수 있다
+
+
+def _timeout() -> float:
+    """대기 시간. 진짜 계통은 입력이 커서 Gemini 응답이 60초를 넘길 수 있어 기본 120초로 늘렸다 (TimeoutError가 났음).
+    .env는 실행 중에 읽히는 경우가 있어 값을 쓰는 순간에 읽는다. 숫자가 아니거나 0 이하면 기본값."""
+    try:
+        value = float(os.environ.get("AI_TIMEOUT_SEC") or TIMEOUT_SEC)
+    except ValueError:
+        return TIMEOUT_SEC
+    return value if value > 0 else TIMEOUT_SEC
 # ponytail: 표가 길면 앞 120줄만 넣고 나머지는 "생략"으로 알린다 (정렬이 문제 큰 순이라 중요한 줄은 남는다).
 #   변전소가 커져 정상 지점이 필요하거나 입력 토큰이 부담되면 요약 통계로 바꾼다
 MAX_ROWS = 120  # 프롬프트에 넣는 지점·선로 표의 최대 줄 수
+# 단락용량 기준: frontend/src/lib/overlay.js의 FAULT_HIGH_MVA, mvaOf와 같은 규칙이다. 바꾸면 두 곳을 함께 고친다.
+# ponytail: 300 MVA는 제안서 슬라이드 예시값이다 (화면 진단표에서 '주의'). 한전 자문 후 확정되면 두 곳을 같이 바꾼다
+FAULT_HIGH_MVA = 300
+MAX_FAULT_LISTED = 10  # 프롬프트에 이름을 적는 단락용량 초과 지점 수 (나머지는 개수만)
 TOOL_NAME = "submit_report"
+# ponytail: Gemini는 SDK 없이 REST로 부른다 (설치할 패키지를 늘리지 않으려고). 모델 이름은 Google AI Studio의 모델 목록에서 확인해 GEMINI_MODEL로 바꾼다.
+#   Gemini를 계속 쓰기로 정해지면 공식 SDK(google-genai)로 바꾸고 requirements.txt에 추가한다
+GEMINI_DEFAULT_MODEL = "gemini-3.8-flash"
+GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 # ponytail: 등급은 3단계 고정이고 LLM이 아니라 코드가 정한다 (같은 결과면 항상 같은 등급). 세분화하거나 점수제로 바꿀 때는 check_findings의 규칙과 README를 같이 고친다
 GRADES = ("양호", "주의", "개선 필요")
@@ -47,9 +73,9 @@ SYSTEM_PROMPT = f"""당신은 22.9kV 배전계통 해석 결과를 설명하는 
 사용자가 계통 정보와 시뮬레이션 수치, 그리고 코드가 이미 판정한 "확정된 점검 결과"를 줍니다. 아래 규칙을 지키세요.
 1. 제공된 수치와 설비 이름만 쓰세요. 없는 값을 추측하거나 만들어 내지 마세요. 모르는 것은 "데이터에 없음"이라고 쓰세요.
 2. 건강도 등급은 "확정된 점검 결과"에 적힌 등급을 그대로 쓰세요. 바꾸거나 다시 판정하지 마세요.
-3. 판정 기준: 전압 정상 범위 {VOLTAGE_MIN_PU}~{VOLTAGE_MAX_PU} pu, 선로 부하율 {OVERLOAD_PCT:.0f}% 초과면 과부하, 분산전원 때문에 전력이 반대로 흐르면 역조류, 전원에서 끊기면 정전입니다. 정전은 저전압이 아닙니다.
+3. 판정 기준: 전압 정상 범위 {VOLTAGE_MIN_PU}~{VOLTAGE_MAX_PU} pu, 선로 부하율 {OVERLOAD_PCT:.0f}% 초과면 과부하, 분산전원 때문에 전력이 반대로 흐르면 역조류, 3상 단락용량이 {FAULT_HIGH_MVA} MVA를 넘으면 단락용량 증가(차단기 정격·보호계전기 검토 대상), 전원에서 끊기면 정전입니다. 정전은 저전압이 아닙니다.
 4. 원인은 문제가 있는 설비 이름과 수치를 인용해서, 왜 그렇게 되는지 전기적 이유(선로 길이와 임피던스에 따른 전압강하, 분산전원 출력이 부하보다 큰 구간, 전류가 허용전류를 넘음 등)를 설명하세요. 입력에 없는 연결 구조를 가정하지 마세요.
-5. 솔루션은 원인과 하나씩 대응시키고 우선순위 순서로 쓰세요. 전선 굵기 교체, 전압조정기(SVR) 설치, 부하 절체, 역조류 보호계전 점검, ESS 설치, 개폐기 조작처럼 엔지니어가 실제로 할 수 있는 조치로 쓰고, 효과를 수치로 약속하지 마세요.
+5. 솔루션은 원인과 하나씩 대응시키고 우선순위 순서로 쓰세요. 전선 굵기 교체, 전압조정기(SVR) 설치, 부하 절체, 역조류 보호계전 점검, 차단기 정격 검토, ESS 설치, 개폐기 조작처럼 엔지니어가 실제로 할 수 있는 조치로 쓰고, 효과를 수치로 약속하지 마세요.
 6. 문제가 없으면 원인에는 "기준 안에 있음"을 근거 수치와 함께 쓰고, 솔루션에는 유지·재점검 방법만 쓰세요. 문제를 지어내지 마세요.
 7. 허용전류나 단락용량이 가정값으로 계산됐다고 알려 주면, 그 값에 의존하는 부하율·고장전류 설명에 "가정값 기준"이라고 밝히세요.
 8. 진단은 2~3문장, 원인과 솔루션은 각각 항목당 1~2문장으로 간결하게 쓰세요."""
@@ -78,18 +104,25 @@ def check_findings(graph: SubstationGraph, result: SimulationResult) -> dict:
     outage = [names.get(r.node_id, r.node_id) for r in result.nodes if not r.energized]
     overload = [(line_names.get(r.line_id, r.line_id), r.loading_pct) for r in result.lines if r.loading_pct is not None and r.loading_pct > OVERLOAD_PCT]
     reverse = [(line_names.get(r.line_id, r.line_id), r.p_kw) for r in result.lines if r.reverse_flow]
+    # 3상 단락용량(MVA) = √3 × 선간전압(kV) × 단락전류(kA). 정전 지점은 단락전류가 없으니 뺀다
+    fault = [
+        (names.get(r.node_id, r.node_id), math.sqrt(3) * BASE_KV * r.fault_current_ka)
+        for r in result.nodes
+        if r.energized and r.fault_current_ka is not None and math.sqrt(3) * BASE_KV * r.fault_current_ka > FAULT_HIGH_MVA
+    ]
+    fault.sort(key=lambda x: -x[1])
     low.sort(key=lambda x: x[1])
     high.sort(key=lambda x: -x[1])
     overload.sort(key=lambda x: -x[1])
     # ponytail: 항목 개수와 상관없이 하나라도 있으면 같은 등급이다. 심각도 가중치가 필요해지면 그때 점수 계산을 넣는다
-    # 등급: 전압·부하율 기준을 넘는 항목이 있으면 개선 필요, 역조류·정전만 있으면 주의, 없으면 양호
+    # 등급: 전압·부하율 기준을 넘는 항목이 있으면 개선 필요, 역조류·단락용량·정전만 있으면 주의, 없으면 양호
     if low or high or overload:
         grade = GRADES[2]
-    elif reverse or outage:
+    elif reverse or fault or outage:
         grade = GRADES[1]
     else:
         grade = GRADES[0]
-    return {"grade": grade, "low": low, "high": high, "outage": outage, "overload": overload, "reverse": reverse}
+    return {"grade": grade, "low": low, "high": high, "outage": outage, "overload": overload, "reverse": reverse, "fault": fault}
 
 
 def _assumptions(graph: SubstationGraph) -> list[str]:
@@ -134,6 +167,9 @@ def build_prompt(graph: SubstationGraph, result: SimulationResult) -> str:
     lines.append(f"- 과전압(>{VOLTAGE_MAX_PU} pu) {len(f['high'])}곳" + (": " + ", ".join(f"{n} {v:.3f} pu" for n, v in f["high"]) if f["high"] else ""))
     lines.append(f"- 과부하(>{OVERLOAD_PCT:.0f}%) 선로 {len(f['overload'])}개" + (": " + ", ".join(f"{n} {p:.0f}%" for n, p in f["overload"]) if f["overload"] else ""))
     lines.append(f"- 역조류 선로 {len(f['reverse'])}개" + (": " + ", ".join(f"{n} {p:.0f} kW" for n, p in f["reverse"]) if f["reverse"] else ""))
+    shown = f["fault"][:MAX_FAULT_LISTED]
+    more = f" 외 {len(f['fault']) - len(shown)}곳" if len(f["fault"]) > len(shown) else ""
+    lines.append(f"- 단락용량(>{FAULT_HIGH_MVA} MVA) {len(f['fault'])}곳" + (": " + ", ".join(f"{n} {m:.0f} MVA" for n, m in shown) + more if f["fault"] else ""))
     lines.append(f"- 정전 지점 {len(f['outage'])}곳" + (": " + ", ".join(f["outage"]) if f["outage"] else ""))
     assumptions = _assumptions(graph)
     if assumptions:
@@ -204,25 +240,89 @@ def _make_client():
     except ImportError as e:
         raise ReportError("anthropic 라이브러리가 설치되지 않았습니다 (pip install -r requirements.txt)") from e
     # ponytail: 호출마다 클라이언트를 새로 만든다 (리포트는 시뮬레이션 뒤 한 번만 부르므로). 요청이 잦아지면 하나를 재사용한다
-    return anthropic.Anthropic(timeout=TIMEOUT_SEC, max_retries=2)
+    return anthropic.Anthropic(timeout=_timeout(), max_retries=2)
+
+
+def _build_report(data, substation_id: str) -> Report:
+    """모델이 돌려준 {diagnosis, causes, solutions}를 검사해 Report로 만든다. 형식이 맞지 않으면 ReportError (Claude·Gemini 공통)"""
+    if not isinstance(data, dict):
+        raise ReportError("AI 응답 형식이 올바르지 않습니다. 다시 시도해 주세요")
+    diagnosis = data.get("diagnosis")
+    causes = data.get("causes")
+    solutions = data.get("solutions")
+    # ponytail: 형식 검사는 직접 쓴 최소 검사다. 필드가 늘면 Report(pydantic)로 바로 검증하게 바꾼다
+    ok = isinstance(diagnosis, str) and diagnosis.strip() and isinstance(causes, list) and isinstance(solutions, list)
+    if not ok or not all(isinstance(x, str) for x in causes + solutions):
+        raise ReportError("AI 응답 형식이 올바르지 않습니다. 다시 시도해 주세요")
+    return Report(substation_id=substation_id, diagnosis=diagnosis.strip(), causes=[c.strip() for c in causes if c.strip()], solutions=[x.strip() for x in solutions if x.strip()])
 
 
 def _parse(response, substation_id: str) -> Report:
-    # ponytail: 형식 검사는 직접 쓴 최소 검사다. 필드가 늘면 Report(pydantic)로 바로 검증하게 바꾼다
-    """tool use 응답에서 리포트를 꺼낸다. 형식이 맞지 않으면 ReportError"""
+    """Claude tool use 응답에서 리포트를 꺼낸다. 형식이 맞지 않으면 ReportError"""
     if getattr(response, "stop_reason", None) == "max_tokens":
         raise ReportError("AI 응답이 길어서 중간에 잘렸습니다. 다시 시도해 주세요")
     for block in response.content:
         if getattr(block, "type", None) == "tool_use" and block.name == TOOL_NAME:
-            data = block.input
-            diagnosis = data.get("diagnosis")
-            causes = data.get("causes")
-            solutions = data.get("solutions")
-            ok = isinstance(diagnosis, str) and diagnosis.strip() and isinstance(causes, list) and isinstance(solutions, list)
-            if not ok or not all(isinstance(x, str) for x in causes + solutions):
-                raise ReportError("AI 응답 형식이 올바르지 않습니다. 다시 시도해 주세요")
-            return Report(substation_id=substation_id, diagnosis=diagnosis.strip(), causes=[c.strip() for c in causes if c.strip()], solutions=[s.strip() for s in solutions if s.strip()])
+            return _build_report(block.input, substation_id)
     raise ReportError("AI가 리포트를 돌려주지 않았습니다. 다시 시도해 주세요")
+
+
+def _gemini_schema(node):
+    """REPORT_TOOL의 JSON 스키마를 Gemini 형식(type 이름이 대문자, description 유지)으로 바꾼다"""
+    out = {"type": node["type"].upper()}
+    if "description" in node:
+        out["description"] = node["description"]
+    if "properties" in node:
+        out["properties"] = {k: _gemini_schema(v) for k, v in node["properties"].items()}
+    if "items" in node:
+        out["items"] = _gemini_schema(node["items"])
+    if "required" in node:
+        out["required"] = node["required"]
+    return out
+
+
+def _call_gemini(prompt: str, post=None) -> dict:
+    """Gemini REST 호출 (JSON 형식 고정). post: 테스트용 (url, headers, body 바이트) → 응답 dict. 없으면 실제로 호출한다"""
+    key = os.environ.get("GEMINI_API_KEY")
+    if not key:
+        raise ReportError("GEMINI_API_KEY가 설정되지 않았습니다 (.env 확인 후 백엔드를 다시 시작하세요)")
+    model = os.environ.get("GEMINI_MODEL") or GEMINI_DEFAULT_MODEL
+    body = json.dumps(
+        {
+            "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "maxOutputTokens": MAX_TOKENS,
+                "responseMimeType": "application/json",
+                "responseSchema": _gemini_schema(REPORT_TOOL["input_schema"]),
+            },
+        }
+    ).encode("utf-8")
+    headers = {"Content-Type": "application/json", "x-goog-api-key": key}
+    url = GEMINI_URL.format(model=model)
+
+    def real_post(url, headers, body):
+        req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=_timeout()) as res:
+            return json.loads(res.read().decode("utf-8"))
+
+    try:
+        data = (post or real_post)(url, headers, body)
+    except urllib.error.HTTPError as e:
+        # 키가 틀렸거나(400/403) 무료 한도를 넘었을 때(429)의 이유를 그대로 보여 준다. 키 값은 메시지에 넣지 않는다
+        detail = e.read().decode("utf-8", "replace")[:300]
+        raise ReportError(f"AI 호출에 실패했습니다 (Gemini HTTP {e.code}: {detail})") from e
+    except Exception as e:
+        raise ReportError(f"AI 호출에 실패했습니다 ({type(e).__name__}: {e})") from e
+    try:
+        cand = data["candidates"][0]
+        if cand.get("finishReason") == "MAX_TOKENS":
+            raise ReportError("AI 응답이 길어서 중간에 잘렸습니다. 다시 시도해 주세요")
+        return json.loads(cand["content"]["parts"][0]["text"])
+    except ReportError:
+        raise
+    except (KeyError, IndexError, TypeError, ValueError) as e:
+        raise ReportError("AI 응답 형식이 올바르지 않습니다. 다시 시도해 주세요") from e
 
 
 def generate_report(graph: SubstationGraph, result: SimulationResult, client=None) -> Report:
@@ -233,6 +333,8 @@ def generate_report(graph: SubstationGraph, result: SimulationResult, client=Non
     if not result.converged:
         raise ReportError("계산이 수렴하지 않은 결과로는 리포트를 만들 수 없습니다")
     prompt = build_prompt(graph, result)
+    if os.environ.get("AI_PROVIDER", "anthropic").strip().lower() == "gemini":
+        return _build_report(_call_gemini(prompt), result.substation_id)
     client = client or _make_client()
     try:
         response = client.messages.create(
@@ -310,8 +412,29 @@ def _sample() -> tuple[SubstationGraph, SimulationResult]:
     return graph, result
 
 
+def _load_dotenv(path) -> None:
+    """저장소 루트의 .env를 읽어 환경 변수로 넣는다 (이미 설정된 값은 덮어쓰지 않는다).
+    ponytail: 자체 점검(python -m ai_report.report)에서만 쓴다. 백엔드는 uvicorn --env-file .env로 읽는다.
+    따옴표·export 같은 복잡한 형식은 처리하지 않으니, 필요해지면 python-dotenv를 requirements.txt에 추가한다"""
+    try:
+        text = open(path, encoding="utf-8").read()
+    except OSError:
+        return
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key, value = key.strip(), value.strip()
+        if key and value and key not in os.environ:
+            os.environ[key] = value
+
+
 if __name__ == "__main__":
     import sys
+    from pathlib import Path
+
+    _load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
     g, r = _sample()
     print(build_prompt(g, r))
