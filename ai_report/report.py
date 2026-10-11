@@ -53,6 +53,10 @@ MAX_ROWS = 120  # 프롬프트에 넣는 지점·선로 표의 최대 줄 수
 # ponytail: 300 MVA는 제안서 슬라이드 예시값이다 (화면 진단표에서 '주의'). 한전 자문 후 확정되면 두 곳을 같이 바꾼다
 FAULT_HIGH_MVA = 300
 MAX_FAULT_LISTED = 10  # 프롬프트에 이름을 적는 단락용량 초과 지점 수 (나머지는 개수만)
+# 등급 기준: frontend/src/lib/overlay.js의 VOLTAGE_DANGER_LOW_PU, VOLTAGE_DANGER_HIGH_PU, LOADING_WATCH_PCT와 같은 값이다. 바꾸면 두 곳을 함께 고친다
+VOLTAGE_DANGER_LOW_PU = 0.9
+VOLTAGE_DANGER_HIGH_PU = 1.1
+LOADING_WATCH_PCT = 80
 TOOL_NAME = "submit_report"
 # ponytail: Gemini는 SDK 없이 REST로 부른다 (설치할 패키지를 늘리지 않으려고). 모델 이름은 Google AI Studio의 모델 목록에서 확인해 GEMINI_MODEL로 바꾼다.
 #   Gemini를 계속 쓰기로 정해지면 공식 SDK(google-genai)로 바꾸고 requirements.txt에 추가한다
@@ -60,7 +64,8 @@ GEMINI_DEFAULT_MODEL = "gemini-3.8-flash"
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 # ponytail: 등급은 3단계 고정이고 LLM이 아니라 코드가 정한다 (같은 결과면 항상 같은 등급). 세분화하거나 점수제로 바꿀 때는 check_findings의 규칙과 README를 같이 고친다
-GRADES = ("양호", "주의", "개선 필요")
+# 이름과 규칙은 화면 진단표(frontend/src/lib/overlay.js의 healthCheck, LEVELS)와 같다. 바꾸면 두 곳을 함께 고친다
+GRADES = ("정상", "주의", "위험")
 
 
 class ReportError(Exception):
@@ -72,8 +77,8 @@ SYSTEM_PROMPT = f"""당신은 22.9kV 배전계통 해석 결과를 설명하는 
 
 사용자가 계통 정보와 시뮬레이션 수치, 그리고 코드가 이미 판정한 "확정된 점검 결과"를 줍니다. 아래 규칙을 지키세요.
 1. 제공된 수치와 설비 이름만 쓰세요. 없는 값을 추측하거나 만들어 내지 마세요. 모르는 것은 "데이터에 없음"이라고 쓰세요.
-2. 건강도 등급은 "확정된 점검 결과"에 적힌 등급을 그대로 쓰세요. 바꾸거나 다시 판정하지 마세요.
-3. 판정 기준: 전압 정상 범위 {VOLTAGE_MIN_PU}~{VOLTAGE_MAX_PU} pu, 선로 부하율 {OVERLOAD_PCT:.0f}% 초과면 과부하, 분산전원 때문에 전력이 반대로 흐르면 역조류, 3상 단락용량이 {FAULT_HIGH_MVA} MVA를 넘으면 단락용량 증가(차단기 정격·보호계전기 검토 대상), 전원에서 끊기면 정전입니다. 정전은 저전압이 아닙니다.
+2. 건강도 등급(정상·주의·위험)은 "확정된 점검 결과"에 적힌 등급을 그대로 쓰세요. 바꾸거나 다시 판정하지 마세요.
+3. 판정 기준: 전압 정상 범위 {VOLTAGE_MIN_PU}~{VOLTAGE_MAX_PU} pu({VOLTAGE_DANGER_LOW_PU} pu 미만·{VOLTAGE_DANGER_HIGH_PU} pu 초과는 위험), 선로 부하율 {OVERLOAD_PCT:.0f}% 초과면 과부하(위험), {LOADING_WATCH_PCT}% 이상이면 부하율 높음(주의), 분산전원 때문에 전력이 반대로 흐르면 역조류, 3상 단락용량이 {FAULT_HIGH_MVA} MVA를 넘으면 단락용량 증가(차단기 정격·보호계전기 검토 대상), 전원에서 끊기면 정전입니다. 정전은 저전압이 아닙니다.
 4. 원인은 문제가 있는 설비 이름과 수치를 인용해서, 왜 그렇게 되는지 전기적 이유(선로 길이와 임피던스에 따른 전압강하, 분산전원 출력이 부하보다 큰 구간, 전류가 허용전류를 넘음 등)를 설명하세요. 입력에 없는 연결 구조를 가정하지 마세요.
 5. 솔루션은 원인과 하나씩 대응시키고 우선순위 순서로 쓰세요. 전선 굵기 교체, 전압조정기(SVR) 설치, 부하 절체, 역조류 보호계전 점검, 차단기 정격 검토, ESS 설치, 개폐기 조작처럼 엔지니어가 실제로 할 수 있는 조치로 쓰고, 효과를 수치로 약속하지 마세요.
 6. 문제가 없으면 원인에는 "기준 안에 있음"을 근거 수치와 함께 쓰고, 솔루션에는 유지·재점검 방법만 쓰세요. 문제를 지어내지 마세요.
@@ -103,6 +108,7 @@ def check_findings(graph: SubstationGraph, result: SimulationResult) -> dict:
     high = [(names.get(r.node_id, r.node_id), r.voltage_pu) for r in result.nodes if r.energized and r.voltage_pu > VOLTAGE_MAX_PU]
     outage = [names.get(r.node_id, r.node_id) for r in result.nodes if not r.energized]
     overload = [(line_names.get(r.line_id, r.line_id), r.loading_pct) for r in result.lines if r.loading_pct is not None and r.loading_pct > OVERLOAD_PCT]
+    watch = [(line_names.get(r.line_id, r.line_id), r.loading_pct) for r in result.lines if r.loading_pct is not None and LOADING_WATCH_PCT <= r.loading_pct <= OVERLOAD_PCT]
     reverse = [(line_names.get(r.line_id, r.line_id), r.p_kw) for r in result.lines if r.reverse_flow]
     # 3상 단락용량(MVA) = √3 × 선간전압(kV) × 단락전류(kA). 정전 지점은 단락전류가 없으니 뺀다
     fault = [
@@ -114,15 +120,18 @@ def check_findings(graph: SubstationGraph, result: SimulationResult) -> dict:
     low.sort(key=lambda x: x[1])
     high.sort(key=lambda x: -x[1])
     overload.sort(key=lambda x: -x[1])
+    watch.sort(key=lambda x: -x[1])
     # ponytail: 항목 개수와 상관없이 하나라도 있으면 같은 등급이다. 심각도 가중치가 필요해지면 그때 점수 계산을 넣는다
-    # 등급: 전압·부하율 기준을 넘는 항목이 있으면 개선 필요, 역조류·단락용량·정전만 있으면 주의, 없으면 양호
-    if low or high or overload:
+    # 등급 (화면 진단표와 같은 규칙): 항목마다 판정하고 가장 나쁜 것이 전체 등급
+    #   위험: 전압 0.9 pu 미만·1.1 pu 초과, 과부하, 정전 / 주의: 전압 정상 범위 밖, 부하율 80% 이상, 역조류, 단락용량 초과
+    danger_v = any(v < VOLTAGE_DANGER_LOW_PU for _, v in low) or any(v > VOLTAGE_DANGER_HIGH_PU for _, v in high)
+    if danger_v or overload or outage:
         grade = GRADES[2]
-    elif reverse or fault or outage:
+    elif low or high or watch or reverse or fault:
         grade = GRADES[1]
     else:
         grade = GRADES[0]
-    return {"grade": grade, "low": low, "high": high, "outage": outage, "overload": overload, "reverse": reverse, "fault": fault}
+    return {"grade": grade, "low": low, "high": high, "outage": outage, "overload": overload, "watch": watch, "reverse": reverse, "fault": fault}
 
 
 def _assumptions(graph: SubstationGraph) -> list[str]:
@@ -166,6 +175,7 @@ def build_prompt(graph: SubstationGraph, result: SimulationResult) -> str:
     lines.append(f"- 저전압(<{VOLTAGE_MIN_PU} pu) {len(f['low'])}곳" + (": " + ", ".join(f"{n} {v:.3f} pu" for n, v in f["low"]) if f["low"] else ""))
     lines.append(f"- 과전압(>{VOLTAGE_MAX_PU} pu) {len(f['high'])}곳" + (": " + ", ".join(f"{n} {v:.3f} pu" for n, v in f["high"]) if f["high"] else ""))
     lines.append(f"- 과부하(>{OVERLOAD_PCT:.0f}%) 선로 {len(f['overload'])}개" + (": " + ", ".join(f"{n} {p:.0f}%" for n, p in f["overload"]) if f["overload"] else ""))
+    lines.append(f"- 부하율 높음({LOADING_WATCH_PCT}~{OVERLOAD_PCT:.0f}%) 선로 {len(f['watch'])}개" + (": " + ", ".join(f"{n} {p:.0f}%" for n, p in f["watch"]) if f["watch"] else ""))
     lines.append(f"- 역조류 선로 {len(f['reverse'])}개" + (": " + ", ".join(f"{n} {p:.0f} kW" for n, p in f["reverse"]) if f["reverse"] else ""))
     shown = f["fault"][:MAX_FAULT_LISTED]
     more = f" 외 {len(f['fault']) - len(shown)}곳" if len(f["fault"]) > len(shown) else ""
@@ -437,6 +447,7 @@ if __name__ == "__main__":
     _load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
     g, r = _sample()
+    assert check_findings(g, r)["grade"] == "위험"  # 과부하·정전이 있으면 화면 진단표와 같이 위험
     print(build_prompt(g, r))
     if "--call" in sys.argv:
         rep = generate_report(g, r)
