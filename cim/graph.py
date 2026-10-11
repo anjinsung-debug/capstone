@@ -149,8 +149,8 @@ def _write_snapshot(tx, g: SubstationGraph) -> dict[str, str]:
     if clash:
         raise InvalidSnapshot(f"다른 변전소에 이미 있는 노드 id입니다: {[r['id'] for r in clash]}")
 
-    # 0) 변전소 이름 (다른 변전소 속성은 save_substation이 DB 값을 그대로 쓰므로 바뀌지 않음)
-    tx.run("MATCH (s:Substation {id: $sid}) SET s.name = $name", sid=sid, name=g.substation.name)
+    # 0) 변전소: 없으면 만들고 속성을 쓴다. 이미 있는 변전소는 save_substation이 이름 말고는 DB 값을 넘기므로 이름만 바뀐다
+    tx.run("MERGE (s:Substation {id: $sid}) SET s = $p", sid=sid, p=g.substation.model_dump())
 
     # 1) 피더: 새로 계산한 것으로 교체
     tx.run("""
@@ -206,6 +206,24 @@ def _write_snapshot(tx, g: SubstationGraph) -> dict[str, str]:
     return {r["id"]: r["eid"] for r in rows}
 
 
+# 새 변전소의 모선 전압 허용 범위 (pu). 이 밖이면 오타로 보고 거절한다
+SOURCE_VOLTAGE_RANGE = (0.9, 1.1)
+
+
+def _new_substation(substation_id: str, name: str, s: Substation) -> Substation:
+    """웹에서 새로 만드는 변전소의 속성을 검사한다. 잘못된 값은 시뮬레이션을 틀리게 하므로 저장 전에 막는다."""
+    if not name:
+        raise InvalidSnapshot("새 변전소의 이름이 비어 있습니다")
+    lo, hi = SOURCE_VOLTAGE_RANGE
+    if not lo <= s.source_voltage_pu <= hi:
+        raise InvalidSnapshot(f"모선 전압은 {lo}~{hi} pu여야 합니다 (지금 {s.source_voltage_pu})")
+    if s.short_circuit_mva is not None and s.short_circuit_mva <= 0:
+        raise InvalidSnapshot("3상 단락용량은 0보다 커야 합니다")
+    if s.x_r_ratio is not None and s.x_r_ratio <= 0:
+        raise InvalidSnapshot("X/R은 0보다 커야 합니다")
+    return s.model_copy(update={"id": substation_id, "name": name})
+
+
 def save_substation(substation_id: str, snapshot: SubstationSnapshot) -> SnapshotSaved:
     """편집 스냅샷을 하나의 트랜잭션으로 저장한다 (제안서 4단계, FR-06·FR-07).
 
@@ -213,8 +231,9 @@ def save_substation(substation_id: str, snapshot: SubstationSnapshot) -> Snapsho
     - 스냅샷에 없는 기존 노드·선로·피더와, 연결이 끊긴 DiagramObject는 삭제 (가비지 컬렉션)
     - 서버가 채우는 값: substation_id(주소 기준), 선로 kind(classify_connection),
       선로 방향(from=전원 쪽)과 feeder_id(차단기마다 피더, topology.trace_feeders)
-    - 변전소 속성은 이름만 스냅샷 값으로 바꾼다 (비어 있으면 기존 이름 유지). 모선 전압·단락용량·X/R은
-      시뮬레이션 결과를 바꾸므로 화면에서 고치지 않고 DB(적재 데이터) 값을 그대로 쓴다
+    - 없는 변전소 id면 새로 만든다. 이때만 스냅샷의 변전소 속성(이름, 모선 전압, 단락용량, X/R)을 검사해서 쓴다
+    - 이미 있는 변전소는 이름만 스냅샷 값으로 바꾼다 (비어 있으면 기존 이름 유지). 모선 전압·단락용량·X/R은
+      시뮬레이션 결과를 바꾸므로 화면에서 고치지 않고 DB(적재 데이터 또는 처음 만들 때 넣은 값)를 그대로 쓴다
     - 검사에 실패하면 아무것도 쓰지 않고 InvalidSnapshot
     - 저장된 노드·선로의 UUID → Neo4j element id 대응표를 돌려줌
     """
@@ -222,12 +241,13 @@ def save_substation(substation_id: str, snapshot: SubstationSnapshot) -> Snapsho
         sub = session.execute_read(
             lambda tx: tx.run("MATCH (s:Substation {id: $sid}) RETURN s{.*} AS s", sid=substation_id).single()
         )
-        if sub is None:
-            raise SubstationNotFound(f"변전소 {substation_id}가 없습니다")
-        substation = Substation(**sub["s"])
         name = snapshot.substation.name.strip()
-        if name:
-            substation = substation.model_copy(update={"name": name})
+        if sub is None:
+            substation = _new_substation(substation_id, name, snapshot.substation)
+        else:
+            substation = Substation(**sub["s"])
+            if name:
+                substation = substation.model_copy(update={"name": name})
         g = _prepare_snapshot(substation, snapshot)
         element_ids = session.execute_write(_write_snapshot, g)
     return SnapshotSaved(graph=g, element_ids=element_ids)

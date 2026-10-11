@@ -7,8 +7,8 @@ ponytail: 아래 계산·리포트는 화면 확인용 근사다. 진짜 백엔�
 진짜 백엔드와 다른 점 (헷갈리지 않도록):
 - 계산: OpenDSS 대신 LinDistFlow 근사 → 전압·손실 숫자가 조금 다르다 (판정 결과는 대체로 같음)
 - 리포트: LLM 대신 규칙으로 만든 예시 문장 ("(모의 리포트)" 표시)
-- 저장: 없는 변전소도 새로 만들고 전원 개수를 검사하지 않는다. 진짜 백엔드는 이미 있는 변전소만 저장(없으면 404),
-  전원 1개 필수(아니면 422) — cim/graph.py의 save_substation
+- 저장: 없는 변전소도 새로 만들고 전원 개수를 검사하지 않는다. 진짜 백엔드도 없는 변전소는 새로 만들지만,
+  전원 1개 필수(아니면 422)이고 이미 있는 변전소는 이름만 바뀐다 — cim/graph.py의 save_substation
 
     저장소 루트에서:  python frontend/mock/mock_server.py
     다른 터미널에서:  cd frontend && npm run dev   → http://localhost:5173

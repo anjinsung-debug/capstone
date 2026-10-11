@@ -227,9 +227,8 @@ export default function App() {
   }
 
   // 새 변전소 (프론트가 UUID 발급).
-  // 구현 참고 (한승우 확인 필요): 진짜 백엔드의 save_substation은 이미 있는 변전소만 저장하고(없으면 404),
-  // 전원(source) 노드가 정확히 1개여야 저장된다(아니면 422). 그래서 지금은 "새 변전소"가 모의 서버에서만 저장된다.
-  // 웹에서 새 변전소를 만들게 할지(서버에서 생성 허용), 이 버튼을 숨길지 팀에서 정해야 한다
+  // 진짜 백엔드(cim/graph.py의 save_substation)는 없는 변전소 id면 새로 만든다. 이때만 이름·단락용량 등 변전소 속성을 받고,
+  // 그 뒤로는 이름만 바뀐다. 전원(source) 노드가 정확히 1개가 될 때까지는 저장이 422로 실패한다 (빈 계통이면 전원부터 놓기)
   async function createSubstation({ name, template, short_circuit_mva }) {
     setDialog(null)
     if (dirty) await flush()

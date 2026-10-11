@@ -9,7 +9,7 @@
 1. **적재** (FR-01, 02): `python -m cim.load` 실행 → `cim/load.py`가 `data/`의 한전 원본 CIM XML을 rdflib로 읽어(`read_raw`) 매핑 가이드(`cim/mapping.py`)대로 공통 모델로 변환하고(`to_substation_graphs`, 선로 방향·피더 소속은 `cim/topology.py`) Neo4j에 저장(`save_to_neo4j`). 웹이 아니라 명령어로 실행
 2. **조회** (FR-02, 05): 변전소 단위로 읽음. `GET /api/substations` → `GET /api/substations/{id}` → `cim/graph.py`의 `get_substation`이 피더·노드·선로를 읽고, 좌표는 DiagramObject에서, `bus_id`는 `CONNECTED_TO` 관계에서 읽어 돌려줌
    - **편집 스냅샷 저장** (FR-06, 07, 제안서 4단계): 편집 중 새로 만든 노드·선로에는 프론트엔드가 `crypto.randomUUID()`로 UUID를 바로 할당 → 편집을 마치면 변전소 계통 전체(`SubstationSnapshot`, 형식은 `SubstationGraph`와 같음)를 `PUT /api/substations/{id}`로 보냄 → `save_substation`이 한 트랜잭션으로 저장
-     - 이미 Neo4j에 있는 변전소만 저장할 수 있음 (없는 id는 404). 변전소 속성은 이름만 스냅샷 값으로 바꾸고(빈 이름이면 유지), 모선 전압·단락용량·X/R은 시뮬레이션 결과를 바꾸므로 저장된 값을 그대로 씀 (화면에서도 읽기 전용)
+     - 없는 변전소 id면 새로 만듦 (이때만 이름·모선 전압 0.9~1.1 pu·단락용량·X/R을 검사해서 받음). 이미 있는 변전소는 이름만 스냅샷 값으로 바꾸고(빈 이름이면 유지), 모선 전압·단락용량·X/R은 시뮬레이션 결과를 바꾸므로 저장된 값을 그대로 씀 (화면에서도 읽기 전용)
      - 전원(source) 노드가 정확히 1개이고 그 `bus_id`가 스냅샷 안의 노드여야 저장됨 (아니면 422). 노드·선로 id 중복, 선로 양 끝 누락도 422
      - 주소의 id와 `substation.id`가 다르면 422 (`backend/api/grid.py`)
      - 서버가 다시 계산하는 값: 선로의 연결 특성(`kind`, `classify_connection`), 선로 방향(전원 쪽 = from)과 피더 소속(차단기마다 피더 하나, `cim/topology.py`). 스냅샷의 `feeders`는 쓰지 않음

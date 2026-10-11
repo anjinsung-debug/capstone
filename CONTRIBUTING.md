@@ -48,7 +48,7 @@ Claude Code가 코드를 읽고 맥락을 파악하거나 우리에게 되물을
 | 프론트엔드 → 백엔드 API 호출 | `frontend/src/api/client.js` | 동작 |
 | 한전 데이터 적재 | `cim/load.py`, `cim/mapping.py` | 동작 (`--dry-run`이면 Neo4j 없이 변환 결과만 출력) |
 | 변전소 계통 조회 | `cim/graph.py`의 `list_substations`, `get_substation` | 동작 (없는 변전소는 404) |
-| 편집 스냅샷 저장 (4단계) | `cim/graph.py`의 `save_substation` | 동작 (이미 있는 변전소만, 전원 노드 1개 필요) |
+| 편집 스냅샷 저장 (4단계) | `cim/graph.py`의 `save_substation` | 동작 (없는 변전소는 새로 만듦, 전원 노드 1개 필요. 이미 있는 변전소는 이름만 바뀜) |
 | 연결 특성 자동 구분 (위상 형성 논리) | `cim/graph.py`의 `classify_connection` | 동작 (차단기·개폐기에 닿으면 `switch`, 그 외 `line`) |
 | OpenDSS 스크립트 변환 (2단계) | `simulation/dss.py` | 동작 |
 | 4대 시뮬레이션 (3단계) | `simulation/simulate.py` | 동작 (한전 CIM XML로 자체 점검 통과: 역조류 방향, 루프 검출, 정전 구간, 오류 처리 포함) |
@@ -56,7 +56,7 @@ Claude Code가 코드를 읽고 맥락을 파악하거나 우리에게 되물을
 | AI 리포트 | `ai_report/report.py` | 동작 (프로토타입. 확정된 점검 결과를 코드가 계산해 LLM에 넘기고, 실패하면 503과 이유. 실제 API 호출은 `ANTHROPIC_API_KEY`가 있는 환경에서 `python -m ai_report.report --call`로 확인) |
 | 화면 흐름 (선택 → 시뮬레이션 → 결과·리포트) | `frontend/src/App.jsx` | 동작 (편집하면 자동 저장 후 자동 재계산, AI 리포트는 결과 창 버튼으로 생성하고 실패하면 이유를 "AI 리포트 실패" 메시지로 표시) |
 | 다크모드 단선도 표시 (Cytoscape.js) | `frontend/src/components/Diagram.jsx` | 동작 (설비 종류별 모양·색, 직각 선로, 붙임선 점선) |
-| 단선도 편집 UI | `Diagram.jsx`, `NavDrawer.jsx`, `PropertyPanel.jsx`, `lib/graphEdit.js` | 동작 (☰ 메뉴에서 설비 끌어다 놓기, 선로 그리기, 격자·가이드라인 정렬, 속성 편집, 삭제, 되돌리기, 변전소 이름 바꾸기, **바꿀 때마다 자동 저장 → 자동 재계산**. 진짜 백엔드는 이미 있는 변전소만 저장하므로 "새 변전소"는 모의 서버에서만 저장됨) |
+| 단선도 편집 UI | `Diagram.jsx`, `NavDrawer.jsx`, `PropertyPanel.jsx`, `lib/graphEdit.js` | 동작 (☰ 메뉴에서 설비 끌어다 놓기, 선로 그리기, 격자·가이드라인 정렬, 속성 편집, 삭제, 되돌리기, 변전소 이름 바꾸기, **바꿀 때마다 자동 저장 → 자동 재계산**. "새 변전소"도 진짜 백엔드에 저장됨) |
 | 결과 오버레이 | `Diagram.jsx`, `lib/overlay.js` | 동작 (전압 색, 부하율 굵기, 역조류·조류 방향 화살표, 정전 흐림, 고장전류 표시 전환, 차단기 옆 피더 송출 MW·MVAr) |
 | 결과·그래프·리포트 표시 | `frontend/src/components/ResultPanel.jsx`, `lib/overlay.js` | 동작 (제안서 슬라이드 8·10~13 기준: 단선도 표시 모드 건강도/① 전압/② 과부하/③ 역조류/④ 단락용량, 계통건강도 진단표(정상·주의·위험), 원인 분석, 솔루션 제언, 요소별 결과와 위치 이동 버튼, 시점별 기록. AI 해설은 버튼으로 생성) |
 | 프론트엔드 모의 백엔드 | `frontend/mock/mock_server.py` | 동작 (조회·저장·근사 시뮬레이션·그래프·예시 리포트. Neo4j·Docker 없이 화면 개발용, 진짜 백엔드와 다른 점은 파일 맨 위 설명) |
