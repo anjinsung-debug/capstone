@@ -438,6 +438,12 @@ export function elementRows(graph, result) {
   return { nodes, lines }
 }
 
+// 두 기록 점의 지표가 화면에 보이는 자릿수까지 같은지 (같으면 새로 쌓지 않는다)
+const HISTORY_DIGITS = { minV: 3, maxLoading: 0, reverseMw: 2, maxMva: 0, lossKw: 1, totalMw: 2 }
+export function sameHistoryValues(a, b) {
+  return Object.entries(HISTORY_DIGITS).every(([k, d]) => (a[k] == null ? null : a[k].toFixed(d)) === (b[k] == null ? null : b[k].toFixed(d)))
+}
+
 // 결과 기록(시점별) 한 점: 편집해서 다시 계산할 때마다 하나씩 쌓는다
 export function historyPoint(graph, result, label) {
   const hc = healthCheck(graph, result)

@@ -99,7 +99,7 @@ function Small({ metric, points, hover, setHover }) {
 
 export default function HistoryChart({ points }) {
   const [hover, setHover] = useState(null)
-  if (!points.length) return <p className="muted">아직 기록이 없습니다. 계통을 고치면 다시 계산될 때마다 여기에 쌓입니다.</p>
+  if (!points.length) return <p className="muted">아직 기록이 없습니다. 계통을 고쳐서 결과가 바뀔 때마다 여기에 쌓입니다 (연결 안 된 설비가 있는 중간 단계는 빼고).</p>
   const shown = points[hover ?? points.length - 1]
   return (
     <div className="history">

@@ -260,6 +260,33 @@ export function findIssues(graph) {
   return issues
 }
 
+// 전원과 선으로 이어지지 않은 설비 이름 목록 (편집 중 놓기만 하고 아직 연결하지 않은 노드).
+// 개폐기가 열려 있어도 선으로 이어져 있으면 연결된 것으로 본다 (열린 개폐기 아래 정전은 의도한 운전 상태라서).
+// App.jsx가 이 목록이 비어 있을 때만 결과 기록(시점별)에 점을 남긴다
+export function findDangling(graph) {
+  if (!graph) return []
+  const byId = Object.fromEntries(graph.nodes.map((n) => [n.id, n]))
+  const source = graph.nodes.find((n) => n.type === 'source' && n.bus_id && byId[n.bus_id])
+  if (!source) return graph.nodes.map((n) => n.name)
+  const adj = {}
+  for (const l of graph.lines) {
+    ;(adj[l.from_node_id] ??= []).push(l.to_node_id)
+    ;(adj[l.to_node_id] ??= []).push(l.from_node_id)
+  }
+  const seen = new Set([source.bus_id])
+  const queue = [source.bus_id]
+  while (queue.length) {
+    for (const nxt of adj[queue.shift()] ?? []) {
+      if (seen.has(nxt)) continue
+      seen.add(nxt)
+      queue.push(nxt)
+    }
+  }
+  return graph.nodes
+    .filter((n) => (NODE_TYPES[n.type].oneTerminal ? !seen.has(n.bus_id) : !seen.has(n.id)))
+    .map((n) => n.name)
+}
+
 // PUT /api/substations/{id}로 보낼 스냅샷. 화면 전용 값은 빼고 cim/models.py 필드만 보낸다
 export function toSnapshot(graph) {
   const g = prepareForSave(graph)

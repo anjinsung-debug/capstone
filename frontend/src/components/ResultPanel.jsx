@@ -1,6 +1,6 @@
 // 시뮬레이션 결과 화면 (제안서 3·5단계). 구성은 오프라인 미팅 자료(제안서 슬라이드 8, 10~13) 기준
 // - Legend: 단선도 안 왼쪽 아래 범례 (표시 모드마다 슬라이드 8의 구간·색)
-// - SummaryStrip: 단선도 위 요약 줄 = 계통건강도 지표 4개 + 피더 송출 (자세히 보기·새 창 버튼)
+// - SummaryStrip: 단선도 위 요약 줄 = 변전소 계통 전체에서 항목별 가장 나쁜 값 4개 + 모든 피더 송출 합계 (결과 자세히 버튼)
 // - ResultView: 결과 창 (가운데 창 또는 브라우저 새 창에 같은 내용). 슬라이드 12의 활용 흐름 순서대로 탭:
 //     ① 건강도 진단 '어디가 문제인가?' → ② 원인 분석 '왜 발생했는가?' → ③ 솔루션 제언 '어떻게 해결할까?'
 //     + 요소별 결과(모든 설비·선로 값), 기록(시점별)
@@ -57,7 +57,11 @@ function LevelBadge({ level }) {
 }
 
 // 단선도 위 요약 줄. 결과가 없으면 왜 없는지(계산 중, 계통 미완성 등) 보여 준다
-export function SummaryStrip({ graph, result, note, busy, onOpen, onPopup, onRerun }) {
+// 요약 줄 이름: 결과 창의 진단표(healthCheck rows)와 같은 값이지만, 계통 전체의 최악값이라는 걸 이름에 드러낸다
+// 값은 모두 변전소 계통 전체(모든 피더)에서 가장 나쁜 지점이다. 위치는 마우스를 올리면 보인다
+const STRIP_LABELS = { voltage: '전압', loading: '부하율', reverse: '역조류', fault: '단락용량', outage: '정전' }
+
+export function SummaryStrip({ graph, result, note, busy, onOpen, onRerun }) {
   if (!result) {
     return (
       <div className="strip">
@@ -74,23 +78,20 @@ export function SummaryStrip({ graph, result, note, busy, onOpen, onPopup, onRer
   const chips = hc.rows.filter((r) => r.key !== 'outage' || r.level !== 'ok')
   return (
     <div className="strip">
-      <span className="overall" style={{ color: LEVELS[hc.overall].color }}>
-        ● 계통 {LEVELS[hc.overall].label}
+      <span className="overall" style={{ color: LEVELS[hc.overall].color }} title={`${graph.substation.name} 계통 전체(피더 ${result.feeders.length}개)에서 항목마다 가장 나쁜 값으로 판정합니다`}>
+        ● 전체 계통 {LEVELS[hc.overall].label}
       </span>
       {chips.map((r) => (
-        <span key={r.key} className="kv" title={r.whereName ? `최악 위치: ${r.whereName}` : undefined}>
-          {r.label} <b style={{ color: r.level === 'ok' ? undefined : LEVELS[r.level].color }}>{r.key === 'fault' && r.worst != null ? `${r.worst.toFixed(0)} MVA` : r.worstText}</b>
+        <span key={r.key} className="kv" title={r.whereName ? `전체 계통에서 가장 나쁜 곳: ${r.whereName} (기준 ${r.standard})` : `기준 ${r.standard}`}>
+          {STRIP_LABELS[r.key]} <b style={{ color: r.level === 'ok' ? undefined : LEVELS[r.level].color }}>{r.key === 'fault' && r.worst != null ? `${r.worst.toFixed(0)} MVA` : r.worstText}</b>
         </span>
       ))}
-      <span className="kv">
-        송출 <b className="feeder">{hc.totalMw.toFixed(2)}</b> MW
+      <span className="kv" title={`피더 ${result.feeders.length}개의 송출 전력 합계`}>
+        총 송출 <b className="feeder">{hc.totalMw.toFixed(2)}</b> MW
       </span>
       {(busy || note) && <span className={note ? 'strip-note warn' : 'strip-note'}>{busy || note}</span>}
       <button type="button" className="mini primary-outline" onClick={onOpen}>
         결과 자세히
-      </button>
-      <button type="button" className="mini" onClick={onPopup} title="결과를 브라우저 새 창으로 엽니다 (모니터 두 개일 때 편해요)">
-        새 창 ↗
       </button>
     </div>
   )
@@ -398,7 +399,7 @@ export const RESULT_TABS = [
 ]
 
 // 결과 창 내용. 가운데 창과 새 창이 같은 컴포넌트를 쓴다
-export function ResultView({ graph, result, tab, onTab, plotUrl, plotMessage, report, reportMessage, reportBusy, onMakeReport, history, onFocus }) {
+export function ResultView({ graph, result, tab, onTab, plotUrl, plotMessage, report, reportMessage, reportBusy, onMakeReport, history, historyNote, onFocus }) {
   const aiProps = { report, reportMessage, reportBusy, onMakeReport }
   return (
     <div className="rview">
@@ -422,7 +423,10 @@ export function ResultView({ graph, result, tab, onTab, plotUrl, plotMessage, re
         ) : tab === 'elements' ? (
           <ElementsTab graph={graph} result={result} onFocus={onFocus} />
         ) : (
-          <HistoryChart points={history} />
+          <>
+            {historyNote && <p className="muted history-note">{historyNote}</p>}
+            <HistoryChart points={history} />
+          </>
         )}
       </div>
     </div>

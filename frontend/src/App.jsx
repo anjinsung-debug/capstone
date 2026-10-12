@@ -24,8 +24,8 @@ import PopupWindow, { openPopup } from './components/PopupWindow.jsx'
 import PropertyPanel from './components/PropertyPanel.jsx'
 import { Legend, ResultView, SummaryStrip } from './components/ResultPanel.jsx'
 import { NewSubstationDialog, RenameDialog } from './components/SubstationDialog.jsx'
-import { electricalKey, emptyGraph, removeElements, starterGraph, toSnapshot, updateSubstation } from './lib/graphEdit.js'
-import { MODES, historyPoint } from './lib/overlay.js'
+import { electricalKey, emptyGraph, findDangling, removeElements, starterGraph, toSnapshot, updateSubstation } from './lib/graphEdit.js'
+import { MODES, historyPoint, sameHistoryValues } from './lib/overlay.js'
 
 // ponytail: 되돌리기는 브라우저 메모리에 이전 계통을 최대 50개 통째로 보관한다 (새로고침하면 사라짐).
 // 계통이 수천 개 노드로 커져 느려지면 바뀐 부분(diff)만 저장하는 방식으로 바꾼다
@@ -34,11 +34,13 @@ const HISTORY_LIMIT = 50
 const AUTOSAVE_DELAY_MS = 800
 // ponytail: 결과 기록(시점별)도 메모리에 최대 100개만 둔다. 오래 남겨야 하면 서버(Neo4j)에 저장하는 API를 만든다
 const RESULT_HISTORY_LIMIT = 100
+const HEALTH_POLL_MS = 15000 // 서버·DB 연결 상태를 다시 확인하는 간격
 
 const describe = (e) => e.message.replace(/^HTTP \d+: /, '')
 
 export default function App() {
-  const [health, setHealth] = useState({ ok: null, text: '확인 중...' })
+  // 연결 상태 (위 왼쪽 표시): server·db = true(연결) | false(끊김) | null(확인 중). db는 모의 서버면 'mock'
+  const [health, setHealth] = useState({ server: null, db: null, detail: '확인 중' })
   const [substations, setSubstations] = useState([])
   const [graph, setGraph] = useState(null) // 화면에 있는 계통 (자동 저장 전 값일 수 있음)
   const [dirty, setDirty] = useState(false) // 아직 저장하지 않은 편집이 있는지
@@ -57,6 +59,7 @@ export default function App() {
   const [reportMessage, setReportMessage] = useState('')
   const [reportBusy, setReportBusy] = useState(false)
   const [resultHistory, setResultHistory] = useState([])
+  const [historyNote, setHistoryNote] = useState('') // 마지막 계산을 기록하지 않은 이유 (연결 안 된 설비 등)
   const [resultOpen, setResultOpen] = useState(false) // 가운데 결과 창
   const [resultTab, setResultTab] = useState('health')
   const [popup, setPopup] = useState(null) // 브라우저 새 창 결과 { win, container }
@@ -86,12 +89,26 @@ export default function App() {
       .then(setSubstations)
       .catch((e) => fail(`변전소 목록을 불러오지 못했습니다 (${e.message})`))
 
-  useEffect(() => {
+  // GET /api/health → { status: 'ok', neo4j: 'connected' | 'unavailable' | 'mock' } (backend/api/health.py)
+  // 응답이 오면 서버는 연결, neo4j 값으로 DB 연결을 판단. 응답이 없으면 둘 다 알 수 없으므로 서버 끊김으로 표시
+  const checkHealth = useCallback(() => {
     getHealth()
-      .then((h) => setHealth({ ok: h.neo4j === 'connected' || h.neo4j === 'mock', text: `서버 ${h.status} · Neo4j ${h.neo4j}` }))
-      .catch((e) => setHealth({ ok: false, text: `백엔드 연결 실패 (${e.message})` }))
-    refreshList()
+      .then((h) =>
+        setHealth({
+          server: true,
+          db: h.neo4j === 'connected' ? true : h.neo4j === 'mock' ? 'mock' : false,
+          detail: `서버 ${h.status} · Neo4j ${h.neo4j}`,
+        }),
+      )
+      .catch((e) => setHealth({ server: false, db: null, detail: `백엔드에 연결할 수 없습니다 (${e.message})` }))
   }, [])
+
+  useEffect(() => {
+    checkHealth()
+    refreshList()
+    const t = setInterval(checkHealth, HEALTH_POLL_MS)
+    return () => clearInterval(t)
+  }, [checkHealth])
 
   function resetResult() {
     ++runId.current
@@ -103,6 +120,7 @@ export default function App() {
     setReport(null)
     setReportMessage('')
     setResultHistory([])
+    setHistoryNote('')
   }
 
   // ── 시뮬레이션: 서버(Neo4j)에 저장된 계통으로 계산한다. 결과가 오면 그래프도 다시 그린다 ──
@@ -131,7 +149,17 @@ export default function App() {
     setSimNote('')
     setReport(null)
     setReportMessage('')
-    setResultHistory((h) => [...h.slice(-RESULT_HISTORY_LIMIT + 1), historyPoint(g, res, label)])
+    // 결과 기록(시점별)에는 계통이 다 이어진 상태의 계산만 남긴다. 노드를 놓기만 하고 아직 연결하지 않은 중간 단계,
+    // 그리고 지표가 직전 기록과 똑같은 계산은 건너뛴다 (편집할 때마다 점이 쌓여 보기 불편하다는 팀 피드백)
+    const dangling = findDangling(g)
+    if (dangling.length) {
+      const names = dangling.slice(0, 3).join(', ') + (dangling.length > 3 ? ` 외 ${dangling.length - 3}개` : '')
+      setHistoryNote(`연결되지 않은 설비가 있어 기록하지 않았습니다: ${names}`)
+    } else {
+      setHistoryNote('')
+      const point = historyPoint(g, res, label)
+      setResultHistory((h) => (h.length && sameHistoryValues(h[h.length - 1], point) ? h : [...h.slice(-RESULT_HISTORY_LIMIT + 1), point]))
+    }
     setPlotMessage('그래프 그리는 중...')
     createPlot(res)
       .then((url) => {
@@ -345,6 +373,7 @@ export default function App() {
       reportBusy={reportBusy}
       onMakeReport={makeReport}
       history={resultHistory}
+      historyNote={historyNote}
       onFocus={focusElement}
     />
   )
@@ -370,7 +399,16 @@ export default function App() {
           </button>
           <div>
             <h1>배전계통 통합 분석 플랫폼</h1>
-            <small className={health.ok === false ? 'health bad' : 'health'}>{health.text}</small>
+            <button type="button" className="conn" onClick={checkHealth} title={`${health.detail}\n누르면 다시 확인 (${HEALTH_POLL_MS / 1000}초마다 자동 확인)`}>
+              <span className={`conn-item ${health.server === null ? 'wait' : health.server ? 'on' : 'off'}`}>
+                <i />
+                서버
+              </span>
+              <span className={`conn-item ${health.server === false ? 'unknown' : health.db === null ? 'wait' : health.db === false ? 'off' : 'on'}`}>
+                <i />
+                DB{health.db === 'mock' ? ' (모의)' : ''}
+              </span>
+            </button>
           </div>
         </div>
         <div className="actions">
@@ -452,7 +490,6 @@ export default function App() {
                 note={save.status === 'error' ? `저장 실패: ${save.text}` : simNote}
                 busy={busy}
                 onOpen={() => setResultOpen(true)}
-                onPopup={showPopup}
                 onRerun={() => simulateNow(graph, '다시 계산')}
               />
               {result && (
