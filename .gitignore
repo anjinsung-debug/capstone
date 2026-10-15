@@ -7,6 +7,7 @@ data/*
 !data/korean_distribution_cim.xml
 !data/LICENSE
 !data/NOTICE.md
+!data/daily_profile.csv
 
 # Python
 .venv/

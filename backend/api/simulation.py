@@ -4,6 +4,7 @@ from fastapi import APIRouter
 from fastapi.responses import Response
 
 from cim import graph
+from simulation.daily import DailyResult, simulate_daily
 from simulation.models import SimulationResult
 from simulation.plot import plot_result
 from simulation.simulate import simulate
@@ -15,6 +16,12 @@ router = APIRouter()
 def run_simulation(substation_id: str) -> SimulationResult:
     """변전소 계통을 읽어 4대 시뮬레이션 실행"""
     return simulate(graph.get_substation(substation_id))
+
+
+@router.post("/substations/{substation_id}/simulations/daily")
+def run_daily_simulation(substation_id: str) -> DailyResult:
+    """대표일 하루(0~23시) 시뮬레이션: 시간대별 배율(data/daily_profile.csv)을 부하·태양광에 곱해 24번 계산 (simulation/daily.py)"""
+    return simulate_daily(graph.get_substation(substation_id))
 
 
 @router.post(

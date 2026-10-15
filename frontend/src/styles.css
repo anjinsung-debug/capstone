@@ -342,8 +342,13 @@ button.mini {
   background: #1d3a2e;
 }
 .tile-icon {
-  font-size: 18px;
-  line-height: 1;
+  display: inline-flex;
+  height: 18px;
+  align-items: center;
+}
+.node-icon {
+  vertical-align: -2px;
+  flex: none;
 }
 
 .diagram {
@@ -1168,4 +1173,72 @@ body.popup {
 }
 .wide-chart {
   max-width: 900px;
+}
+
+/* 기록 탭 하루 곡선: 선택 기록(초록) · 바로 전 기록(회색 점선) · 그 밖(옅게) */
+.history-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px 16px;
+  flex-wrap: wrap;
+}
+.history-head p {
+  margin: 0;
+}
+.hlegend {
+  display: flex;
+  gap: 14px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.hlegend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.hlegend .sw {
+  width: 18px;
+  height: 0;
+  border-top: 2px solid var(--accent);
+}
+.hlegend .sw.prev {
+  border-top: 2px dashed #8a989f;
+}
+.hlegend .sw.other {
+  border-top-color: rgba(138, 152, 159, 0.4);
+}
+.dline {
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+.dline.prev {
+  stroke: #8a989f;
+  stroke-dasharray: 4 3;
+}
+.dline.other {
+  stroke: rgba(138, 152, 159, 0.35);
+}
+.tag {
+  display: inline-block;
+  padding: 0 6px;
+  border: 1px solid var(--warn);
+  border-radius: 4px;
+  color: var(--warn);
+  font-size: 11px;
+}
+.rtable tr.clickable {
+  cursor: pointer;
+}
+.rtable tr.sel td {
+  background: rgba(62, 207, 142, 0.1);
+}
+
+.history-table td,
+.history-table th {
+  white-space: nowrap;
+}
+.table-note {
+  margin: 0;
 }

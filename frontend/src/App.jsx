@@ -14,6 +14,7 @@ import {
   getHealth,
   getSubstation,
   listSubstations,
+  runDaily,
   runSimulation,
   saveSubstation,
 } from './api/client.js'
@@ -25,7 +26,7 @@ import PropertyPanel from './components/PropertyPanel.jsx'
 import { AiReportView, Legend, ResultView, SummaryStrip } from './components/ResultPanel.jsx'
 import { NewSubstationDialog, RenameDialog } from './components/SubstationDialog.jsx'
 import { electricalKey, emptyGraph, findDangling, removeElements, starterGraph, toSnapshot, updateSubstation } from './lib/graphEdit.js'
-import { MODES, historyPoint, sameHistoryValues } from './lib/overlay.js'
+import { MODES, dailyPoints, historyPoint, sameHistoryValues } from './lib/overlay.js'
 
 // ponytail: 되돌리기는 브라우저 메모리에 이전 계통을 최대 50개 통째로 보관한다 (새로고침하면 사라짐).
 // 계통이 수천 개 노드로 커져 느려지면 바뀐 부분(diff)만 저장하는 방식으로 바꾼다
@@ -58,6 +59,7 @@ export default function App() {
   const [reportBusy, setReportBusy] = useState(false)
   const [resultHistory, setResultHistory] = useState([])
   const [historyNote, setHistoryNote] = useState('') // 마지막 계산을 기록하지 않은 이유 (연결 안 된 설비 등)
+  const [dailyNote, setDailyNote] = useState('') // 하루(24시간) 계산을 못 하는 이유 (진짜 백엔드에 아직 없음 등)
   // 가운데 창: 'ai' = AI 리포트 (위 오른쪽 버튼) | 'detail' = 결과 자세히 (AI 리포트 창 오른쪽 위 버튼) | null = 닫힘
   const [resultOpen, setResultOpen] = useState(null)
   const [resultTab, setResultTab] = useState('health')
@@ -72,6 +74,10 @@ export default function App() {
   const graphRef = useRef(graph)
   graphRef.current = graph
   const simulatedKey = useRef(null) // 마지막으로 계산한 계통의 electricalKey
+  const historyRef = useRef([]) // resultHistory의 최신 값 (기록을 새로 쌓을지 판단할 때 씀)
+  historyRef.current = resultHistory
+  const pointSeq = useRef(0) // 기록 점 번호 (하루 계산 결과를 나중에 그 점에 붙이려고)
+  const dailyAvailable = useRef(null) // 백엔드에 하루 계산이 있는지: null 모름 | true | false
   const changeLabel = useRef('') // 기록에 남길 "바뀐 내용"
 
   const info = useCallback((text) => setMessage({ text, kind: 'info' }), [])
@@ -117,7 +123,28 @@ export default function App() {
     setReport(null)
     setReportMessage('')
     setResultHistory([])
+    historyRef.current = []
     setHistoryNote('')
+  }
+
+  // 기록 점 하나에 하루(24시간) 곡선을 붙인다. 시간이 걸리므로 기록은 먼저 쌓고 결과는 나중에 채운다.
+  // 진짜 백엔드에 아직 이 주소가 없으면(404·405·501) 다시 부르지 않고 기록 탭에 이유를 보여 준다
+  function loadDaily(g, pid) {
+    runDaily(g.substation.id)
+      .then((d) => {
+        dailyAvailable.current = true
+        setDailyNote('')
+        const daily = dailyPoints(g, d.hours)
+        setResultHistory((h) => h.map((p) => (p.id === pid ? { ...p, daily, profile: d.profile } : p)))
+      })
+      .catch((e) => {
+        if ([404, 405, 501].includes(e.status)) {
+          dailyAvailable.current = false
+          setDailyNote('백엔드에 하루(24시간) 계산이 없어 편집 시점 값만 보여 줍니다. 최신 코드를 받아 백엔드(uvicorn)를 다시 켜 주세요')
+        } else {
+          setResultHistory((h) => h.map((p) => (p.id === pid ? { ...p, dailyError: describe(e) } : p)))
+        }
+      })
   }
 
   // ── 시뮬레이션: 서버(Neo4j)에 저장된 계통으로 계산한다. 결과가 오면 그래프도 다시 그린다 ──
@@ -154,7 +181,13 @@ export default function App() {
     } else {
       setHistoryNote('')
       const point = historyPoint(g, res, label)
-      setResultHistory((h) => (h.length && sameHistoryValues(h[h.length - 1], point) ? h : [...h.slice(-RESULT_HISTORY_LIMIT + 1), point]))
+      const last = historyRef.current[historyRef.current.length - 1]
+      if (!last || !sameHistoryValues(last, point)) {
+        const pid = ++pointSeq.current
+        historyRef.current = [...historyRef.current.slice(-RESULT_HISTORY_LIMIT + 1), { ...point, id: pid }]
+        setResultHistory(historyRef.current)
+        if (dailyAvailable.current !== false) loadDaily(g, pid)
+      }
     }
   }
 
@@ -358,6 +391,7 @@ export default function App() {
       onMakeReport={makeReport}
       history={resultHistory}
       historyNote={historyNote}
+      dailyNote={dailyNote}
       onFocus={focusElement}
     />
   )

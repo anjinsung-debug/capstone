@@ -12,17 +12,10 @@ import cytoscape from 'cytoscape'
 import { useEffect, useRef, useState } from 'react'
 import { NODE_TYPES, addNode, attachEdgeId, connect, snap, updateNode } from '../lib/graphEdit.js'
 import { DRAG_TYPE } from './NavDrawer.jsx'
+import { TYPE_STYLE } from './NodeIcon.jsx'
 import { buildOverlay } from '../lib/overlay.js'
 
-const TYPE_STYLE = {
-  source: { shape: 'round-rectangle', color: '#b388ff', size: 34 },
-  breaker: { shape: 'rectangle', color: '#ff7a7a', size: 22 },
-  switch: { shape: 'diamond', color: '#7fd1ff', size: 22 },
-  bus: { shape: 'ellipse', color: '#8c979d', size: 12 },
-  load: { shape: 'triangle', color: '#c9d1d5', size: 22 },
-  pv: { shape: 'hexagon', color: '#f5c542', size: 24 },
-  wind: { shape: 'pentagon', color: '#5ee0c8', size: 24 },
-}
+// 설비 종류별 모양·색은 NodeIcon.jsx의 TYPE_STYLE (편집 메뉴 아이콘과 같은 정의)
 
 const STYLE = [
   {

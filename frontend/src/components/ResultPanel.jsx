@@ -8,7 +8,7 @@
 // AI 리포트(ai_report/models.py의 Report)는 diagnosis → ①, causes → ②, solutions → ③에 나눠 보여 준다.
 // 형식이 바뀌면 아래 세 탭을 같이 고친다. 그래프 PNG는 simulation/plot.py가 그린다 (전압 프로파일 + 선로 조류)
 import { useState } from 'react'
-import { NODE_ICONS } from './NavDrawer.jsx'
+import NodeIcon from './NodeIcon.jsx'
 import HistoryChart from './HistoryChart.jsx'
 import ProfileCharts from './ProfileChart.jsx'
 import {
@@ -329,7 +329,7 @@ function ElementsTab({ graph, result, onFocus }) {
                   <FocusBtn id={r.id} onFocus={onFocus} />
                 </td>
                 <td>
-                  <span className={`t-${r.type}`}>{NODE_ICONS[r.type]}</span> {r.typeLabel}
+                  <NodeIcon type={r.type} size={13} /> {r.typeLabel}
                 </td>
                 <td>{r.name}</td>
                 <td className="num" style={{ color: r.voltageColor ?? undefined }}>
@@ -398,7 +398,7 @@ export const RESULT_TABS = [
 ]
 
 // 결과 창 내용. 가운데 창과 새 창이 같은 컴포넌트를 쓴다
-export function ResultView({ graph, result, tab, onTab, report, reportMessage, reportBusy, onMakeReport, history, historyNote, onFocus }) {
+export function ResultView({ graph, result, tab, onTab, report, reportMessage, reportBusy, onMakeReport, history, historyNote, dailyNote, onFocus }) {
   const aiProps = { report, reportMessage, reportBusy, onMakeReport }
   return (
     <div className="rview">
@@ -424,6 +424,7 @@ export function ResultView({ graph, result, tab, onTab, report, reportMessage, r
         ) : (
           <>
             {historyNote && <p className="muted history-note">{historyNote}</p>}
+            {dailyNote && <p className="muted history-note">{dailyNote}</p>}
             <HistoryChart points={history} />
           </>
         )}

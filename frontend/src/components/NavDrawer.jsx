@@ -1,11 +1,11 @@
-// 왼쪽 편집 메뉴 (제안서 4단계, FR-06). 상단 ☰ 버튼으로 연다. 열려 있는 동안이 "편집 중"이다.
+// 왼쪽 편집 메뉴 (제안서 4단계, FR-06). 위 왼쪽 ✎ 편집 버튼으로 연다. 열려 있는 동안이 "편집 중"이다.
 // 설비(노드)는 칸을 단선도로 끌어다 놓거나, 칸을 누른 뒤 단선도 빈 곳을 누르면 추가된다.
 // 선로는 "선로 그리기"를 누른 뒤 노드 두 개를 차례로 누르면 생긴다 (lib/graphEdit.js의 connect).
 // 설비 종류 7가지와 이름은 lib/graphEdit.js의 NODE_TYPES (= cim/models.py의 NodeType)에서 가져온다
+import NodeIcon from './NodeIcon.jsx'
 import { DEFAULT_LINE, NODE_TYPES } from '../lib/graphEdit.js'
 
 export const DRAG_TYPE = 'application/x-capstone-node' // 끌어다 놓기로 넘기는 값의 종류 (Diagram.jsx가 받음)
-export const NODE_ICONS = { source: '⏻', breaker: '■', switch: '◇', bus: '●', load: '▼', pv: '☀', wind: '✣' }
 
 export default function NavDrawer({ open, tool, onTool, onUndo, canUndo, onDelete, canDelete, onClose }) {
   return (
@@ -40,7 +40,9 @@ export default function NavDrawer({ open, tool, onTool, onUndo, canUndo, onDelet
               }}
               title={`${info.label}: 단선도로 끌어다 놓거나, 누른 뒤 빈 곳을 클릭`}
             >
-              <span className={`tile-icon t-${type}`}>{NODE_ICONS[type]}</span>
+              <span className="tile-icon">
+                <NodeIcon type={type} size={18} />
+              </span>
               <span>{info.short}</span>
             </button>
           ))}
