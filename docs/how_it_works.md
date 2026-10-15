@@ -37,7 +37,8 @@
      | 단락용량 고장전류 | `NodeResult.fault_current_ka` |
      | 변전소 출구 차단기(CB) 옆 피더별 송출 전력 | `SimulationResult.feeders` (`FeederResult.p_kw`, `q_kvar`, 화면에는 MW·MVAr 황색 표시) |
 
-   - **결과 그래프**: 프론트엔드가 받은 결과를 `POST /api/plots`로 보냄 → 백엔드가 계통 정보와 함께 `simulation/plot.py`에 넘김 → matplotlib으로 그린 PNG를 받아 화면에 표시
+   - **결과 그래프**: 화면(결과 자세히 → ② 원인 분석)은 받은 결과로 전압 프로파일·선로별 조류를 직접 그림 (`frontend/src/components/ProfileChart.jsx`, 어두운 화면 색에 맞춤). 그리는 규칙은 `simulation/plot.py`와 같음
+     - `POST /api/plots`(백엔드가 matplotlib PNG를 돌려줌)는 남아 있지만 지금 화면은 부르지 않음
      - 위: 변전소로부터 거리별 전압 프로파일 (정상 범위 밖은 빨간 점, 정전 구간은 그리지 않음) / 아래: 선로별 유효전력 조류 (역조류 주황, 과부하 빨강, 부하율 %)
 4. **AI 리포트** (FR-08, 09): 프론트엔드가 받은 시뮬레이션 결과를 `POST /api/reports`로 보냄 → 백엔드가 `cim/graph.py`로 같은 계통 정보를 읽어 결과와 함께 `ai_report/report.py`에 넘김 → 진단·원인·솔루션 리포트 생성
    - **확정된 사실은 코드가 계산** (`check_findings`): 저전압·과전압·과부하·역조류·정전 항목과 건강도 등급(정상·주의·위험)을 화면 진단표(`frontend/src/lib/overlay.js`의 `healthCheck`)와 같은 규칙으로 먼저 정해 프롬프트에 "확정된 점검 결과"로 넣음. LLM은 이 사실을 쉬운 말로 풀어 설명만 하고 등급을 바꾸지 않음 (환각 대응, 제안서 10장)

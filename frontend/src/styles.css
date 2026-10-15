@@ -135,36 +135,29 @@ button.toggle.on {
   font-size: 12px;
 }
 /* 로고 자리의 메뉴 버튼 (☰): 왼쪽 편집 메뉴를 연다 */
-.menu-btn {
-  width: 38px;
-  height: 38px;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
+/* 편집 버튼 (로고 자리): 연필 아이콘 + "편집". 누르면 왼쪽 편집 메뉴가 열린다 */
+.edit-btn {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 4px;
+  gap: 6px;
+  height: 38px;
+  padding: 0 12px;
+  font-weight: 600;
 }
-.menu-btn span {
-  display: block;
-  width: 18px;
-  height: 2px;
-  border-radius: 1px;
-  background: var(--text);
-  transition: transform 0.15s, opacity 0.15s;
-}
-.menu-btn.on {
+.edit-btn.on {
   border-color: var(--accent);
   background: #1d3a2e;
+  color: var(--accent);
 }
-.menu-btn.on span:nth-child(1) {
-  transform: translateY(6px) rotate(45deg);
+/* AI 리포트 버튼 (위 오른쪽, 변전소 선택 왼쪽) */
+.ai-btn {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
 }
-.menu-btn.on span:nth-child(2) {
-  opacity: 0;
-}
-.menu-btn.on span:nth-child(3) {
-  transform: translateY(-6px) rotate(-45deg);
+.ai-btn:disabled {
+  border-color: var(--line);
+  color: var(--muted);
 }
 .icon-btn {
   padding: 4px 9px;
@@ -1148,4 +1141,31 @@ body.popup {
   .choice-row {
     grid-template-columns: 1fr;
   }
+}
+
+/* AI 리포트 창: 진단·원인·솔루션을 한 화면에 */
+.ai-report {
+  flex: 1;
+  overflow: auto;
+  padding: 16px 18px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ai-sec h4 {
+  margin: 10px 0 4px;
+  font-size: 14px;
+}
+.ai-sec:first-child h4 {
+  margin-top: 0;
+}
+
+/* 원인 분석 탭 그래프 (ProfileChart.jsx): 기록 그래프(.hchart)와 같은 색 계열 */
+.profile-charts {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.wide-chart {
+  max-width: 900px;
 }

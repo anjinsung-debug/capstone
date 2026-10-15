@@ -1,6 +1,7 @@
 // 시뮬레이션 결과 화면 (제안서 3·5단계). 구성은 오프라인 미팅 자료(제안서 슬라이드 8, 10~13) 기준
 // - Legend: 단선도 안 왼쪽 아래 범례 (표시 모드마다 슬라이드 8의 구간·색)
-// - SummaryStrip: 단선도 위 요약 줄 = 변전소 계통 전체에서 항목별 가장 나쁜 값 4개 + 모든 피더 송출 합계 (결과 자세히 버튼)
+// - SummaryStrip: 단선도 위 요약 줄 = 변전소 계통 전체에서 항목별 가장 나쁜 값 4개 + 모든 피더 송출 합계
+// - AiReportView: 위 오른쪽 "AI 리포트" 버튼으로 여는 창. 진단·원인·솔루션 해설을 한 화면에 모아 보여 주고, 창 오른쪽 위 "결과 자세히"로 ResultView로 넘어간다
 // - ResultView: 결과 창 (가운데 창 또는 브라우저 새 창에 같은 내용). 슬라이드 12의 활용 흐름 순서대로 탭:
 //     ① 건강도 진단 '어디가 문제인가?' → ② 원인 분석 '왜 발생했는가?' → ③ 솔루션 제언 '어떻게 해결할까?'
 //     + 요소별 결과(모든 설비·선로 값), 기록(시점별)
@@ -9,6 +10,7 @@
 import { useState } from 'react'
 import { NODE_ICONS } from './NavDrawer.jsx'
 import HistoryChart from './HistoryChart.jsx'
+import ProfileCharts from './ProfileChart.jsx'
 import {
   CAUSE_QUESTIONS,
   COLORS,
@@ -61,7 +63,7 @@ function LevelBadge({ level }) {
 // 값은 모두 변전소 계통 전체(모든 피더)에서 가장 나쁜 지점이다. 위치는 마우스를 올리면 보인다
 const STRIP_LABELS = { voltage: '전압', loading: '부하율', reverse: '역조류', fault: '단락용량', outage: '정전' }
 
-export function SummaryStrip({ graph, result, note, busy, onOpen, onRerun }) {
+export function SummaryStrip({ graph, result, note, busy, onRerun }) {
   if (!result) {
     return (
       <div className="strip">
@@ -90,9 +92,6 @@ export function SummaryStrip({ graph, result, note, busy, onOpen, onRerun }) {
         총 송출 <b className="feeder">{hc.totalMw.toFixed(2)}</b> MW
       </span>
       {(busy || note) && <span className={note ? 'strip-note warn' : 'strip-note'}>{busy || note}</span>}
-      <button type="button" className="mini primary-outline" onClick={onOpen}>
-        결과 자세히
-      </button>
     </div>
   )
 }
@@ -182,7 +181,7 @@ function HealthTab({ graph, result, onFocus, aiProps }) {
 }
 
 // ② 물리적 원인 분석 (슬라이드 11·13): 관측 현상 → (LLM) 물리적 원인 → 계통 영향, LLM이 함께 보는 정보(전압 프로파일·선로 부하)
-function CauseTab({ graph, result, onFocus, plotUrl, plotMessage, aiProps }) {
+function CauseTab({ graph, result, onFocus, aiProps }) {
   const hc = healthCheck(graph, result)
   return (
     <>
@@ -219,8 +218,8 @@ function CauseTab({ graph, result, onFocus, plotUrl, plotMessage, aiProps }) {
           ))}
         </ul>
       </ReportBox>
-      <h3 className="sub">LLM이 함께 보는 정보: 전압 프로파일 · 선로 부하 · 전력 흐름 (서버 그래프)</h3>
-      {plotUrl ? <img className="plot" src={plotUrl} alt="전압 프로파일과 선로별 조류" /> : <p className="muted">{plotMessage}</p>}
+      <h3 className="sub">LLM이 함께 보는 정보: 전압 프로파일 · 선로 부하 · 전력 흐름</h3>
+      <ProfileCharts graph={graph} result={result} />
     </>
   )
 }
@@ -399,7 +398,7 @@ export const RESULT_TABS = [
 ]
 
 // 결과 창 내용. 가운데 창과 새 창이 같은 컴포넌트를 쓴다
-export function ResultView({ graph, result, tab, onTab, plotUrl, plotMessage, report, reportMessage, reportBusy, onMakeReport, history, historyNote, onFocus }) {
+export function ResultView({ graph, result, tab, onTab, report, reportMessage, reportBusy, onMakeReport, history, historyNote, onFocus }) {
   const aiProps = { report, reportMessage, reportBusy, onMakeReport }
   return (
     <div className="rview">
@@ -417,7 +416,7 @@ export function ResultView({ graph, result, tab, onTab, plotUrl, plotMessage, re
         ) : tab === 'health' ? (
           <HealthTab graph={graph} result={result} onFocus={onFocus} aiProps={aiProps} />
         ) : tab === 'cause' ? (
-          <CauseTab graph={graph} result={result} onFocus={onFocus} plotUrl={plotUrl} plotMessage={plotMessage} aiProps={aiProps} />
+          <CauseTab graph={graph} result={result} onFocus={onFocus} aiProps={aiProps} />
         ) : tab === 'solution' ? (
           <SolutionTab graph={graph} result={result} aiProps={aiProps} />
         ) : tab === 'elements' ? (
@@ -429,6 +428,44 @@ export function ResultView({ graph, result, tab, onTab, plotUrl, plotMessage, re
           </>
         )}
       </div>
+    </div>
+  )
+}
+
+// AI 리포트 창 (위 오른쪽 "AI 리포트" 버튼). ai_report/models.py의 Report(diagnosis, causes, solutions)를 한 화면에 모은다.
+// 수치·표는 창 오른쪽 위 "결과 자세히"(ResultView)에서 본다
+export function AiReportView({ graph, result, report, reportMessage, reportBusy, onMakeReport }) {
+  if (!result) return <p className="muted">결과가 없습니다. 계통이 완성되면 자동으로 계산됩니다.</p>
+  const hc = healthCheck(graph, result)
+  return (
+    <div className="ai-report">
+      <p className="lead">
+        시뮬레이션 결과를 AI가 쉬운 말로 풀어 줍니다. 계통 전체 판정: <LevelBadge level={hc.overall} />
+        {hc.problems.length > 0 && <span className="muted"> · 확인할 항목 {hc.problems.map((r) => r.label).join(', ')}</span>}
+      </p>
+      <ReportBox title="AI 리포트" report={report} reportMessage={reportMessage} reportBusy={reportBusy} onMakeReport={onMakeReport}>
+        <section className="ai-sec">
+          <h4>① 건강도 진단 · 어디가 문제인가?</h4>
+          <p>{report?.diagnosis}</p>
+        </section>
+        <section className="ai-sec">
+          <h4>② 원인 분석 · 왜 발생했는가?</h4>
+          <ul>
+            {report?.causes.map((c, i) => (
+              <li key={i}>{c}</li>
+            ))}
+          </ul>
+        </section>
+        <section className="ai-sec">
+          <h4>③ 솔루션 제언 · 어떻게 해결할까?</h4>
+          <ol>
+            {report?.solutions.map((c, i) => (
+              <li key={i}>{c}</li>
+            ))}
+          </ol>
+        </section>
+      </ReportBox>
+      <p className="muted small">AI 해설은 참고용입니다. 판정 등급과 수치는 화면이 기준으로 계산한 값이며, 표와 그래프는 오른쪽 위 &ldquo;결과 자세히&rdquo;에서 볼 수 있습니다.</p>
     </div>
   )
 }
