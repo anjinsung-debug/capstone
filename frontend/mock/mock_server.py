@@ -9,6 +9,7 @@ ponytail: 아래 계산·리포트는 화면 확인용 근사다. 진짜 백엔�
 - 리포트: LLM 대신 규칙으로 만든 예시 문장 ("(모의 리포트)" 표시)
 - 저장: 없는 변전소도 새로 만들고 전원 개수를 검사하지 않는다. 진짜 백엔드도 없는 변전소는 새로 만들지만,
   전원 1개 필수(아니면 422)이고 이미 있는 변전소는 이름만 바뀐다 — cim/graph.py의 save_substation
+- 하루(24시간) 시뮬레이션: 배율 규칙은 진짜와 같은 simulation/daily.py를 쓰고, 시간마다 계산만 근사로 한다
 
     저장소 루트에서:  python frontend/mock/mock_server.py
     다른 터미널에서:  cd frontend && npm run dev   → http://localhost:5173
@@ -43,9 +44,11 @@ from simulation.dss import (  # noqa: E402
     open_line_ids,
     trace,
 )
+from simulation.daily import simulate_daily  # noqa: E402
 from simulation.models import FeederResult, LineResult, NodeResult, SimulationResult  # noqa: E402
 
 STORE: dict[str, SubstationGraph] = {}
+
 
 
 def simulate(g: SubstationGraph) -> SimulationResult:
@@ -214,6 +217,11 @@ class Handler(SimpleHTTPRequestHandler):
                 STORE[g.substation.id] = g
                 ids = {x.id: f"4:mock:{i}" for i, x in enumerate([*g.nodes, *g.lines])}
                 return self._send(200, SnapshotSaved(graph=g, element_ids=ids).model_dump())
+            if m == "POST" and len(p) == 4 and p[0] == "substations" and p[2:] == ["simulations", "daily"]:
+                g = self._graph(p[1])
+                if not g:
+                    return self._send(404, {"detail": "변전소가 없습니다"})
+                return self._send(200, simulate_daily(g, simulate_fn=simulate).model_dump())  # 계산만 근사(LinDistFlow), 배율 규칙은 진짜와 같음
             if m == "POST" and len(p) == 3 and p[0] == "substations" and p[2] == "simulations":
                 g = self._graph(p[1])
                 if not g:

@@ -438,6 +438,12 @@ export function elementRows(graph, result) {
   return { nodes, lines }
 }
 
+// 두 기록 점의 지표가 화면에 보이는 자릿수까지 같은지 (같으면 새로 쌓지 않는다)
+const HISTORY_DIGITS = { minV: 3, maxLoading: 0, reverseMw: 2, maxMva: 0, lossKw: 1, totalMw: 2 }
+export function sameHistoryValues(a, b) {
+  return Object.entries(HISTORY_DIGITS).every(([k, d]) => (a[k] == null ? null : a[k].toFixed(d)) === (b[k] == null ? null : b[k].toFixed(d)))
+}
+
 // 결과 기록(시점별) 한 점: 편집해서 다시 계산할 때마다 하나씩 쌓는다
 export function historyPoint(graph, result, label) {
   const hc = healthCheck(graph, result)
@@ -452,4 +458,24 @@ export function historyPoint(graph, result, label) {
     totalMw: hc.totalMw,
     overall: hc.overall,
   }
+}
+
+// 하루(24시간) 시뮬레이션 결과 → 시간별 지표 24개 (기록 탭의 하루 곡선용). hours는 runDaily 응답의 hours
+// 계산은 historyPoint와 같은 지표를 시간마다 뽑은 것이다
+export function dailyPoints(graph, hours) {
+  return hours.map(({ hour, load_mult, pv_mult, result }) => {
+    const hc = healthCheck(graph, result)
+    return {
+      hour,
+      loadMult: load_mult,
+      pvMult: pv_mult,
+      minV: hc.minV,
+      maxLoading: hc.maxLoading,
+      reverseMw: hc.reverseMw,
+      maxMva: hc.maxMva,
+      lossKw: result.loss_kw,
+      totalMw: hc.totalMw,
+      overall: hc.overall,
+    }
+  })
 }

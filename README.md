@@ -116,7 +116,7 @@ npm run dev
 python frontend/mock/mock_server.py
 ```
 
-http://localhost:5173 에 "서버 ok, Neo4j connected"가 보이면 정상입니다. Neo4j 웹 콘솔은 http://localhost:7474 입니다.
+http://localhost:5173 왼쪽 위의 "● 서버 ● DB"가 둘 다 초록이면 정상입니다 (모의 서버는 "DB (모의)"). Neo4j 웹 콘솔은 http://localhost:7474 입니다.
 
 처음 한 번, 그리고 `cim/schema.cypher`가 바뀌었을 때 제약조건을 적용합니다.
 

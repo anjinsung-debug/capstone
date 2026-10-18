@@ -4,16 +4,17 @@
 //   변전소 선택 → GET /api/substations/{id} → graph → 바로 시뮬레이션
 //   편집 → Diagram/PropertyPanel이 lib/graphEdit.js로 새 graph를 만들어 onChange로 올림 → graph 교체
 //   자동 저장 → 편집이 멈추고 AUTOSAVE_DELAY_MS 뒤 toSnapshot(graph) → PUT /api/substations/{id} → 서버가 돌려준 graph로 교체
-//            → 계산에 영향을 주는 값이 바뀌었으면(electricalKey) POST …/simulations → result → POST /api/plots
+//            → 계산에 영향을 주는 값이 바뀌었으면(electricalKey) POST …/simulations → result
+//   결과 그래프는 화면이 직접 그린다 (components/ProfileChart.jsx). 서버 PNG(POST /api/plots)는 쓰지 않는다
 //   AI 리포트 → 결과 창의 버튼을 누를 때만 POST /api/reports (LLM 비용·시간 때문에 자동으로 부르지 않음)
 // 서버 쪽 규칙은 cim/graph.py(조회·저장), simulation/dss.py(완성 검사), backend/main.py(오류 → 404·422·501)에 있다.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  createPlot,
   createReport,
   getHealth,
   getSubstation,
   listSubstations,
+  runDaily,
   runSimulation,
   saveSubstation,
 } from './api/client.js'
@@ -22,10 +23,10 @@ import Modal from './components/Modal.jsx'
 import NavDrawer from './components/NavDrawer.jsx'
 import PopupWindow, { openPopup } from './components/PopupWindow.jsx'
 import PropertyPanel from './components/PropertyPanel.jsx'
-import { Legend, ResultView, SummaryStrip } from './components/ResultPanel.jsx'
+import { AiReportView, Legend, ResultView, SummaryStrip } from './components/ResultPanel.jsx'
 import { NewSubstationDialog, RenameDialog } from './components/SubstationDialog.jsx'
-import { electricalKey, emptyGraph, removeElements, starterGraph, toSnapshot, updateSubstation } from './lib/graphEdit.js'
-import { MODES, historyPoint } from './lib/overlay.js'
+import { electricalKey, emptyGraph, findDangling, removeElements, starterGraph, toSnapshot, updateSubstation } from './lib/graphEdit.js'
+import { MODES, dailyPoints, historyPoint, sameHistoryValues } from './lib/overlay.js'
 
 // ponytail: 되돌리기는 브라우저 메모리에 이전 계통을 최대 50개 통째로 보관한다 (새로고침하면 사라짐).
 // 계통이 수천 개 노드로 커져 느려지면 바뀐 부분(diff)만 저장하는 방식으로 바꾼다
@@ -34,11 +35,13 @@ const HISTORY_LIMIT = 50
 const AUTOSAVE_DELAY_MS = 800
 // ponytail: 결과 기록(시점별)도 메모리에 최대 100개만 둔다. 오래 남겨야 하면 서버(Neo4j)에 저장하는 API를 만든다
 const RESULT_HISTORY_LIMIT = 100
+const HEALTH_POLL_MS = 15000 // 서버·DB 연결 상태를 다시 확인하는 간격
 
 const describe = (e) => e.message.replace(/^HTTP \d+: /, '')
 
 export default function App() {
-  const [health, setHealth] = useState({ ok: null, text: '확인 중...' })
+  // 연결 상태 (위 왼쪽 표시): server·db = true(연결) | false(끊김) | null(확인 중). db는 모의 서버면 'mock'
+  const [health, setHealth] = useState({ server: null, db: null, detail: '확인 중' })
   const [substations, setSubstations] = useState([])
   const [graph, setGraph] = useState(null) // 화면에 있는 계통 (자동 저장 전 값일 수 있음)
   const [dirty, setDirty] = useState(false) // 아직 저장하지 않은 편집이 있는지
@@ -51,13 +54,14 @@ export default function App() {
   const [busy, setBusy] = useState('') // 진행 중인 계산 이름 (단선도 위 요약 줄에 표시)
   const [result, setResult] = useState(null)
   const [simNote, setSimNote] = useState('') // 결과가 없거나 옛 결과인 이유 (계통 미완성 등)
-  const [plotUrl, setPlotUrl] = useState(null)
-  const [plotMessage, setPlotMessage] = useState('')
   const [report, setReport] = useState(null)
   const [reportMessage, setReportMessage] = useState('')
   const [reportBusy, setReportBusy] = useState(false)
   const [resultHistory, setResultHistory] = useState([])
-  const [resultOpen, setResultOpen] = useState(false) // 가운데 결과 창
+  const [historyNote, setHistoryNote] = useState('') // 마지막 계산을 기록하지 않은 이유 (연결 안 된 설비 등)
+  const [dailyNote, setDailyNote] = useState('') // 하루(24시간) 계산을 못 하는 이유 (진짜 백엔드에 아직 없음 등)
+  // 가운데 창: 'ai' = AI 리포트 (위 오른쪽 버튼) | 'detail' = 결과 자세히 (AI 리포트 창 오른쪽 위 버튼) | null = 닫힘
+  const [resultOpen, setResultOpen] = useState(null)
   const [resultTab, setResultTab] = useState('health')
   const [popup, setPopup] = useState(null) // 브라우저 새 창 결과 { win, container }
   const [dialog, setDialog] = useState(null) // 'new' | 'rename' | null
@@ -70,6 +74,10 @@ export default function App() {
   const graphRef = useRef(graph)
   graphRef.current = graph
   const simulatedKey = useRef(null) // 마지막으로 계산한 계통의 electricalKey
+  const historyRef = useRef([]) // resultHistory의 최신 값 (기록을 새로 쌓을지 판단할 때 씀)
+  historyRef.current = resultHistory
+  const pointSeq = useRef(0) // 기록 점 번호 (하루 계산 결과를 나중에 그 점에 붙이려고)
+  const dailyAvailable = useRef(null) // 백엔드에 하루 계산이 있는지: null 모름 | true | false
   const changeLabel = useRef('') // 기록에 남길 "바뀐 내용"
 
   const info = useCallback((text) => setMessage({ text, kind: 'info' }), [])
@@ -86,23 +94,57 @@ export default function App() {
       .then(setSubstations)
       .catch((e) => fail(`변전소 목록을 불러오지 못했습니다 (${e.message})`))
 
-  useEffect(() => {
+  // GET /api/health → { status: 'ok', neo4j: 'connected' | 'unavailable' | 'mock' } (backend/api/health.py)
+  // 응답이 오면 서버는 연결, neo4j 값으로 DB 연결을 판단. 응답이 없으면 둘 다 알 수 없으므로 서버 끊김으로 표시
+  const checkHealth = useCallback(() => {
     getHealth()
-      .then((h) => setHealth({ ok: h.neo4j === 'connected' || h.neo4j === 'mock', text: `서버 ${h.status} · Neo4j ${h.neo4j}` }))
-      .catch((e) => setHealth({ ok: false, text: `백엔드 연결 실패 (${e.message})` }))
-    refreshList()
+      .then((h) =>
+        setHealth({
+          server: true,
+          db: h.neo4j === 'connected' ? true : h.neo4j === 'mock' ? 'mock' : false,
+          detail: `서버 ${h.status} · Neo4j ${h.neo4j}`,
+        }),
+      )
+      .catch((e) => setHealth({ server: false, db: null, detail: `백엔드에 연결할 수 없습니다 (${e.message})` }))
   }, [])
+
+  useEffect(() => {
+    checkHealth()
+    refreshList()
+    const t = setInterval(checkHealth, HEALTH_POLL_MS)
+    return () => clearInterval(t)
+  }, [checkHealth])
 
   function resetResult() {
     ++runId.current
     simulatedKey.current = null
     setResult(null)
     setSimNote('')
-    setPlotUrl(null)
-    setPlotMessage('')
     setReport(null)
     setReportMessage('')
     setResultHistory([])
+    historyRef.current = []
+    setHistoryNote('')
+  }
+
+  // 기록 점 하나에 하루(24시간) 곡선을 붙인다. 시간이 걸리므로 기록은 먼저 쌓고 결과는 나중에 채운다.
+  // 진짜 백엔드에 아직 이 주소가 없으면(404·405·501) 다시 부르지 않고 기록 탭에 이유를 보여 준다
+  function loadDaily(g, pid) {
+    runDaily(g.substation.id)
+      .then((d) => {
+        dailyAvailable.current = true
+        setDailyNote('')
+        const daily = dailyPoints(g, d.hours)
+        setResultHistory((h) => h.map((p) => (p.id === pid ? { ...p, daily, profile: d.profile } : p)))
+      })
+      .catch((e) => {
+        if ([404, 405, 501].includes(e.status)) {
+          dailyAvailable.current = false
+          setDailyNote('백엔드에 하루(24시간) 계산이 없어 편집 시점 값만 보여 줍니다. 최신 코드를 받아 백엔드(uvicorn)를 다시 켜 주세요')
+        } else {
+          setResultHistory((h) => h.map((p) => (p.id === pid ? { ...p, dailyError: describe(e) } : p)))
+        }
+      })
   }
 
   // ── 시뮬레이션: 서버(Neo4j)에 저장된 계통으로 계산한다. 결과가 오면 그래프도 다시 그린다 ──
@@ -119,7 +161,6 @@ export default function App() {
       // (예: 계산 성공 → 부하 추가로 실패 → 되돌리기로 원래대로 돌아왔을 때 계산을 건너뛰지 않게)
       simulatedKey.current = null
       setResult(null)
-      setPlotUrl(null)
       setSimNote(`결과 없음: ${describe(e)}`)
       return
     } finally {
@@ -131,17 +172,23 @@ export default function App() {
     setSimNote('')
     setReport(null)
     setReportMessage('')
-    setResultHistory((h) => [...h.slice(-RESULT_HISTORY_LIMIT + 1), historyPoint(g, res, label)])
-    setPlotMessage('그래프 그리는 중...')
-    createPlot(res)
-      .then((url) => {
-        if (id !== runId.current) return
-        setPlotUrl((old) => {
-          if (old) URL.revokeObjectURL(old) // 옛 그림 메모리 해제
-          return url
-        })
-      })
-      .catch((e) => id === runId.current && setPlotMessage(`그래프 실패 (${e.message})`))
+    // 결과 기록(시점별)에는 계통이 다 이어진 상태의 계산만 남긴다. 노드를 놓기만 하고 아직 연결하지 않은 중간 단계,
+    // 그리고 지표가 직전 기록과 똑같은 계산은 건너뛴다 (편집할 때마다 점이 쌓여 보기 불편하다는 팀 피드백)
+    const dangling = findDangling(g)
+    if (dangling.length) {
+      const names = dangling.slice(0, 3).join(', ') + (dangling.length > 3 ? ` 외 ${dangling.length - 3}개` : '')
+      setHistoryNote(`연결되지 않은 설비가 있어 기록하지 않았습니다: ${names}`)
+    } else {
+      setHistoryNote('')
+      const point = historyPoint(g, res, label)
+      const last = historyRef.current[historyRef.current.length - 1]
+      if (!last || !sameHistoryValues(last, point)) {
+        const pid = ++pointSeq.current
+        historyRef.current = [...historyRef.current.slice(-RESULT_HISTORY_LIMIT + 1), { ...point, id: pid }]
+        setResultHistory(historyRef.current)
+        if (dailyAvailable.current !== false) loadDaily(g, pid)
+      }
+    }
   }
 
   // ── 자동 저장 ──
@@ -310,7 +357,7 @@ export default function App() {
 
   // 결과 창의 ⌖ 버튼: 가운데 창이면 닫고 단선도에서 그 위치로 이동. 새 창이면 원래 창을 앞으로
   const focusElement = useCallback((id) => {
-    setResultOpen(false)
+    setResultOpen(null)
     setFocus((f) => ({ id, n: (f?.n ?? 0) + 1 }))
     window.focus()
   }, [])
@@ -325,7 +372,7 @@ export default function App() {
       fail('새 창이 차단되었습니다. 주소창 오른쪽의 팝업 차단 아이콘에서 허용해 주세요')
       return
     }
-    setResultOpen(false)
+    setResultOpen(null)
     setPopup(p)
   }
   const onPopupClosed = useCallback(() => setPopup(null), [])
@@ -338,13 +385,9 @@ export default function App() {
       result={result}
       tab={resultTab}
       onTab={setResultTab}
-      plotUrl={plotUrl}
-      plotMessage={plotMessage}
-      report={report}
-      reportMessage={reportMessage}
-      reportBusy={reportBusy}
-      onMakeReport={makeReport}
       history={resultHistory}
+      historyNote={historyNote}
+      dailyNote={dailyNote}
       onFocus={focusElement}
     />
   )
@@ -355,25 +398,45 @@ export default function App() {
         <div className="brand">
           <button
             type="button"
-            className={navOpen ? 'menu-btn on' : 'menu-btn'}
+            className={navOpen ? 'edit-btn on' : 'edit-btn'}
             disabled={!graph}
             onClick={() => {
               setNavOpen(!navOpen)
               setTool('select')
             }}
-            aria-label="편집 메뉴"
-            title={graph ? '편집 메뉴 열기·닫기' : '변전소를 먼저 고르세요'}
+            aria-pressed={navOpen}
+            title={graph ? (navOpen ? '편집을 마치고 메뉴 닫기' : '편집 메뉴 열기 (설비 추가·연결·삭제)') : '변전소를 먼저 고르세요'}
           >
-            <span />
-            <span />
-            <span />
+            {/* 연필 아이콘: 이 버튼이 '편집'이라는 걸 바로 알 수 있게 (예전 ☰ 메뉴 아이콘 대신) */}
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+              <path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+            </svg>
+            {navOpen ? '편집 중' : '편집'}
           </button>
           <div>
             <h1>배전계통 통합 분석 플랫폼</h1>
-            <small className={health.ok === false ? 'health bad' : 'health'}>{health.text}</small>
+            <button type="button" className="conn" onClick={checkHealth} title={`${health.detail}\n누르면 다시 확인 (${HEALTH_POLL_MS / 1000}초마다 자동 확인)`}>
+              <span className={`conn-item ${health.server === null ? 'wait' : health.server ? 'on' : 'off'}`}>
+                <i />
+                서버
+              </span>
+              <span className={`conn-item ${health.server === false ? 'unknown' : health.db === null ? 'wait' : health.db === false ? 'off' : 'on'}`}>
+                <i />
+                DB{health.db === 'mock' ? ' (모의)' : ''}
+              </span>
+            </button>
           </div>
         </div>
         <div className="actions">
+          <button
+            type="button"
+            className="ai-btn"
+            disabled={!result}
+            onClick={() => setResultOpen('ai')}
+            title={result ? 'AI 리포트 보기 (오른쪽 위 "결과 자세히"에서 표·그래프)' : '계산 결과가 나오면 열 수 있습니다'}
+          >
+            AI 리포트
+          </button>
           <div className="sub-picker">
             <select value={isNew ? '' : (graph?.substation.id ?? '')} onChange={(e) => selectSubstation(e.target.value)}>
               <option value="" disabled>
@@ -451,8 +514,6 @@ export default function App() {
                 result={result}
                 note={save.status === 'error' ? `저장 실패: ${save.text}` : simNote}
                 busy={busy}
-                onOpen={() => setResultOpen(true)}
-                onPopup={showPopup}
                 onRerun={() => simulateNow(graph, '다시 계산')}
               />
               {result && (
@@ -477,15 +538,34 @@ export default function App() {
         <PropertyPanel graph={graph} selectedIds={selectedIds} result={result} editing={!!graph} onChange={onPropChange} />
       </div>
 
-      {resultOpen && (
+      {resultOpen === 'ai' && (
         <Modal
-          title={`결과 · ${graph?.substation.name ?? ''}`}
+          title={`AI 리포트 · ${graph?.substation.name ?? ''}`}
           wide
-          onClose={() => setResultOpen(false)}
+          onClose={() => setResultOpen(null)}
           actions={
-            <button type="button" className="mini" onClick={showPopup}>
-              새 창으로 ↗
+            <button type="button" className="mini primary-outline" onClick={() => setResultOpen('detail')}>
+              결과 자세히 →
             </button>
+          }
+        >
+          <AiReportView graph={graph} result={result} report={report} reportMessage={reportMessage} reportBusy={reportBusy} onMakeReport={makeReport} />
+        </Modal>
+      )}
+      {resultOpen === 'detail' && (
+        <Modal
+          title={`결과 자세히 · ${graph?.substation.name ?? ''}`}
+          wide
+          onClose={() => setResultOpen(null)}
+          actions={
+            <>
+              <button type="button" className="mini" onClick={() => setResultOpen('ai')}>
+                ← AI 리포트
+              </button>
+              <button type="button" className="mini" onClick={showPopup}>
+                새 창으로 ↗
+              </button>
+            </>
           }
         >
           {resultView}

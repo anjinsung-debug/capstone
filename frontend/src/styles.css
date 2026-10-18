@@ -95,37 +95,69 @@ button.toggle.on {
   margin: 0;
   font-size: 16px;
 }
-/* 로고 자리의 메뉴 버튼 (☰): 왼쪽 편집 메뉴를 연다 */
-.menu-btn {
-  width: 38px;
-  height: 38px;
-  padding: 0;
+/* 연결 상태: 서버(백엔드)와 DB(Neo4j) 불빛. 누르면 다시 확인 */
+.conn {
   display: flex;
-  flex-direction: column;
+  gap: 10px;
+  margin-top: 2px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+.conn-item {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 4px;
+  gap: 5px;
 }
-.menu-btn span {
-  display: block;
-  width: 18px;
-  height: 2px;
-  border-radius: 1px;
-  background: var(--text);
-  transition: transform 0.15s, opacity 0.15s;
+.conn-item i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
 }
-.menu-btn.on {
+.conn-item.on i {
+  background: var(--accent);
+}
+.conn-item.off {
+  color: var(--danger);
+}
+.conn-item.off i {
+  background: var(--danger);
+}
+.conn-item.wait i {
+  background: var(--warn);
+}
+.history-note {
+  margin: 0 0 8px;
+  font-size: 12px;
+}
+/* 로고 자리의 메뉴 버튼 (☰): 왼쪽 편집 메뉴를 연다 */
+/* 편집 버튼 (로고 자리): 연필 아이콘 + "편집". 누르면 왼쪽 편집 메뉴가 열린다 */
+.edit-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 12px;
+  font-weight: 600;
+}
+.edit-btn.on {
   border-color: var(--accent);
   background: #1d3a2e;
+  color: var(--accent);
 }
-.menu-btn.on span:nth-child(1) {
-  transform: translateY(6px) rotate(45deg);
+/* AI 리포트 버튼 (위 오른쪽, 변전소 선택 왼쪽) */
+.ai-btn {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
 }
-.menu-btn.on span:nth-child(2) {
-  opacity: 0;
-}
-.menu-btn.on span:nth-child(3) {
-  transform: translateY(-6px) rotate(-45deg);
+.ai-btn:disabled {
+  border-color: var(--line);
+  color: var(--muted);
 }
 .icon-btn {
   padding: 4px 9px;
@@ -310,8 +342,13 @@ button.mini {
   background: #1d3a2e;
 }
 .tile-icon {
-  font-size: 18px;
-  line-height: 1;
+  display: inline-flex;
+  height: 18px;
+  align-items: center;
+}
+.node-icon {
+  vertical-align: -2px;
+  flex: none;
 }
 
 .diagram {
@@ -1109,4 +1146,130 @@ body.popup {
   .choice-row {
     grid-template-columns: 1fr;
   }
+}
+
+/* AI 리포트 창: 진단·원인·솔루션을 한 화면에 */
+.ai-report {
+  flex: 1;
+  overflow: auto;
+  padding: 16px 18px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ai-sec h4 {
+  margin: 10px 0 4px;
+  font-size: 14px;
+}
+.ai-sec:first-child h4 {
+  margin-top: 0;
+}
+
+/* 원인 분석 탭 그래프 (ProfileChart.jsx): 기록 그래프(.hchart)와 같은 색 계열 */
+.profile-charts {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.wide-chart {
+  max-width: 900px;
+}
+
+/* 기록 탭 하루 곡선: 선택 기록(초록) · 바로 전 기록(회색 점선) · 그 밖(옅게) */
+.history-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px 16px;
+  flex-wrap: wrap;
+}
+.history-head p {
+  margin: 0;
+}
+.hlegend {
+  display: flex;
+  gap: 14px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.hlegend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.hlegend .sw {
+  width: 18px;
+  height: 0;
+  border-top: 2px solid var(--accent);
+}
+.hlegend .sw.prev {
+  border-top: 2px dashed #8a989f;
+}
+.hlegend .sw.other {
+  border-top-color: rgba(138, 152, 159, 0.4);
+}
+.dline {
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+.dline.prev {
+  stroke: #8a989f;
+  stroke-dasharray: 4 3;
+}
+.dline.other {
+  stroke: rgba(138, 152, 159, 0.35);
+}
+.tag {
+  display: inline-block;
+  padding: 0 6px;
+  border: 1px solid var(--warn);
+  border-radius: 4px;
+  color: var(--warn);
+  font-size: 11px;
+}
+.rtable tr.clickable {
+  cursor: pointer;
+}
+.rtable tr.sel td {
+  background: rgba(62, 207, 142, 0.1);
+}
+
+.history-table td,
+.history-table th {
+  white-space: nowrap;
+}
+.table-note {
+  margin: 0;
+}
+
+/* 시간대별 표 (한 시간에 한 줄) */
+.hourly {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.hourly-scroll {
+  overflow-x: auto;
+}
+.hourly-table td,
+.hourly-table th {
+  white-space: nowrap;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+.hourly-table td.worst {
+  font-weight: 700;
+}
+.hourly-table td.bad {
+  color: var(--danger);
+}
+.hourly-table td.warn {
+  color: var(--warn);
+}
+.hourly-table small.up,
+.hourly-table small.down {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 400;
 }

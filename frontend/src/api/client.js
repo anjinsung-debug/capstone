@@ -41,6 +41,11 @@ export const saveSubstation = (substationId, snapshot) =>
 // 시뮬레이션 (FR-03, FR-04)
 export const runSimulation = (substationId) => request('POST', `/substations/${substationId}/simulations`)
 
+// 하루(24시간) 시뮬레이션: 대표일의 시간대별 배율(data/daily_profile.csv)을 부하·태양광 출력에 곱해 24번 계산한다.
+// 응답: { profile: { name, note }, hours: [{ hour, load_mult, pv_mult, result: SimulationResult }] × 24 }
+// 백엔드: backend/api/simulation.py → simulation/daily.py. 백엔드가 예전 버전이라 주소가 없으면(404) 기록 탭이 편집 시점 값만 보여 준다
+export const runDaily = (substationId) => request('POST', `/substations/${substationId}/simulations/daily`)
+
 // 시뮬레이션 결과 그래프: runSimulation 결과를 그대로 넘기면 <img src>에 쓸 수 있는 PNG 주소를 돌려준다
 export async function createPlot(simulationResult) {
   const res = await fetch('/api/plots', {
