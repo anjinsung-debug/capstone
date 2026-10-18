@@ -5,8 +5,8 @@
 // - ResultView: 결과 창 (가운데 창 또는 브라우저 새 창에 같은 내용). 슬라이드 12의 활용 흐름 순서대로 탭:
 //     ① 건강도 진단 '어디가 문제인가?' → ② 원인 분석 '왜 발생했는가?' → ③ 솔루션 제언 '어떻게 해결할까?'
 //     + 요소별 결과(모든 설비·선로 값), 기록(시점별)
-// AI 리포트(ai_report/models.py의 Report)는 diagnosis → ①, causes → ②, solutions → ③에 나눠 보여 준다.
-// 형식이 바뀌면 아래 세 탭을 같이 고친다. 그래프 PNG는 simulation/plot.py가 그린다 (전압 프로파일 + 선로 조류)
+// AI 리포트(ai_report/models.py의 Report: diagnosis, causes, solutions)는 AiReportView에만 보여 준다 (결과 탭에는 없음, 팀 피드백).
+// 형식이 바뀌면 AiReportView를 고친다. 원인 분석 탭 그래프는 ProfileChart.jsx가 그린다 (전압 프로파일 + 선로 조류)
 import { useState } from 'react'
 import NodeIcon from './NodeIcon.jsx'
 import HistoryChart from './HistoryChart.jsx'
@@ -120,7 +120,7 @@ function ReportBox({ title, report, children, reportMessage, reportBusy, onMakeR
 }
 
 // ① 계통건강도 진단 (슬라이드 10·13): 진단표 + 피더 송출 + LLM 요약
-function HealthTab({ graph, result, onFocus, aiProps }) {
+function HealthTab({ graph, result, onFocus }) {
   const hc = healthCheck(graph, result)
   const feederName = (id) => graph.feeders.find((f) => f.id === id)?.name ?? id
   return (
@@ -173,20 +173,17 @@ function HealthTab({ graph, result, onFocus, aiProps }) {
           <b>{result.loss_kw.toFixed(1)} kW</b>
         </div>
       </div>
-      <ReportBox title="LLM 요약" {...aiProps}>
-        <p>{aiProps.report?.diagnosis}</p>
-      </ReportBox>
     </>
   )
 }
 
 // ② 물리적 원인 분석 (슬라이드 11·13): 관측 현상 → (LLM) 물리적 원인 → 계통 영향, LLM이 함께 보는 정보(전압 프로파일·선로 부하)
-function CauseTab({ graph, result, onFocus, aiProps }) {
+function CauseTab({ graph, result, onFocus }) {
   const hc = healthCheck(graph, result)
   return (
     <>
       <p className="lead">
-        이상 위치를 넘어 <b>왜 발생했는지</b> 봅니다. 관측 현상은 시뮬레이션 값이고, 물리적 원인·계통 영향은 AI 해설이 채웁니다.
+        이상 위치를 넘어 <b>왜 발생했는지</b> 봅니다. 관측 현상은 시뮬레이션 값입니다. 물리적 원인에 대한 AI 해설은 위 오른쪽 &ldquo;AI 리포트&rdquo;에서 봅니다.
       </p>
       {hc.problems.length === 0 ? (
         <p className="ok">주의·위험 항목이 없습니다.</p>
@@ -211,13 +208,6 @@ function CauseTab({ graph, result, onFocus, aiProps }) {
           ))}
         </div>
       )}
-      <ReportBox title="AI 원인 분석" {...aiProps}>
-        <ul>
-          {aiProps.report?.causes.map((c, i) => (
-            <li key={i}>{c}</li>
-          ))}
-        </ul>
-      </ReportBox>
       <h3 className="sub">LLM이 함께 보는 정보: 전압 프로파일 · 선로 부하 · 전력 흐름</h3>
       <ProfileCharts graph={graph} result={result} />
     </>
@@ -225,20 +215,13 @@ function CauseTab({ graph, result, onFocus, aiProps }) {
 }
 
 // ③ 엔지니어링 솔루션 제언 (슬라이드 12): 문제별 대안 후보·기대 효과 + LLM 제언
-function SolutionTab({ graph, result, aiProps }) {
+function SolutionTab({ graph, result }) {
   const hc = healthCheck(graph, result)
   return (
     <>
       <p className="lead">
         진단·원인 분석을 바탕으로 <b>어떻게 해결할지</b> 운전 조치부터 설비 보강까지 대안을 제시합니다.
       </p>
-      <ReportBox title="AI 솔루션 제언" {...aiProps}>
-        <ol>
-          {aiProps.report?.solutions.map((c, i) => (
-            <li key={i}>{c}</li>
-          ))}
-        </ol>
-      </ReportBox>
       {hc.problems.length > 0 && (
         <>
           <h3 className="sub">참고: 제안서의 문제별 대안 후보 (발견된 문제만)</h3>
@@ -398,8 +381,7 @@ export const RESULT_TABS = [
 ]
 
 // 결과 창 내용. 가운데 창과 새 창이 같은 컴포넌트를 쓴다
-export function ResultView({ graph, result, tab, onTab, report, reportMessage, reportBusy, onMakeReport, history, historyNote, dailyNote, onFocus }) {
-  const aiProps = { report, reportMessage, reportBusy, onMakeReport }
+export function ResultView({ graph, result, tab, onTab, history, historyNote, dailyNote, onFocus }) {
   return (
     <div className="rview">
       <nav className="tabs">
@@ -414,11 +396,11 @@ export function ResultView({ graph, result, tab, onTab, report, reportMessage, r
         {!result && tab !== 'history' ? (
           <p className="muted">결과가 없습니다. 계통이 완성되면 자동으로 계산됩니다.</p>
         ) : tab === 'health' ? (
-          <HealthTab graph={graph} result={result} onFocus={onFocus} aiProps={aiProps} />
+          <HealthTab graph={graph} result={result} onFocus={onFocus} />
         ) : tab === 'cause' ? (
-          <CauseTab graph={graph} result={result} onFocus={onFocus} aiProps={aiProps} />
+          <CauseTab graph={graph} result={result} onFocus={onFocus} />
         ) : tab === 'solution' ? (
-          <SolutionTab graph={graph} result={result} aiProps={aiProps} />
+          <SolutionTab graph={graph} result={result} />
         ) : tab === 'elements' ? (
           <ElementsTab graph={graph} result={result} onFocus={onFocus} />
         ) : (

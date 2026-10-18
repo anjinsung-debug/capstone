@@ -5,7 +5,7 @@ POST /api/substations/{id}/simulations/daily (backend/api/simulation.py)
 
 - 배율: data/daily_profile.csv (hour, load, pv). 원본 저장소의 1년치 가상 패턴에서 대표일 하루를 뽑은 것 (data/NOTICE.md)
 - 부하(load): p_kw·q_kvar × 부하 배율 (계통 데이터의 부하 값을 최대부하로 봄)
-- 태양광(pv): p_kw × 태양광 배율 (계통 데이터의 태양광 값을 설비용량으로 봄)
+- 태양광(pv): p_kw × 태양광 배율 (계통 데이터의 태양광 값을 설비용량으로 봄). 밤(배율 0)에도 PV_MIN_MULT만큼은 남긴다
 - 풍력은 시간대 패턴이 없어 그대로 둔다
 - 계산 자체는 simulation/simulate.py의 simulate()를 그대로 24번 부른다 (판정·결과 형식이 한 시점 계산과 같다)
 
@@ -24,6 +24,9 @@ from simulation.models import SimulationResult
 PROFILE_PATH = Path(__file__).resolve().parents[1] / "data" / "daily_profile.csv"
 PROFILE_NAME = "봄철 평일 (2025-05-26)"
 PROFILE_NOTE = "가상 패턴 (data/daily_profile.csv, 실측 아님)"
+# 태양광 배율의 최솟값. 밤에 배율이 0이면 OpenDSS 발전기 출력이 0 kW가 되어 고장 해석(단락전류)이 빈 값으로 나온다.
+# 아주 작은 값(설비용량의 0.01%)을 남겨 계산이 되게 한다. 조류·단락용량에 주는 영향은 무시할 만하다
+PV_MIN_MULT = 0.0001
 
 
 class DailyProfile(BaseModel):
@@ -60,7 +63,7 @@ def scaled_graph(graph: SubstationGraph, load_mult: float, pv_mult: float) -> Su
         if n.type == "load" and n.p_kw is not None:
             n = n.model_copy(update={"p_kw": n.p_kw * load_mult, "q_kvar": (n.q_kvar or 0) * load_mult})
         elif n.type == "pv" and n.p_kw is not None:
-            n = n.model_copy(update={"p_kw": n.p_kw * pv_mult})
+            n = n.model_copy(update={"p_kw": n.p_kw * max(pv_mult, PV_MIN_MULT)})
         nodes.append(n)
     return graph.model_copy(update={"nodes": nodes})
 

@@ -196,6 +196,74 @@ function SeqSmall({ metric, points, hover, setHover }) {
   )
 }
 
+// 칸 색: 기준을 넘으면 빨강·주황 (lib/overlay.js의 판정 기준과 같은 구간)
+function cellLevel(key, v) {
+  if (v == null) return ''
+  if (key === 'minV') return v < VOLTAGE_MIN_PU ? 'bad' : ''
+  if (key === 'maxLoading') return v > OVERLOAD_PCT ? 'bad' : v >= 80 ? 'warn' : ''
+  if (key === 'reverseMw') return v > 0.0005 ? 'warn' : ''
+  if (key === 'maxMva') return v > FAULT_HIGH_MVA ? 'warn' : ''
+  return ''
+}
+
+// 한 시간 단위 표: 선택한 기록의 0~23시를 한 줄씩. 바로 전 기록이 있으면 칸마다 차이(▲▼)를 같이 보여 준다.
+// 줄에 마우스를 올리면 위 그래프의 같은 시각에 세로선이 생긴다 (hour를 같이 씀)
+function HourlyTable({ cur, prev, sel, hour, setHour }) {
+  const worstHour = Object.fromEntries(METRICS.map((m) => [m.key, worstOf(cur.daily, m)?.hour]))
+  const prevByHour = prev?.daily ? Object.fromEntries(prev.daily.map((d) => [d.hour, d])) : null
+  return (
+    <div className="hourly">
+      <h3 className="sub">
+        시간대별 값 · {sel + 1}번째 기록 ({cur.label})
+        {prevByHour && <span className="muted"> · 작은 글씨는 바로 전 기록({sel}번째)과의 차이</span>}
+      </h3>
+      <div className="hourly-scroll">
+        <table className="rtable hourly-table" onMouseLeave={() => setHour(null)}>
+          <thead>
+            <tr>
+              <th>시각</th>
+              <th className="num">부하 배율</th>
+              <th className="num">태양광 배율</th>
+              {METRICS.map((m) => (
+                <th key={m.key} className="num">
+                  {m.label} ({m.unit})
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {cur.daily.map((d) => (
+              <tr key={d.hour} className={d.hour === hour ? 'hl' : ''} onMouseEnter={() => setHour(d.hour)}>
+                <td>{String(d.hour).padStart(2, '0')}시</td>
+                <td className="num muted">{d.loadMult.toFixed(2)}</td>
+                <td className="num muted">{d.pvMult.toFixed(2)}</td>
+                {METRICS.map((m) => {
+                  const v = d[m.key]
+                  const pv = prevByHour?.[d.hour]?.[m.key]
+                  const diff = v != null && pv != null ? v - pv : null
+                  const shown = diff != null && m.fmt(Math.abs(diff)) !== m.fmt(0) // 표시 자릿수로 0이 아닐 때만
+                  return (
+                    <td key={m.key} className={`num ${cellLevel(m.key, v)} ${worstHour[m.key] === d.hour ? 'worst' : ''}`}>
+                      {v == null ? '-' : m.fmt(v)}
+                      {shown && (
+                        <small className={diff > 0 ? 'up' : 'down'}>
+                          {diff > 0 ? ' ▲' : ' ▼'}
+                          {m.fmt(Math.abs(diff))}
+                        </small>
+                      )}
+                    </td>
+                  )
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="muted small">굵은 글씨 = 하루 중 가장 나쁜 시각 · 빨강 = 기준 넘음 · 주황 = 주의 (부하율 80% 이상, 역조류 있음, 단락용량 300 MVA 초과)</p>
+    </div>
+  )
+}
+
 export default function HistoryChart({ points }) {
   const [picked, setPicked] = useState(null) // 표에서 고른 기록 번호 (없으면 마지막 기록)
   const [hour, setHour] = useState(null) // 하루 그래프에서 마우스가 가리키는 시각
@@ -306,6 +374,7 @@ export default function HistoryChart({ points }) {
           ))}
         </tbody>
       </table>
+      {hasDaily && cur.daily && <HourlyTable cur={cur} prev={sel > 0 ? points[sel - 1] : null} sel={sel} hour={hour} setHour={setHour} />}
       {hasDaily && (
         <p className="muted small">
           하루 곡선은 data/daily_profile.csv의 시간대별 배율(가상 패턴, 실측 아님)을 계통의 부하·태양광 값에 곱해 시간마다 다시 계산한 값입니다. 계통 데이터의 부하는

@@ -1242,3 +1242,34 @@ body.popup {
 .table-note {
   margin: 0;
 }
+
+/* 시간대별 표 (한 시간에 한 줄) */
+.hourly {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.hourly-scroll {
+  overflow-x: auto;
+}
+.hourly-table td,
+.hourly-table th {
+  white-space: nowrap;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+.hourly-table td.worst {
+  font-weight: 700;
+}
+.hourly-table td.bad {
+  color: var(--danger);
+}
+.hourly-table td.warn {
+  color: var(--warn);
+}
+.hourly-table small.up,
+.hourly-table small.down {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 400;
+}

@@ -385,10 +385,6 @@ export default function App() {
       result={result}
       tab={resultTab}
       onTab={setResultTab}
-      report={report}
-      reportMessage={reportMessage}
-      reportBusy={reportBusy}
-      onMakeReport={makeReport}
       history={resultHistory}
       historyNote={historyNote}
       dailyNote={dailyNote}
