@@ -58,5 +58,4 @@ export async function createPlot(simulationResult) {
 }
 
 // AI 리포트 (FR-08, FR-09): runSimulation 결과를 그대로 넘긴다
-// audience: 'expert'(전문가용, 기본) | 'plain'(쉬운 설명)
 export const createReport = (simulationResult, audience = 'expert') => request('POST', `/reports?audience=${audience}`, simulationResult)

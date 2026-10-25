@@ -75,8 +75,8 @@ class ReportError(Exception):
 
 
 # ponytail: 해설 대상은 두 가지(전문가용/쉬운 설명)고, 판정 기준·수치 규칙(_RULES)은 같고 말투와 용어 수준만 다르다.
-#   대상을 더 늘릴 때는 AUDIENCES와 _STYLE에 항목을 하나 더하고, 화면의 선택 버튼(ResultPanel.jsx의 AUDIENCE_OPTIONS)도 같이 고친다
-AUDIENCES = ("expert", "plain")  # expert = 전문가용, plain = 쉬운 설명(일반인용)
+#   대상을 더 늘릴 때는 AUDIENCES와 _STYLE에 항목을 하나 더하고, 화면의 선택 버튼(ResultPanel.jsx의 ReportBox)도 같이 고친다
+AUDIENCES = ("expert", "plain")  # expert = 전문가용 설명, plain = 쉬운 설명
 DEFAULT_AUDIENCE = "expert"
 
 _INTRO = "당신은 22.9kV 배전계통 해석 결과를 설명하는 전력계통 엔지니어입니다."
