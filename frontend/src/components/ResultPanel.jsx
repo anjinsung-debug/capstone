@@ -105,15 +105,32 @@ function FocusBtn({ id, onFocus, label }) {
   )
 }
 
-function ReportBox({ title, report, children, reportMessage, reportBusy, onMakeReport }) {
+// 해설 대상 선택 (ai_report/report.py의 AUDIENCES와 같은 값). 대상을 늘리면 이 목록과 백엔드를 같이 고친다
+const AUDIENCE_OPTIONS = [
+  { value: 'expert', label: '전문가용' },
+  { value: 'plain', label: '쉬운 설명' },
+]
+
+function ReportBox({ title, report, children, reportMessage, reportBusy, onMakeReport, audience, onAudience, reportAudience }) {
+  const shown = AUDIENCE_OPTIONS.find((o) => o.value === reportAudience)?.label
   return (
     <div className="ai-box">
       <div className="ai-head">
         <b>{title}</b>
+        {onAudience && (
+          <span className="seg" role="group" aria-label="해설 대상">
+            {AUDIENCE_OPTIONS.map((o) => (
+              <button key={o.value} type="button" className={audience === o.value ? 'on' : ''} disabled={reportBusy} onClick={() => onAudience(o.value)}>
+                {o.label}
+              </button>
+            ))}
+          </span>
+        )}
         <button type="button" className="mini primary-outline" disabled={reportBusy} onClick={onMakeReport}>
-          {reportBusy ? '만드는 중...' : report ? '지금 결과로 다시 만들기' : 'AI 해설 만들기'}
+          {reportBusy ? '만드는 중...' : report ? (audience === reportAudience ? '지금 결과로 다시 만들기' : '선택한 해설로 다시 만들기') : 'AI 해설 만들기'}
         </button>
       </div>
+      {report && shown && <p className="muted small">지금 해설: {shown}</p>}
       {report ? children : <p className="muted small">{reportMessage || 'LLM 호출은 비용·시간이 들어서 자동으로 만들지 않습니다. 버튼을 누르면 ①②③ 해설이 한 번에 만들어집니다.'}</p>}
     </div>
   )
@@ -417,16 +434,16 @@ export function ResultView({ graph, result, tab, onTab, history, historyNote, da
 
 // AI 리포트 창 (위 오른쪽 "AI 리포트" 버튼). ai_report/models.py의 Report(diagnosis, causes, solutions)를 한 화면에 모은다.
 // 수치·표는 창 오른쪽 위 "결과 자세히"(ResultView)에서 본다
-export function AiReportView({ graph, result, report, reportMessage, reportBusy, onMakeReport }) {
+export function AiReportView({ graph, result, report, reportMessage, reportBusy, onMakeReport, audience, onAudience, reportAudience }) {
   if (!result) return <p className="muted">결과가 없습니다. 계통이 완성되면 자동으로 계산됩니다.</p>
   const hc = healthCheck(graph, result)
   return (
     <div className="ai-report">
       <p className="lead">
-        시뮬레이션 결과를 AI가 쉬운 말로 풀어 줍니다. 계통 전체 판정: <LevelBadge level={hc.overall} />
+        시뮬레이션 결과를 AI가 풀어 줍니다. 아래 선택에서 전문가용 또는 쉬운 설명을 고를 수 있습니다. 계통 전체 판정: <LevelBadge level={hc.overall} />
         {hc.problems.length > 0 && <span className="muted"> · 확인할 항목 {hc.problems.map((r) => r.label).join(', ')}</span>}
       </p>
-      <ReportBox title="AI 리포트" report={report} reportMessage={reportMessage} reportBusy={reportBusy} onMakeReport={onMakeReport}>
+      <ReportBox title="AI 리포트" report={report} reportMessage={reportMessage} reportBusy={reportBusy} onMakeReport={onMakeReport} audience={audience} onAudience={onAudience} reportAudience={reportAudience}>
         <section className="ai-sec">
           <h4>① 건강도 진단 · 어디가 문제인가?</h4>
           <p>{report?.diagnosis}</p>

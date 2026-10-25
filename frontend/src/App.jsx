@@ -57,6 +57,8 @@ export default function App() {
   const [report, setReport] = useState(null)
   const [reportMessage, setReportMessage] = useState('')
   const [reportBusy, setReportBusy] = useState(false)
+  const [audience, setAudience] = useState('expert') // 해설 대상: expert(전문가용) | plain(쉬운 설명). 버튼으로 고르고, 다시 만들기를 누르면 바뀐다
+  const [reportAudience, setReportAudience] = useState('expert') // 지금 보이는 리포트가 만들어진 해설 대상
   const [resultHistory, setResultHistory] = useState([])
   const [historyNote, setHistoryNote] = useState('') // 마지막 계산을 기록하지 않은 이유 (연결 안 된 설비 등)
   const [dailyNote, setDailyNote] = useState('') // 하루(24시간) 계산을 못 하는 이유 (진짜 백엔드에 아직 없음 등)
@@ -304,8 +306,11 @@ export default function App() {
     setReportBusy(true)
     setReportMessage('AI 리포트 생성 중... (수 초~수십 초)')
     try {
-      const r = await createReport(result)
-      if (id === runId.current) setReport(r)
+      const r = await createReport(result, audience)
+      if (id === runId.current) {
+        setReport(r)
+        setReportAudience(audience)
+      }
     } catch (e) {
       if (id === runId.current) setReportMessage(`AI 리포트 실패 (${e.message})`)
     } finally {
@@ -549,7 +554,7 @@ export default function App() {
             </button>
           }
         >
-          <AiReportView graph={graph} result={result} report={report} reportMessage={reportMessage} reportBusy={reportBusy} onMakeReport={makeReport} />
+          <AiReportView graph={graph} result={result} report={report} reportMessage={reportMessage} reportBusy={reportBusy} onMakeReport={makeReport} audience={audience} onAudience={setAudience} reportAudience={reportAudience} />
         </Modal>
       )}
       {resultOpen === 'detail' && (

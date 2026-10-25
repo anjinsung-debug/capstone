@@ -74,18 +74,50 @@ class ReportError(Exception):
     """리포트를 만들 수 없을 때 (키 없음, API 호출 실패, 응답 형식 오류, 수렴하지 않은 결과). 백엔드가 503으로 알린다."""
 
 
-SYSTEM_PROMPT = f"""당신은 22.9kV 배전계통 해석 결과를 설명하는 전력계통 엔지니어입니다.
-독자는 전력계통을 잘 모르는 초보 관제 인력과 학생입니다. 쉬운 한국어로, 전문 용어는 처음 나올 때 짧게 풀어 쓰세요.
+# ponytail: 해설 대상은 두 가지(전문가용/쉬운 설명)고, 판정 기준·수치 규칙(_RULES)은 같고 말투와 용어 수준만 다르다.
+#   대상을 더 늘릴 때는 AUDIENCES와 _STYLE에 항목을 하나 더하고, 화면의 선택 버튼(ResultPanel.jsx의 AUDIENCE_OPTIONS)도 같이 고친다
+AUDIENCES = ("expert", "plain")  # expert = 전문가용, plain = 쉬운 설명(일반인용)
+DEFAULT_AUDIENCE = "expert"
 
-사용자가 계통 정보와 시뮬레이션 수치, 그리고 코드가 이미 판정한 "확정된 점검 결과"를 줍니다. 아래 규칙을 지키세요.
+_INTRO = "당신은 22.9kV 배전계통 해석 결과를 설명하는 전력계통 엔지니어입니다."
+
+_RULES = f"""사용자가 계통 정보와 시뮬레이션 수치, 그리고 코드가 이미 판정한 "확정된 점검 결과"를 줍니다. 아래 규칙을 지키세요.
 1. 제공된 수치와 설비 이름만 쓰세요. 없는 값을 추측하거나 만들어 내지 마세요. 모르는 것은 "데이터에 없음"이라고 쓰세요.
 2. 건강도 등급(정상·주의·위험)은 "확정된 점검 결과"에 적힌 등급을 그대로 쓰세요. 바꾸거나 다시 판정하지 마세요.
 3. 판정 기준: 전압 정상 범위 {VOLTAGE_MIN_PU}~{VOLTAGE_MAX_PU} pu({VOLTAGE_DANGER_LOW_PU} pu 미만·{VOLTAGE_DANGER_HIGH_PU} pu 초과는 위험), 선로 부하율 {OVERLOAD_PCT:.0f}% 초과면 과부하(위험), {LOADING_WATCH_PCT}% 이상이면 부하율 높음(주의), 분산전원 때문에 전력이 반대로 흐르면 역조류, 3상 단락용량이 {FAULT_HIGH_MVA} MVA를 넘으면 단락용량 증가(차단기 정격·보호계전기 검토 대상), 전원에서 끊기면 정전입니다. 정전은 저전압이 아닙니다.
 4. 원인은 문제가 있는 설비 이름과 수치를 인용해서, 왜 그렇게 되는지 전기적 이유(선로 길이와 임피던스에 따른 전압강하, 분산전원 출력이 부하보다 큰 구간, 전류가 허용전류를 넘음 등)를 설명하세요. 입력에 없는 연결 구조를 가정하지 마세요.
 5. 솔루션은 원인과 하나씩 대응시키고 우선순위 순서로 쓰세요. 전선 굵기 교체, 전압조정기(SVR) 설치, 부하 절체, 역조류 보호계전 점검, 차단기 정격 검토, ESS 설치, 개폐기 조작처럼 엔지니어가 실제로 할 수 있는 조치로 쓰고, 효과를 수치로 약속하지 마세요.
 6. 문제가 없으면 원인에는 "기준 안에 있음"을 근거 수치와 함께 쓰고, 솔루션에는 유지·재점검 방법만 쓰세요. 문제를 지어내지 마세요.
-7. 허용전류나 단락용량이 가정값으로 계산됐다고 알려 주면, 그 값에 의존하는 부하율·고장전류 설명에 "가정값 기준"이라고 밝히세요.
-8. 진단은 2~3문장, 원인과 솔루션은 각각 항목당 1~2문장으로 간결하게 쓰세요."""
+7. 허용전류나 단락용량이 가정값으로 계산됐다고 알려 주면, 그 값에 의존하는 부하율·고장전류 설명에 "가정값 기준"이라고 밝히세요."""
+
+_STYLE = {
+    "expert": """[독자와 말투: 전문가용]
+독자는 전력계통을 아는 엔지니어(관제·운영·설계 담당)입니다.
+- pu, 부하율, 임피던스, 단락용량(MVA), 역조류, 정격, SVR, 보호계전기 같은 전문 용어를 풀어 쓰지 말고 그대로 쓰세요.
+- 수치는 단위와 함께 정확히 인용하고(예: 0.93 pu, 112%, 412 MVA), 판단 근거가 되는 기준값을 같이 적으세요.
+- 원인은 전기적 메커니즘(전압강하, 전류 분포, 고장전류 증가 등)으로, 솔루션은 설비·보호 협조 관점의 구체적 조치로 쓰세요.
+- 진단은 2~3문장, 원인과 솔루션은 각각 항목당 1~2문장으로 간결하게 쓰세요.""",
+    "plain": """[독자와 말투: 쉬운 설명(일반인용)]
+독자는 전기를 전혀 모르는 일반 시민입니다. 중학생도 이해할 수 있게 쓰세요.
+- 전문 용어는 쓰지 마세요. 꼭 필요한 용어(예: 전압, 단락, 역조류)는 처음 한 번만 괄호로 쉬운 뜻을 붙이세요. 예: "전압(전기를 밀어 주는 힘)", "역조류(전기가 거꾸로 흐르는 현상)".
+- pu, MVA, 임피던스, 정격, SVR, 보호계전기 같은 말은 쉬운 표현으로 바꾸세요. 예: "전선이 견딜 수 있는 양의 112%를 쓰고 있어요", "고장이 나면 전기가 아주 세게 흐를 수 있는 곳".
+- 수치는 입력에 있는 값만 쓰되, 기준과 비교해 "정상 범위보다 낮아요" "기준보다 12% 많이 쓰고 있어요"처럼 의미를 먼저 말하세요. 새로 계산한 값을 만들어 내지 마세요.
+- 비유(수도관의 물 압력, 도로의 차량 수 등)는 한두 번만 짧게 쓰고, 설비 이름은 그대로 써서 어디 이야기인지 알 수 있게 하세요.
+- 규칙 3의 판정 기준은 숫자 대신 "너무 낮다/너무 높다/너무 많이 쓴다/거꾸로 흐른다/끊겼다" 같은 말로 풀어 쓰세요. 등급 이름(정상·주의·위험)은 그대로 쓰세요.
+- 솔루션은 전문가가 하게 될 일을 쉬운 말로 설명하고, 왜 필요한지 한 마디 덧붙이세요. 예: "전선을 더 굵은 것으로 바꾸면 전기가 지나가는 길이 넓어져 부담이 줄어요". 효과를 수치로 약속하지 마세요.
+- 문장은 짧게 쓰세요. 진단은 2~3문장, 원인과 솔루션은 각각 항목당 1~2문장으로 쓰세요. 겁을 주는 말투는 피하고 사실만 차분히 쓰세요.""",
+}
+
+
+def system_prompt(audience: str = DEFAULT_AUDIENCE) -> str:
+    """해설 대상(audience)에 맞는 시스템 프롬프트. 모르는 대상이면 ReportError"""
+    if audience not in _STYLE:
+        raise ReportError(f"알 수 없는 해설 대상입니다: {audience} (사용 가능: {', '.join(AUDIENCES)})")
+    return f"{_INTRO}\n\n{_STYLE[audience]}\n\n{_RULES}"
+
+
+SYSTEM_PROMPT = system_prompt("expert")  # 기본(전문가용). 기존 코드·테스트가 쓰는 이름
+PLAIN_SYSTEM_PROMPT = system_prompt("plain")
 
 REPORT_TOOL = {
     "name": TOOL_NAME,
@@ -295,7 +327,7 @@ def _gemini_schema(node):
     return out
 
 
-def _call_gemini(prompt: str, post=None) -> dict:
+def _call_gemini(prompt: str, post=None, system: str = SYSTEM_PROMPT) -> dict:
     """Gemini REST 호출 (JSON 형식 고정). post: 테스트용 (url, headers, body 바이트) → 응답 dict. 없으면 실제로 호출한다"""
     key = os.environ.get("GEMINI_API_KEY")
     if not key:
@@ -303,7 +335,7 @@ def _call_gemini(prompt: str, post=None) -> dict:
     model = os.environ.get("GEMINI_MODEL") or GEMINI_DEFAULT_MODEL
     body = json.dumps(
         {
-            "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+            "systemInstruction": {"parts": [{"text": system}]},
             "contents": [{"role": "user", "parts": [{"text": prompt}]}],
             "generationConfig": {
                 "maxOutputTokens": GEMINI_MAX_TOKENS,
@@ -339,22 +371,24 @@ def _call_gemini(prompt: str, post=None) -> dict:
         raise ReportError("AI 응답 형식이 올바르지 않습니다. 다시 시도해 주세요") from e
 
 
-def generate_report(graph: SubstationGraph, result: SimulationResult, client=None) -> Report:
+def generate_report(graph: SubstationGraph, result: SimulationResult, client=None, audience: str = DEFAULT_AUDIENCE) -> Report:
     """계통 정보(설비 이름·종류·연결)와 해석 수치(전압 pu, 선로 부하율, 고장전류, 역조류, 피더별 송출 전력)를
     구조화된 텍스트로 만들어 LLM에 넣고, 비전문가도 이해할 수 있는 3단계 리포트로 돌려받는다.
 
+    audience: "expert"(전문가용, 기본) 또는 "plain"(쉬운 설명). 판정과 수치는 같고 말투·용어 수준만 다르다.
     client: 테스트용 (anthropic.Anthropic과 같은 messages.create를 가진 객체). 없으면 환경 변수로 만든다."""
     if not result.converged:
         raise ReportError("계산이 수렴하지 않은 결과로는 리포트를 만들 수 없습니다")
+    system = system_prompt(audience)
     prompt = build_prompt(graph, result)
     if os.environ.get("AI_PROVIDER", "anthropic").strip().lower() == "gemini":
-        return _build_report(_call_gemini(prompt), result.substation_id)
+        return _build_report(_call_gemini(prompt, system=system), result.substation_id)
     client = client or _make_client()
     try:
         response = client.messages.create(
             model=os.environ.get("ANTHROPIC_MODEL") or DEFAULT_MODEL,
             max_tokens=MAX_TOKENS,
-            system=SYSTEM_PROMPT,
+            system=system,
             tools=[REPORT_TOOL],
             tool_choice={"type": "tool", "name": TOOL_NAME},
             messages=[{"role": "user", "content": prompt}],
