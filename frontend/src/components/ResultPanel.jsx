@@ -474,7 +474,7 @@ function ReportSection({ no, title, question, children }) {
 }
 
 export function AiReportView({ graph, result, resultAt, report, reportMessage, reportBusy, onMakeReport }) {
-  const [audience, setAudience] = useState('expert')
+  const [audience] = useState('plain') // AI 리포트는 쉬운 설명만 (10/26 결정, 설명 방식 선택 버튼 숨김)
   const [madeFor, setMadeFor] = useState(null) // 지금 보이는 리포트를 어떤 설명 방식으로 만들었는지
   const asked = useRef(null) // 마지막으로 누른 설명 방식 (리포트가 도착하면 madeFor로 옮김. 실패하면 그대로 둠)
   const [copied, setCopied] = useState(false)
@@ -532,16 +532,8 @@ export function AiReportView({ graph, result, resultAt, report, reportMessage, r
         </div>
       </div>
 
-      {/* 설명 방식 + 만들기 */}
+      {/* 만들기 */}
       <div className="rp-controls">
-        <span className="rp-label">설명 방식</span>
-        <span className="seg">
-          {AUDIENCES.map(([v, label]) => (
-            <button key={v} type="button" className={audience === v ? 'on' : ''} disabled={reportBusy} onClick={() => setAudience(v)}>
-              {label}
-            </button>
-          ))}
-        </span>
         <button type="button" className="primary rp-make" disabled={reportBusy} onClick={make}>
           {reportBusy ? '만드는 중...' : report ? '지금 결과로 다시 만들기' : 'AI 해설 만들기'}
         </button>
@@ -571,7 +563,7 @@ export function AiReportView({ graph, result, resultAt, report, reportMessage, r
       {!report && !reportBusy && !failed && (
         <div className="rp-state empty">
           <b>아직 해설이 없습니다</b>
-          <small>LLM 호출은 비용·시간이 들어서 자동으로 만들지 않습니다. 설명 방식을 고르고 &ldquo;AI 해설 만들기&rdquo;를 누르면 ①②③이 한 번에 만들어집니다.</small>
+          <small>LLM 호출은 비용·시간이 들어서 자동으로 만들지 않습니다. &ldquo;AI 해설 만들기&rdquo;를 누르면 ①②③이 한 번에 만들어집니다.</small>
         </div>
       )}
 
