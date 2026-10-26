@@ -107,6 +107,21 @@ def scaled_graph(graph: SubstationGraph, load_mult: float, pv_mult: float) -> Su
     return graph.model_copy(update={"nodes": nodes})
 
 
+def graph_at(graph: SubstationGraph, day: dt.date | None, hour: int | None) -> SubstationGraph:
+    """한 시각의 계통: 그날 그 시각 배율을 부하·태양광에 곱한다 (편집 화면의 "지금 시각" 계산, POST .../simulations?date=&hour=).
+    date·hour가 둘 다 없으면 계통 그대로 (최대 조건: 부하 = 최대부하, 태양광 = 설비용량). 하나만 있거나 고를 수 없는 날·시각이면 ValueError"""
+    if day is None and hour is None:
+        return graph
+    if day is None or hour is None:
+        raise ValueError("date와 hour는 함께 보내야 합니다 (둘 다 없으면 최대 조건으로 계산)")
+    if not 0 <= hour <= 23:
+        raise ValueError(f"hour는 0~23이어야 합니다: {hour}")
+    check_date(day)
+    h, load, pv = read_year()[source_date(day)][hour]
+    assert h == hour
+    return scaled_graph(graph, load, pv)
+
+
 def simulate_daily(
     graph: SubstationGraph,
     day: dt.date | None = None,

@@ -4,7 +4,9 @@
 //   변전소 선택 → GET /api/substations/{id} → graph → 바로 시뮬레이션
 //   편집 → Diagram/PropertyPanel이 lib/graphEdit.js로 새 graph를 만들어 onChange로 올림 → graph 교체
 //   자동 저장 → 편집이 멈추고 AUTOSAVE_DELAY_MS 뒤 toSnapshot(graph) → PUT /api/substations/{id} → 서버가 돌려준 graph로 교체
-//            → 계산에 영향을 주는 값이 바뀌었으면(electricalKey) POST …/simulations → result
+//            → 계산에 영향을 주는 값이 바뀌었으면(electricalKey) POST …/simulations?date=오늘&hour=지금 → result
+//   편집 화면 결과는 기본으로 "지금 시각" 기준 (오늘 날짜·현재 시각 배율을 부하·태양광에 곱함, 정각이 지나면 다시 계산).
+//   요약 줄의 "최대 조건"을 누르면 저장된 값 그대로(부하 = 최대부하, 태양광 = 설비용량) 계산한다 (simulation/daily.py의 graph_at)
 //   결과 그래프는 화면이 직접 그린다 (components/ProfileChart.jsx). 서버 PNG(POST /api/plots)는 쓰지 않는다
 //   AI 리포트 → 결과 창의 버튼을 누를 때만 POST /api/reports (LLM 비용·시간 때문에 자동으로 부르지 않음)
 // 서버 쪽 규칙은 cim/graph.py(조회·저장), simulation/dss.py(완성 검사), backend/main.py(오류 → 404·422·501)에 있다.
@@ -39,6 +41,9 @@ const HEALTH_POLL_MS = 15000 // 서버·DB 연결 상태를 다시 확인하는 
 // 기록 탭 하루 곡선의 날짜: 처음에는 오늘. 고를 수 있는 날은 2025-01-01(배율 데이터 시작) ~ 오늘 (simulation/daily.py)
 const localDate = (d = new Date()) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+// 편집 화면 계산 시각: 오늘 날짜 + 지금 시(0~23)
+const nowAt = (d = new Date()) => ({ date: localDate(d), hour: d.getHours() })
+const HOUR_CHECK_MS = 30000 // 정각이 지났는지 확인하는 간격
 
 const describe = (e) => e.message.replace(/^HTTP \d+: /, '')
 
@@ -54,6 +59,8 @@ export default function App() {
   const [selectedIds, setSelectedIds] = useState([])
   const [mode, setMode] = useState('health') // 단선도 표시 모드: health | voltage | loading | reverse | fault (lib/overlay.js의 MODES)
   const [focus, setFocus] = useState(null) // 결과 창에서 누른 위치 { id, n }
+  const [simMode, setSimMode] = useState('now') // 편집 화면 계산 기준: 'now' = 지금 시각 | 'max' = 최대 조건
+  const [resultAt, setResultAt] = useState(null) // 지금 결과를 계산한 시각 { date, hour } (최대 조건이면 null)
   const [busy, setBusy] = useState('') // 진행 중인 계산 이름 (단선도 위 요약 줄에 표시)
   const [result, setResult] = useState(null)
   const [simNote, setSimNote] = useState('') // 결과가 없거나 옛 결과인 이유 (계통 미완성 등)
@@ -85,6 +92,8 @@ export default function App() {
   const dailyAvailable = useRef(null) // 백엔드에 하루 계산이 있는지: null 모름 | true | false
   const dailyDateRef = useRef(dailyDate) // 지금 고른 날 (늦게 온 다른 날짜 응답을 버릴 때 씀)
   const dailyRun = useRef(0) // 날짜를 바꿀 때마다 증가. 이전 날짜로 다시 계산하던 반복을 멈추는 데 씀
+  const simModeRef = useRef(simMode)
+  const resultAtRef = useRef(null)
   const changeLabel = useRef('') // 기록에 남길 "바뀐 내용"
 
   const info = useCallback((text) => setMessage({ text, kind: 'info' }), [])
@@ -159,12 +168,14 @@ export default function App() {
   }
 
   // ── 시뮬레이션: 서버(Neo4j)에 저장된 계통으로 계산한다. 결과가 오면 그래프도 다시 그린다 ──
-  async function simulateNow(g, label) {
+  // record: false면 결과 기록에 남기지 않는다 (정각 갱신·계산 기준 전환처럼 계통을 고치지 않은 다시 계산)
+  async function simulateNow(g, label, { record = true } = {}) {
     const id = ++runId.current
     setBusy('계산 중...')
+    const at = simModeRef.current === 'now' ? nowAt() : null
     let res
     try {
-      res = await runSimulation(g.substation.id)
+      res = await runSimulation(g.substation.id, at)
     } catch (e) {
       if (id !== runId.current) return
       // 미완성 계통(422) 등: 옛 결과는 지금 계통과 맞지 않으므로 지우고 이유를 보여 준다.
@@ -179,12 +190,15 @@ export default function App() {
     }
     if (id !== runId.current) return
     simulatedKey.current = electricalKey(g)
+    resultAtRef.current = at
+    setResultAt(at)
     setResult(res)
     setSimNote('')
     setReport(null)
     setReportMessage('')
     // 결과 기록(시점별)에는 계통이 다 이어진 상태의 계산만 남긴다. 노드를 놓기만 하고 아직 연결하지 않은 중간 단계,
     // 그리고 지표가 직전 기록과 똑같은 계산은 건너뛴다 (편집할 때마다 점이 쌓여 보기 불편하다는 팀 피드백)
+    if (!record) return
     const dangling = findDangling(g)
     if (dangling.length) {
       const names = dangling.slice(0, 3).join(', ') + (dangling.length > 3 ? ` 외 ${dangling.length - 3}개` : '')
@@ -219,6 +233,25 @@ export default function App() {
     }
     setDailyBusy(null)
   }
+
+  // 편집 화면 계산 기준 바꾸기 (요약 줄의 "지금 N시 | 최대 조건")
+  function changeSimMode(m) {
+    if (m === simModeRef.current) return
+    simModeRef.current = m
+    setSimMode(m)
+    if (graphRef.current && !dirty) simulateNow(graphRef.current, '', { record: false })
+  }
+
+  // 지금 시각 기준이면 정각이 지날 때마다 다시 계산한다 (편집 중이라 저장 대기 중이면 저장 뒤 계산에 맡김)
+  useEffect(() => {
+    const t = setInterval(() => {
+      const at = resultAtRef.current
+      if (simModeRef.current !== 'now' || !at || dirty || flushing.current || !graphRef.current) return
+      const now = nowAt()
+      if (now.date !== at.date || now.hour !== at.hour) simulateNow(graphRef.current, '', { record: false })
+    }, HOUR_CHECK_MS)
+    return () => clearInterval(t)
+  }, [dirty]) // eslint-disable-line react-hooks/exhaustive-deps -- simulateNow는 ref만 읽어서 다시 만들 필요 없음
 
   // ── 자동 저장 ──
   // 편집이 멈추면 저장 → (계산 값이 바뀌었으면) 시뮬레이션. 저장하는 동안 또 편집하면 끝난 뒤 한 번 더 저장한다
@@ -333,7 +366,7 @@ export default function App() {
     setReportBusy(true)
     setReportMessage('AI 리포트 생성 중... (수 초~수십 초)')
     try {
-      const r = await createReport(result, audience)
+      const r = await createReport(result, audience, resultAt)
       if (id === runId.current) setReport(r)
     } catch (e) {
       if (id === runId.current) setReportMessage(`AI 리포트 실패 (${e.message})`)
@@ -546,6 +579,9 @@ export default function App() {
                 result={result}
                 note={save.status === 'error' ? `저장 실패: ${save.text}` : simNote}
                 busy={busy}
+                simMode={simMode}
+                simAt={resultAt}
+                onSimMode={changeSimMode}
                 onRerun={() => simulateNow(graph, '다시 계산')}
               />
               {result && (
@@ -581,7 +617,7 @@ export default function App() {
             </button>
           }
         >
-          <AiReportView graph={graph} result={result} report={report} reportMessage={reportMessage} reportBusy={reportBusy} onMakeReport={makeReport} />
+          <AiReportView graph={graph} result={result} resultAt={resultAt} report={report} reportMessage={reportMessage} reportBusy={reportBusy} onMakeReport={makeReport} />
         </Modal>
       )}
       {resultOpen === 'detail' && (

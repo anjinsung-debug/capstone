@@ -39,7 +39,10 @@ export const saveSubstation = (substationId, snapshot) =>
   request('PUT', `/substations/${substationId}`, snapshot)
 
 // 시뮬레이션 (FR-03, FR-04)
-export const runSimulation = (substationId) => request('POST', `/substations/${substationId}/simulations`)
+// at = { date: 'YYYY-MM-DD', hour: 0~23 }: 그 시각 배율로 계산 (편집 화면의 "지금 시각"). 없으면 저장된 값 그대로 = 최대 조건
+const atQuery = (at) => (at ? `date=${at.date}&hour=${at.hour}` : '')
+export const runSimulation = (substationId, at) =>
+  request('POST', `/substations/${substationId}/simulations${at ? `?${atQuery(at)}` : ''}`)
 
 // 하루(24시간) 시뮬레이션: 고른 날의 시간대별 배율(data/profile_2025.csv)을 부하·태양광 출력에 곱해 24번 계산한다.
 // body(없어도 됨): { date: 'YYYY-MM-DD' (2025-01-01 ~ 오늘, 없으면 2025-05-26), graph: toSnapshot(계통) (없으면 DB의 지금 계통) }
@@ -60,4 +63,6 @@ export async function createPlot(simulationResult) {
 }
 
 // AI 리포트 (FR-08, FR-09): runSimulation 결과를 그대로 넘긴다
-export const createReport = (simulationResult, audience = 'expert') => request('POST', `/reports?audience=${audience}`, simulationResult)
+// at: 결과를 계산한 시각 (runSimulation에 준 값). 백엔드가 프롬프트의 부하·태양광 kW를 같은 시각 값으로 맞춘다
+export const createReport = (simulationResult, audience = 'expert', at = null) =>
+  request('POST', `/reports?audience=${audience}${at ? `&${atQuery(at)}` : ''}`, simulationResult)

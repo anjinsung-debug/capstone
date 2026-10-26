@@ -23,11 +23,13 @@ ponytail: 아래 계산·리포트는 화면 확인용 근사다. 진짜 백엔�
 """
 
 import argparse
+import datetime as dt
 import json
 import math
 import sys
 import time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlsplit
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -44,7 +46,7 @@ from simulation.dss import (  # noqa: E402
     open_line_ids,
     trace,
 )
-from simulation.daily import DailyRequest, simulate_daily  # noqa: E402
+from simulation.daily import DailyRequest, graph_at, simulate_daily  # noqa: E402
 from simulation.models import FeederResult, LineResult, NodeResult, SimulationResult  # noqa: E402
 
 STORE: dict[str, SubstationGraph] = {}
@@ -192,6 +194,13 @@ class Handler(SimpleHTTPRequestHandler):
     def _graph(self, sid: str) -> SubstationGraph | None:
         return STORE.get(sid)
 
+    def _at(self, g: SubstationGraph) -> SubstationGraph:
+        """?date=YYYY-MM-DD&hour=H 가 있으면 그 시각 배율을 곱한 계통 (진짜와 같은 simulation/daily.py의 graph_at). 잘못되면 ValueError → 422"""
+        q = parse_qs(urlsplit(self.path).query)
+        day = q.get("date", [None])[0]
+        hour = q.get("hour", [None])[0]
+        return graph_at(g, dt.date.fromisoformat(day) if day else None, int(hour) if hour is not None else None)
+
     def _route(self):
         parts = self.path.split("?")[0].strip("/").split("/")
         if parts[0] != "api":
@@ -232,7 +241,7 @@ class Handler(SimpleHTTPRequestHandler):
                 g = self._graph(p[1])
                 if not g:
                     return self._send(404, {"detail": "변전소가 없습니다"})
-                return self._send(200, simulate(g).model_dump())
+                return self._send(200, simulate(self._at(g)).model_dump())
             if m == "POST" and p == ["plots"]:
                 r = SimulationResult.model_validate(self._body())
                 try:
@@ -242,7 +251,7 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._send(200, plot_result(STORE[r.substation_id], r), "image/png")
             if m == "POST" and p == ["reports"]:
                 r = SimulationResult.model_validate(self._body())
-                return self._send(200, mock_report(STORE[r.substation_id], r))
+                return self._send(200, mock_report(self._at(STORE[r.substation_id]), r))
         except SimulationError as e:
             return self._send(422, {"detail": str(e)})
         except ValueError as e:  # pydantic 검사 실패

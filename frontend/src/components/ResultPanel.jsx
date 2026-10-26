@@ -63,10 +63,26 @@ function LevelBadge({ level }) {
 // 값은 모두 변전소 계통 전체(모든 피더)에서 가장 나쁜 지점이다. 위치는 마우스를 올리면 보인다
 const STRIP_LABELS = { voltage: '전압', loading: '부하율', reverse: '역조류', fault: '단락용량', outage: '정전' }
 
-export function SummaryStrip({ graph, result, note, busy, onRerun }) {
+// 편집 화면 계산 기준 전환: 지금 시각(오늘·현재 시 배율) | 최대 조건(저장된 부하·태양광 값 그대로)
+function SimModeSwitch({ simMode, simAt, onSimMode }) {
+  const hour = simAt?.hour ?? new Date().getHours()
+  return (
+    <span className="seg sim-mode" title="지금 시각: 오늘 날짜·현재 시각의 부하·태양광 배율로 계산 (가상 패턴, 정각마다 다시 계산)&#10;최대 조건: 부하는 최대부하, 태양광은 설비용량 그대로">
+      <button type="button" className={simMode === 'now' ? 'on' : ''} onClick={() => onSimMode('now')}>
+        지금 {hour}시
+      </button>
+      <button type="button" className={simMode === 'max' ? 'on' : ''} onClick={() => onSimMode('max')}>
+        최대 조건
+      </button>
+    </span>
+  )
+}
+
+export function SummaryStrip({ graph, result, note, busy, simMode, simAt, onSimMode, onRerun }) {
   if (!result) {
     return (
       <div className="strip">
+        {onSimMode && <SimModeSwitch simMode={simMode} simAt={simAt} onSimMode={onSimMode} />}
         <span className={note ? 'strip-note warn' : 'strip-note'}>{busy || note || '계통을 고치면 자동 저장되고 결과가 다시 계산됩니다'}</span>
         {graph && !busy && (
           <button type="button" className="mini" onClick={onRerun}>
@@ -80,6 +96,7 @@ export function SummaryStrip({ graph, result, note, busy, onRerun }) {
   const chips = hc.rows.filter((r) => r.key !== 'outage' || r.level !== 'ok')
   return (
     <div className="strip">
+      {onSimMode && <SimModeSwitch simMode={simMode} simAt={simAt} onSimMode={onSimMode} />}
       <span className="overall" style={{ color: LEVELS[hc.overall].color }} title={`${graph.substation.name} 계통 전체(피더 ${result.feeders.length}개)에서 항목마다 가장 나쁜 값으로 판정합니다`}>
         ● 전체 계통 {LEVELS[hc.overall].label}
       </span>
@@ -456,7 +473,7 @@ function ReportSection({ no, title, question, children }) {
   )
 }
 
-export function AiReportView({ graph, result, report, reportMessage, reportBusy, onMakeReport }) {
+export function AiReportView({ graph, result, resultAt, report, reportMessage, reportBusy, onMakeReport }) {
   const [audience, setAudience] = useState('expert')
   const [madeFor, setMadeFor] = useState(null) // 지금 보이는 리포트를 어떤 설명 방식으로 만들었는지
   const asked = useRef(null) // 마지막으로 누른 설명 방식 (리포트가 도착하면 madeFor로 옮김. 실패하면 그대로 둠)
@@ -499,7 +516,7 @@ export function AiReportView({ graph, result, report, reportMessage, reportBusy,
       {/* 판정 요약: 코드가 기준으로 계산한 값 (AI가 바꾸지 않음) */}
       <div className={`rp-summary ${hc.overall}`}>
         <div className="rp-overall">
-          <small>계통 전체 판정</small>
+          <small>계통 전체 판정 · {resultAt ? `${resultAt.date} ${resultAt.hour}시 기준` : '최대 조건'}</small>
           <b style={{ color: LEVELS[hc.overall].color }}>{LEVELS[hc.overall].label}</b>
         </div>
         <div className="rp-chips">

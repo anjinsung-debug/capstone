@@ -443,6 +443,10 @@ button.mini {
   color: var(--muted);
   backdrop-filter: blur(4px);
 }
+.strip .sim-mode button {
+  padding: 2px 9px;
+  font-size: 12px;
+}
 .strip .kv b {
   color: var(--text);
   font-size: 14px;

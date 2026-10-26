@@ -1,10 +1,12 @@
 """시뮬레이션 API (FR-03, FR-04)"""
 
+import datetime as dt
+
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
 from cim import graph
-from simulation.daily import DailyRequest, DailyResult, simulate_daily
+from simulation.daily import DailyRequest, DailyResult, graph_at, simulate_daily
 from simulation.models import SimulationResult
 from simulation.plot import plot_result
 from simulation.simulate import simulate
@@ -13,9 +15,15 @@ router = APIRouter()
 
 
 @router.post("/substations/{substation_id}/simulations")
-def run_simulation(substation_id: str) -> SimulationResult:
-    """변전소 계통을 읽어 4대 시뮬레이션 실행"""
-    return simulate(graph.get_substation(substation_id))
+def run_simulation(substation_id: str, date: dt.date | None = None, hour: int | None = None) -> SimulationResult:
+    """변전소 계통을 읽어 4대 시뮬레이션 실행.
+    date·hour(0~23)를 주면 그 시각의 배율(data/profile_2025.csv)을 부하·태양광에 곱해 계산한다 (편집 화면의 "지금 시각").
+    없으면 저장된 값 그대로 = 최대 조건 (simulation/daily.py의 graph_at)"""
+    try:
+        g = graph_at(graph.get_substation(substation_id), date, hour)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+    return simulate(g)
 
 
 @router.post("/substations/{substation_id}/simulations/daily")

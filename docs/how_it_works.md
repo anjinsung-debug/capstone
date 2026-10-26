@@ -17,6 +17,7 @@
      - 스냅샷에 없는 기존 피더·노드·선로와 연결이 끊긴 DiagramObject는 삭제 (가비지 컬렉션)
      - 응답으로 UUID → Neo4j element id 대응표(`element_ids`)를 돌려줌
 3. **시뮬레이션** (FR-03, 04): 프론트엔드 → `POST /api/substations/{id}/simulations` → 백엔드가 `cim/graph.py`로 계통을 읽어 `simulation/simulate.py`에 넘김 → `simulation/dss.py`가 OpenDSS 스크립트로 변환 → `simulate.py`가 실행해 결과 반환 → 결과를 프론트엔드가 단선도에 표시
+   - **지금 시각 기준**: 편집 화면은 기본으로 `?date=오늘&hour=지금 시`를 붙여 부름 → 백엔드가 그 시각 배율(`data/profile_2025.csv`, 2026년 이후는 2025년 같은 요일)을 부하·태양광에 곱해 계산 (`simulation/daily.py`의 `graph_at`). 정각이 지나면 화면이 다시 계산함. 요약 줄의 "최대 조건"을 누르면 date·hour 없이 불러 저장된 값 그대로(부하 = 최대부하, 태양광 = 설비용량) 계산. AI 리포트도 같은 date·hour를 보내 프롬프트의 kW를 같은 시각 값으로 맞춤. 실측 실시간 값이 아니라 가상 패턴의 같은 시각 값임
    - **OpenDSS 변환** (`dss.py`): 접속점·차단기·개폐기 노드가 OpenDSS 버스가 되고, 전원·부하·분산전원은 `bus_id`의 버스에 붙음. 열린 개폐기에 닿은 선로는 `enabled=no`로 끊어 그 아래 구간은 전압 0
    - **계산 순서** (`simulate.py`): 방사형 검사·실제 조류 방향 찾기 → 조류 계산 → 전압·선로 조류·손실·피더 송출 전력 → 고장 해석 → 지점별 3상 단락 전류
      - 완성·방사형 검사 (`dss.py`의 `check_complete`, `trace`): 전원 1개·피더별 차단기 1개·출력·`bus_id`가 빠졌거나, 전원에서 닫힌 선로를 따라가다 루프가 있으면 422. 같은 탐색으로 각 선로의 실제 전원 쪽과 전원으로부터 거리를 구함
