@@ -446,13 +446,20 @@ const sentences = (text) =>
     .filter(Boolean)
 
 // 만드는 동안 걸린 시간 (초)
+// 시작 시각은 화면 밖(모듈)에 둬서, 만드는 중에 "결과 자세히" 등 다른 창에 갔다 와도 이어서 센다.
+// 새로 만들기는 이 창의 버튼으로만 시작하므로(그때 on=false로 먼저 그려짐) 그때 시작 시각을 지운다
+let busySince = null
 function useElapsed(on) {
   const [sec, setSec] = useState(0)
   useEffect(() => {
-    if (!on) return undefined
-    setSec(0)
-    const t0 = Date.now()
-    const t = setInterval(() => setSec(Math.floor((Date.now() - t0) / 1000)), 500)
+    if (!on) {
+      busySince = null
+      return undefined
+    }
+    if (busySince === null) busySince = Date.now()
+    const tick = () => setSec(Math.floor((Date.now() - busySince) / 1000))
+    tick()
+    const t = setInterval(tick, 500)
     return () => clearInterval(t)
   }, [on])
   return sec
