@@ -39,7 +39,8 @@
 
    - **결과 그래프**: 화면(결과 자세히 → ② 원인 분석)은 받은 결과로 전압 프로파일·선로별 조류를 직접 그림 (`frontend/src/components/ProfileChart.jsx`, 어두운 화면 색에 맞춤). 그리는 규칙은 `simulation/plot.py`와 같음
      - `POST /api/plots`(백엔드가 matplotlib PNG를 돌려줌)는 남아 있지만 지금 화면은 부르지 않음
-   - **결과 기록 (편집 기록 × 하루 시간대)**: 편집 후 다시 계산해 기록이 쌓일 때마다 화면이 `POST /api/substations/{id}/simulations/daily`를 불러 대표일 24시간 곡선을 그 기록에 붙임 (`HistoryChart.jsx`). 백엔드는 `data/daily_profile.csv`의 시간별 배율을 부하(p_kw·q_kvar)·태양광(p_kw)에 곱해 24번 계산하고 `{ profile, hours: [{ hour, load_mult, pv_mult, result }] }`로 돌려줌. 계통 데이터의 부하는 최대부하, 태양광은 설비용량으로 봄 (가상 패턴이라 화면에 "가상 패턴 기준" 표시)
+   - **결과 기록 (편집 기록 × 하루 시간대)**: 편집 후 다시 계산해 기록이 쌓일 때마다 화면이 `POST /api/substations/{id}/simulations/daily`를 불러 고른 날의 24시간 곡선을 그 기록에 붙임 (`HistoryChart.jsx`). 백엔드는 `data/profile_2025.csv`(2025년 1년치)에서 그날 24시간 배율을 부하(p_kw·q_kvar)·태양광(p_kw)에 곱해 24번 계산하고 `{ profile, hours: [{ hour, load_mult, pv_mult, result }] }`로 돌려줌. 계통 데이터의 부하는 최대부하, 태양광은 설비용량으로 봄 (가상 패턴, 실측 아님)
+     - **날짜 고르기**: 기록 탭 위 달력에서 2025-01-01 ~ 오늘 중 하루를 고름 (본문 `{ date, graph }`). 배율 데이터가 2025년 것뿐이라 2026년 이후 날은 2025년 같은 시기(±3일)의 같은 요일 배율을 씀 (응답 `profile.source_date`). 날짜를 바꾸면 기록마다 그 편집 시점 계통(`graph`)을 새 날짜로 다시 계산함
      - 백엔드: `backend/api/simulation.py`의 `run_daily_simulation` → `simulation/daily.py`의 `simulate_daily`가 `simulate()`를 24번 부름 (모의 백엔드도 같은 `simulate_daily`에 근사 계산만 넘김). 백엔드가 이 주소를 모르면(404) 화면은 편집 시점 값만 기록함
      - 위: 변전소로부터 거리별 전압 프로파일 (정상 범위 밖은 빨간 점, 정전 구간은 그리지 않음) / 아래: 선로별 유효전력 조류 (역조류 주황, 과부하 빨강, 부하율 %)
 4. **AI 리포트** (FR-08, 09): 프론트엔드가 받은 시뮬레이션 결과를 `POST /api/reports`로 보냄 → 백엔드가 `cim/graph.py`로 같은 계통 정보를 읽어 결과와 함께 `ai_report/report.py`에 넘김 → 진단·원인·솔루션 리포트 생성

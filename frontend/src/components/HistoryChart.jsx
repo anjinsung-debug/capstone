@@ -1,11 +1,12 @@
 // 결과 기록 그래프: "편집 기록 × 하루 시간대"를 합쳐 보여 준다 (미팅 자료 슬라이드 13의 시간대별 그래프 + 편집 전후 비교).
-// - 기록 한 줄 = 계통을 고쳐서 다시 계산한 한 번. 기록마다 대표일 하루(0~23시)를 계산한 곡선이 붙는다 (App.jsx의 loadDaily)
+// - 기록 한 줄 = 계통을 고쳐서 다시 계산한 한 번. 기록마다 고른 날 하루(0~23시)를 계산한 곡선이 붙는다 (App.jsx의 loadDaily)
+// - 위 날짜 막대(DateBar) = 달력에서 2025-01-01 ~ 오늘 중 하루를 고른다. 바꾸면 모든 기록을 새 날짜로 다시 계산한다 (App.jsx의 changeDailyDate)
 // - 그래프 가로축 = 하루 시각. 선택한 기록은 초록 실선, 바로 전 기록은 회색 점선(편집 전), 그 밖의 기록은 옅은 선
 // - 아래 표 = 기록 목록. 하루 곡선이 있으면 지표마다 하루 중 가장 나쁜 값과 그 시각, 없으면 편집 시점 값
-// 하루 곡선은 data/daily_profile.csv의 가상 패턴(부하·태양광 배율) 기준이라 화면에 그렇게 밝힌다.
-// 백엔드에 하루 계산이 없으면(진짜 백엔드는 아직) 예전처럼 가로축 = 기록 순서인 그래프를 보여 준다.
-// ponytail: 기록은 브라우저 메모리에만 있다(새로고침하면 사라짐). 대표일은 하나(봄철 평일)만 쓴다. 여름 피크일 등을 고르게 하려면
-//   data/daily_profile.csv에 날을 추가하고 runDaily에 날 선택을 넘긴다
+// 하루 곡선은 data/profile_2025.csv의 가상 패턴(부하·태양광 배율, 2025년 1년치) 기준이라 화면에 그렇게 밝힌다.
+// 2026년 이후 날은 2025년 같은 시기의 같은 요일 배율을 쓰므로, 실제로 쓴 날(profile.source_date)을 같이 보여 준다.
+// 백엔드에 하루 계산이 없으면(예전 백엔드) 예전처럼 가로축 = 기록 순서인 그래프를 보여 준다.
+// ponytail: 기록은 브라우저 메모리에만 있다(새로고침하면 사라짐)
 import { useState } from 'react'
 import { FAULT_HIGH_MVA, OVERLOAD_PCT, VOLTAGE_MIN_PU } from '../lib/overlay.js'
 
@@ -22,6 +23,48 @@ const METRICS = [
   { key: 'totalMw', label: '총 송출', unit: 'MW', fmt: (v) => v.toFixed(2), worst: 'max' },
   { key: 'lossKw', label: '선로 손실', unit: 'kW', fmt: (v) => v.toFixed(1), worst: 'max' },
 ]
+
+const FIRST_DATE = '2025-01-01' // 배율 데이터가 시작하는 날 (simulation/daily.py의 FIRST_DATE)
+const PEAK_DATE = '2025-05-26' // 2025년 평일 중 역조류가 가장 큰 날 (태양광이 많고 부하가 적은 봄)
+
+const shiftDate = (date, days) => {
+  const d = new Date(`${date}T00:00:00`)
+  d.setDate(d.getDate() + days)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// ── 날짜 막대: 달력(input type=date) + 하루 앞뒤 + 빠른 선택 ──
+// daily = { date, max, busy, onChange } (App.jsx). profile = 선택한 기록의 하루 계산 정보 (백엔드 응답 profile)
+function DateBar({ daily, profile }) {
+  const { date, max, busy, onChange } = daily
+  const pick = (v) => v && v >= FIRST_DATE && v <= max && onChange(v) // 달력에서 연도를 치는 중간값 등은 무시
+  const shownProfile = profile?.date === date ? profile : null
+  return (
+    <div className="date-bar">
+      <span className="date-title">하루 변화 날짜</span>
+      <button type="button" className="date-step" onClick={() => pick(shiftDate(date, -1))} disabled={date <= FIRST_DATE} aria-label="하루 전">
+        ‹
+      </button>
+      <input type="date" className="date-input" value={date} min={FIRST_DATE} max={max} onChange={(e) => pick(e.target.value)} aria-label="하루 변화를 볼 날짜" />
+      <button type="button" className="date-step" onClick={() => pick(shiftDate(date, 1))} disabled={date >= max} aria-label="하루 뒤">
+        ›
+      </button>
+      <button type="button" className={`date-quick ${date === max ? 'on' : ''}`} onClick={() => pick(max)}>
+        오늘
+      </button>
+      <button type="button" className={`date-quick ${date === PEAK_DATE ? 'on' : ''}`} onClick={() => pick(PEAK_DATE)} title="2025년 평일 중 역조류가 가장 큰 날">
+        역조류 최대일
+      </button>
+      <span className="date-info muted small">
+        {busy
+          ? `새 날짜로 다시 계산 중 ${busy.done}/${busy.total}`
+          : shownProfile
+            ? `${shownProfile.name}${shownProfile.source_date !== shownProfile.date ? ` · 배율은 2025년 같은 요일(${shownProfile.source_date}) 패턴` : ''} · 가상 패턴`
+            : '2025-01-01 ~ 오늘 중 고를 수 있습니다 · 가상 패턴'}
+      </span>
+    </div>
+  )
+}
 
 const time = (d) => d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
@@ -264,29 +307,30 @@ function HourlyTable({ cur, prev, sel, hour, setHour }) {
   )
 }
 
-export default function HistoryChart({ points }) {
+export default function HistoryChart({ points, daily }) {
   const [picked, setPicked] = useState(null) // 표에서 고른 기록 번호 (없으면 마지막 기록)
   const [hour, setHour] = useState(null) // 하루 그래프에서 마우스가 가리키는 시각
   const [hover, setHover] = useState(null) // 기록 순서 그래프에서 마우스가 가리키는 기록
-  if (!points.length) return <p className="muted">아직 기록이 없습니다. 계통을 고쳐서 결과가 바뀔 때마다 여기에 쌓입니다 (연결 안 된 설비가 있는 중간 단계는 빼고).</p>
+  if (!points.length)
+    return (
+      <div className="history">
+        {daily && <DateBar daily={daily} />}
+        <p className="muted">아직 기록이 없습니다. 계통을 고쳐서 결과가 바뀔 때마다 여기에 쌓입니다 (연결 안 된 설비가 있는 중간 단계는 빼고).</p>
+      </div>
+    )
   const sel = picked != null && picked < points.length ? picked : points.length - 1
-  const profile = points.find((p) => p.profile)?.profile
   const cur = points[sel]
+  const profile = cur.profile ?? points.find((p) => p.profile)?.profile
   const hasDaily = points.some((p) => p.daily)
 
   return (
     <div className="history">
+      {daily && <DateBar daily={daily} profile={profile} />}
       {hasDaily ? (
         <>
           <div className="history-head">
             <p className="muted small">
               <b>{sel + 1}번째 기록</b> · {time(cur.at)} · {cur.label}
-              {profile && (
-                <>
-                  {' '}
-                  · 하루 변화: <b>{profile.name}</b> <span className="tag">가상 패턴 기준</span>
-                </>
-              )}
             </p>
             <p className="hlegend">
               <span>
@@ -377,8 +421,8 @@ export default function HistoryChart({ points }) {
       {hasDaily && cur.daily && <HourlyTable cur={cur} prev={sel > 0 ? points[sel - 1] : null} sel={sel} hour={hour} setHour={setHour} />}
       {hasDaily && (
         <p className="muted small">
-          하루 곡선은 data/daily_profile.csv의 시간대별 배율(가상 패턴, 실측 아님)을 계통의 부하·태양광 값에 곱해 시간마다 다시 계산한 값입니다. 계통 데이터의 부하는
-          최대부하, 태양광은 설비용량으로 보았습니다.
+          하루 곡선은 고른 날의 시간대별 배율(data/profile_2025.csv, 2025년 1년치 가상 패턴, 실측 아님)을 계통의 부하·태양광 값에 곱해 시간마다 다시 계산한 값입니다.
+          계통 데이터의 부하는 최대부하, 태양광은 설비용량으로 보았습니다. 2026년 이후 날짜는 2025년 같은 시기의 같은 요일 패턴을 씁니다.
         </p>
       )}
     </div>

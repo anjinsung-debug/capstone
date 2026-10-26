@@ -7,7 +7,7 @@ import { DEFAULT_LINE, NODE_TYPES } from '../lib/graphEdit.js'
 
 export const DRAG_TYPE = 'application/x-capstone-node' // 끌어다 놓기로 넘기는 값의 종류 (Diagram.jsx가 받음)
 
-export default function NavDrawer({ open, tool, onTool, onUndo, canUndo, onDelete, canDelete, onClose }) {
+export default function NavDrawer({ open, substationName, onRename, tool, onTool, onUndo, canUndo, onDelete, canDelete, onClose }) {
   return (
     <aside className={open ? 'nav open' : 'nav'} aria-hidden={!open}>
       <div className="nav-head">
@@ -15,6 +15,19 @@ export default function NavDrawer({ open, tool, onTool, onUndo, canUndo, onDelet
         <button type="button" className="icon-btn" onClick={onClose} aria-label="메뉴 닫기" title="메뉴 닫기 (편집 끝)">
           ✕
         </button>
+      </div>
+
+      {/* 변전소 이름 바꾸기는 편집 중에만 (팀 피드백 10/26: 위 변전소 선택 옆 ✎ 버튼을 여기로 옮김. 새 변전소 버튼은 위에 그대로) */}
+      <div className="nav-section">
+        <div className="nav-title">변전소</div>
+        <div className="nav-sub">
+          <span className="nav-sub-name" title={substationName}>
+            {substationName ?? '-'}
+          </span>
+          <button type="button" className="tool" disabled={!substationName} onClick={onRename} title="변전소 이름 바꾸기">
+            <span className="tool-icon">✎</span>이름 바꾸기
+          </button>
+        </div>
       </div>
 
       <div className="nav-section">

@@ -36,6 +36,9 @@ const AUTOSAVE_DELAY_MS = 800
 // ponytail: 결과 기록(시점별)도 메모리에 최대 100개만 둔다. 오래 남겨야 하면 서버(Neo4j)에 저장하는 API를 만든다
 const RESULT_HISTORY_LIMIT = 100
 const HEALTH_POLL_MS = 15000 // 서버·DB 연결 상태를 다시 확인하는 간격
+// 기록 탭 하루 곡선의 날짜: 처음에는 오늘. 고를 수 있는 날은 2025-01-01(배율 데이터 시작) ~ 오늘 (simulation/daily.py)
+const localDate = (d = new Date()) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
 const describe = (e) => e.message.replace(/^HTTP \d+: /, '')
 
@@ -60,6 +63,8 @@ export default function App() {
   const [resultHistory, setResultHistory] = useState([])
   const [historyNote, setHistoryNote] = useState('') // 마지막 계산을 기록하지 않은 이유 (연결 안 된 설비 등)
   const [dailyNote, setDailyNote] = useState('') // 하루(24시간) 계산을 못 하는 이유 (진짜 백엔드에 아직 없음 등)
+  const [dailyDate, setDailyDate] = useState(localDate) // 하루 곡선을 계산할 날 ('YYYY-MM-DD')
+  const [dailyBusy, setDailyBusy] = useState(null) // 날짜를 바꿔 기록을 다시 계산하는 중이면 { done, total }
   // 가운데 창: 'ai' = AI 리포트 (위 오른쪽 버튼) | 'detail' = 결과 자세히 (AI 리포트 창 오른쪽 위 버튼) | null = 닫힘
   const [resultOpen, setResultOpen] = useState(null)
   const [resultTab, setResultTab] = useState('health')
@@ -78,6 +83,8 @@ export default function App() {
   historyRef.current = resultHistory
   const pointSeq = useRef(0) // 기록 점 번호 (하루 계산 결과를 나중에 그 점에 붙이려고)
   const dailyAvailable = useRef(null) // 백엔드에 하루 계산이 있는지: null 모름 | true | false
+  const dailyDateRef = useRef(dailyDate) // 지금 고른 날 (늦게 온 다른 날짜 응답을 버릴 때 씀)
+  const dailyRun = useRef(0) // 날짜를 바꿀 때마다 증가. 이전 날짜로 다시 계산하던 반복을 멈추는 데 씀
   const changeLabel = useRef('') // 기록에 남길 "바뀐 내용"
 
   const info = useCallback((text) => setMessage({ text, kind: 'info' }), [])
@@ -125,17 +132,21 @@ export default function App() {
     setResultHistory([])
     historyRef.current = []
     setHistoryNote('')
+    ++dailyRun.current
+    setDailyBusy(null)
   }
 
-  // 기록 점 하나에 하루(24시간) 곡선을 붙인다. 시간이 걸리므로 기록은 먼저 쌓고 결과는 나중에 채운다.
+  // 기록 점 하나에 고른 날의 하루(24시간) 곡선을 붙인다. 시간이 걸리므로 기록은 먼저 쌓고 결과는 나중에 채운다.
+  // g = 그 기록을 계산한 때의 계통. 본문에 같이 보내서, 지금 계통이 바뀌었어도 그 기록 시점 계통으로 계산한다.
   // 진짜 백엔드에 아직 이 주소가 없으면(404·405·501) 다시 부르지 않고 기록 탭에 이유를 보여 준다
-  function loadDaily(g, pid) {
-    runDaily(g.substation.id)
+  function loadDaily(g, pid, date) {
+    return runDaily(g.substation.id, { date, graph: toSnapshot(g) })
       .then((d) => {
         dailyAvailable.current = true
         setDailyNote('')
+        if (date !== dailyDateRef.current) return // 계산하는 동안 날짜를 또 바꿨으면 버린다
         const daily = dailyPoints(g, d.hours)
-        setResultHistory((h) => h.map((p) => (p.id === pid ? { ...p, daily, profile: d.profile } : p)))
+        setResultHistory((h) => h.map((p) => (p.id === pid ? { ...p, daily, profile: d.profile, dailyError: undefined } : p)))
       })
       .catch((e) => {
         if ([404, 405, 501].includes(e.status)) {
@@ -184,11 +195,29 @@ export default function App() {
       const last = historyRef.current[historyRef.current.length - 1]
       if (!last || !sameHistoryValues(last, point)) {
         const pid = ++pointSeq.current
-        historyRef.current = [...historyRef.current.slice(-RESULT_HISTORY_LIMIT + 1), { ...point, id: pid }]
+        historyRef.current = [...historyRef.current.slice(-RESULT_HISTORY_LIMIT + 1), { ...point, id: pid, graph: g }]
         setResultHistory(historyRef.current)
-        if (dailyAvailable.current !== false) loadDaily(g, pid)
+        if (dailyAvailable.current !== false) loadDaily(g, pid, dailyDateRef.current)
       }
     }
+  }
+
+  // 기록 탭에서 날짜를 바꾸면: 모든 기록을 그 기록 시점 계통으로 새 날짜에 다시 계산한다 (서버 부담을 줄이려고 하나씩 차례로).
+  // 다 끝날 때까지 이전 날짜 곡선을 그대로 보여 주고, 위에 진행 상황을 표시한다
+  async function changeDailyDate(date) {
+    if (!date || date === dailyDateRef.current) return
+    dailyDateRef.current = date
+    setDailyDate(date)
+    const run = ++dailyRun.current
+    const points = historyRef.current
+    if (dailyAvailable.current === false || !points.length) return
+    setDailyBusy({ done: 0, total: points.length })
+    for (let i = 0; i < points.length; i++) {
+      await loadDaily(points[i].graph, points[i].id, date)
+      if (run !== dailyRun.current) return // 그 사이 날짜를 또 바꿨거나 변전소를 바꿨다
+      setDailyBusy({ done: i + 1, total: points.length })
+    }
+    setDailyBusy(null)
   }
 
   // ── 자동 저장 ──
@@ -388,6 +417,10 @@ export default function App() {
       history={resultHistory}
       historyNote={historyNote}
       dailyNote={dailyNote}
+      dailyDate={dailyDate}
+      maxDate={localDate()}
+      dailyBusy={dailyBusy}
+      onDailyDate={changeDailyDate}
       onFocus={focusElement}
     />
   )
@@ -448,9 +481,6 @@ export default function App() {
                 </option>
               ))}
             </select>
-            <button type="button" className="icon-btn" disabled={!graph} onClick={() => setDialog('rename')} title="변전소 이름 바꾸기" aria-label="변전소 이름 바꾸기">
-              ✎
-            </button>
           </div>
           <button type="button" onClick={() => setDialog('new')}>
             + 새 변전소
@@ -481,6 +511,8 @@ export default function App() {
       <div className={navOpen ? 'workspace nav-open' : 'workspace'}>
         <NavDrawer
           open={navOpen}
+          substationName={graph?.substation.name}
+          onRename={() => setDialog('rename')}
           tool={tool}
           onTool={(t) => {
             setTool(t)

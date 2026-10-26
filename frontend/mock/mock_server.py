@@ -44,7 +44,7 @@ from simulation.dss import (  # noqa: E402
     open_line_ids,
     trace,
 )
-from simulation.daily import simulate_daily  # noqa: E402
+from simulation.daily import DailyRequest, simulate_daily  # noqa: E402
 from simulation.models import FeederResult, LineResult, NodeResult, SimulationResult  # noqa: E402
 
 STORE: dict[str, SubstationGraph] = {}
@@ -218,10 +218,16 @@ class Handler(SimpleHTTPRequestHandler):
                 ids = {x.id: f"4:mock:{i}" for i, x in enumerate([*g.nodes, *g.lines])}
                 return self._send(200, SnapshotSaved(graph=g, element_ids=ids).model_dump())
             if m == "POST" and len(p) == 4 and p[0] == "substations" and p[2:] == ["simulations", "daily"]:
-                g = self._graph(p[1])
+                body = DailyRequest.model_validate(self._body() or {})
+                if body.graph is not None and body.graph.substation.id != p[1]:
+                    return self._send(422, {"detail": "주소의 변전소 id와 graph의 substation.id가 다릅니다"})
+                g = body.graph or self._graph(p[1])
                 if not g:
                     return self._send(404, {"detail": "변전소가 없습니다"})
-                return self._send(200, simulate_daily(g, simulate_fn=simulate).model_dump())  # 계산만 근사(LinDistFlow), 배율 규칙은 진짜와 같음
+                try:  # 계산만 근사(LinDistFlow), 날짜·배율 규칙은 진짜와 같음
+                    return self._send(200, simulate_daily(g, body.date, simulate_fn=simulate).model_dump(mode="json"))
+                except ValueError as e:
+                    return self._send(422, {"detail": str(e)})
             if m == "POST" and len(p) == 3 and p[0] == "substations" and p[2] == "simulations":
                 g = self._graph(p[1])
                 if not g:
