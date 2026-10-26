@@ -378,7 +378,7 @@ function ElementsTab({ graph, result, onFocus }) {
 export const RESULT_TABS = [
   ['health', '① 건강도 진단'],
   ['cause', '② 원인 분석'],
-  ['solution', '③ 솔루션 제언'],
+  ['solution', '③ 솔루션 제안'],
   ['elements', '요소별 결과'],
   ['history', '기록 (시점별)'],
 ]
@@ -446,13 +446,20 @@ const sentences = (text) =>
     .filter(Boolean)
 
 // 만드는 동안 걸린 시간 (초)
+// 시작 시각은 화면 밖(모듈)에 둬서, 만드는 중에 "결과 자세히" 등 다른 창에 갔다 와도 이어서 센다.
+// 새로 만들기는 이 창의 버튼으로만 시작하므로(그때 on=false로 먼저 그려짐) 그때 시작 시각을 지운다
+let busySince = null
 function useElapsed(on) {
   const [sec, setSec] = useState(0)
   useEffect(() => {
-    if (!on) return undefined
-    setSec(0)
-    const t0 = Date.now()
-    const t = setInterval(() => setSec(Math.floor((Date.now() - t0) / 1000)), 500)
+    if (!on) {
+      busySince = null
+      return undefined
+    }
+    if (busySince === null) busySince = Date.now()
+    const tick = () => setSec(Math.floor((Date.now() - busySince) / 1000))
+    tick()
+    const t = setInterval(tick, 500)
     return () => clearInterval(t)
   }, [on])
   return sec
@@ -474,7 +481,7 @@ function ReportSection({ no, title, question, children }) {
 }
 
 export function AiReportView({ graph, result, resultAt, report, reportMessage, reportBusy, onMakeReport }) {
-  const [audience, setAudience] = useState('expert')
+  const [audience] = useState('plain') // AI 리포트는 쉬운 설명만 (10/26 결정, 설명 방식 선택 버튼 숨김)
   const [madeFor, setMadeFor] = useState(null) // 지금 보이는 리포트를 어떤 설명 방식으로 만들었는지
   const asked = useRef(null) // 마지막으로 누른 설명 방식 (리포트가 도착하면 madeFor로 옮김. 실패하면 그대로 둠)
   const [copied, setCopied] = useState(false)
@@ -499,7 +506,7 @@ export function AiReportView({ graph, result, resultAt, report, reportMessage, r
       '② 원인 분석',
       ...report.causes.map((c, i) => `${i + 1}. ${c}`),
       '',
-      '③ 솔루션 제언',
+      '③ 솔루션 제안',
       ...report.solutions.map((c, i) => `${i + 1}. ${c}`),
     ].join('\n')
     navigator.clipboard?.writeText(text).then(
@@ -532,16 +539,8 @@ export function AiReportView({ graph, result, resultAt, report, reportMessage, r
         </div>
       </div>
 
-      {/* 설명 방식 + 만들기 */}
+      {/* 만들기 */}
       <div className="rp-controls">
-        <span className="rp-label">설명 방식</span>
-        <span className="seg">
-          {AUDIENCES.map(([v, label]) => (
-            <button key={v} type="button" className={audience === v ? 'on' : ''} disabled={reportBusy} onClick={() => setAudience(v)}>
-              {label}
-            </button>
-          ))}
-        </span>
         <button type="button" className="primary rp-make" disabled={reportBusy} onClick={make}>
           {reportBusy ? '만드는 중...' : report ? '지금 결과로 다시 만들기' : 'AI 해설 만들기'}
         </button>
@@ -571,7 +570,7 @@ export function AiReportView({ graph, result, resultAt, report, reportMessage, r
       {!report && !reportBusy && !failed && (
         <div className="rp-state empty">
           <b>아직 해설이 없습니다</b>
-          <small>LLM 호출은 비용·시간이 들어서 자동으로 만들지 않습니다. 설명 방식을 고르고 &ldquo;AI 해설 만들기&rdquo;를 누르면 ①②③이 한 번에 만들어집니다.</small>
+          <small>LLM 호출은 비용·시간이 들어서 자동으로 만들지 않습니다. &ldquo;AI 해설 만들기&rdquo;를 누르면 ①②③이 한 번에 만들어집니다.</small>
         </div>
       )}
 
@@ -596,7 +595,7 @@ export function AiReportView({ graph, result, resultAt, report, reportMessage, r
               ))}
             </ol>
           </ReportSection>
-          <ReportSection no="3" title="솔루션 제언" question="어떻게 해결할까?">
+          <ReportSection no="3" title="솔루션 제안" question="어떻게 해결할까?">
             <ol className="rp-list solution">
               {report.solutions.map((c, i) => (
                 <li key={i}>
