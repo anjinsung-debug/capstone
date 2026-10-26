@@ -58,4 +58,4 @@ export async function createPlot(simulationResult) {
 }
 
 // AI 리포트 (FR-08, FR-09): runSimulation 결과를 그대로 넘긴다
-export const createReport = (simulationResult) => request('POST', '/reports', simulationResult)
+export const createReport = (simulationResult, audience = 'expert') => request('POST', `/reports?audience=${audience}`, simulationResult)

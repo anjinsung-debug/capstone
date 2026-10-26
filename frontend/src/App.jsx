@@ -298,13 +298,13 @@ export default function App() {
     onChange(updateSubstation(graph, { name }), '변전소 이름 변경')
   }
 
-  async function makeReport() {
+  async function makeReport(audience) {
     if (!result) return
     const id = runId.current
     setReportBusy(true)
     setReportMessage('AI 리포트 생성 중... (수 초~수십 초)')
     try {
-      const r = await createReport(result)
+      const r = await createReport(result, audience)
       if (id === runId.current) setReport(r)
     } catch (e) {
       if (id === runId.current) setReportMessage(`AI 리포트 실패 (${e.message})`)

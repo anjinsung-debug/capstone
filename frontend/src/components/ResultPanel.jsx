@@ -106,13 +106,23 @@ function FocusBtn({ id, onFocus, label }) {
 }
 
 function ReportBox({ title, report, children, reportMessage, reportBusy, onMakeReport }) {
+  const [audience, setAudience] = useState('expert') // 해설 대상 (ai_report/report.py의 AUDIENCES)
   return (
     <div className="ai-box">
       <div className="ai-head">
         <b>{title}</b>
-        <button type="button" className="mini primary-outline" disabled={reportBusy} onClick={onMakeReport}>
-          {reportBusy ? '만드는 중...' : report ? '지금 결과로 다시 만들기' : 'AI 해설 만들기'}
-        </button>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span className="seg">
+            {[['expert', '전문가용 설명'], ['plain', '쉬운 설명']].map(([v, label]) => (
+              <button key={v} type="button" className={audience === v ? 'on' : ''} disabled={reportBusy} onClick={() => setAudience(v)}>
+                {label}
+              </button>
+            ))}
+          </span>
+          <button type="button" className="mini primary-outline" disabled={reportBusy} onClick={() => onMakeReport(audience)}>
+            {reportBusy ? '만드는 중...' : report ? '지금 결과로 다시 만들기' : 'AI 해설 만들기'}
+          </button>
+        </span>
       </div>
       {report ? children : <p className="muted small">{reportMessage || 'LLM 호출은 비용·시간이 들어서 자동으로 만들지 않습니다. 버튼을 누르면 ①②③ 해설이 한 번에 만들어집니다.'}</p>}
     </div>
