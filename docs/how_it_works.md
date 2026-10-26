@@ -17,6 +17,7 @@
      - 스냅샷에 없는 기존 피더·노드·선로와 연결이 끊긴 DiagramObject는 삭제 (가비지 컬렉션)
      - 응답으로 UUID → Neo4j element id 대응표(`element_ids`)를 돌려줌
 3. **시뮬레이션** (FR-03, 04): 프론트엔드 → `POST /api/substations/{id}/simulations` → 백엔드가 `cim/graph.py`로 계통을 읽어 `simulation/simulate.py`에 넘김 → `simulation/dss.py`가 OpenDSS 스크립트로 변환 → `simulate.py`가 실행해 결과 반환 → 결과를 프론트엔드가 단선도에 표시
+   - **지금 시각 기준**: 편집 화면은 기본으로 `?date=오늘&hour=지금 시`를 붙여 부름 → 백엔드가 그 시각 배율(`data/profile_2025.csv`, 2026년 이후는 2025년 같은 요일)을 부하·태양광에 곱해 계산 (`simulation/daily.py`의 `graph_at`). 정각이 지나면 화면이 다시 계산함. 요약 줄의 "최대 조건"을 누르면 date·hour 없이 불러 저장된 값 그대로(부하 = 최대부하, 태양광 = 설비용량) 계산. AI 리포트도 같은 date·hour를 보내 프롬프트의 kW를 같은 시각 값으로 맞춤. 실측 실시간 값이 아니라 가상 패턴의 같은 시각 값임
    - **OpenDSS 변환** (`dss.py`): 접속점·차단기·개폐기 노드가 OpenDSS 버스가 되고, 전원·부하·분산전원은 `bus_id`의 버스에 붙음. 열린 개폐기에 닿은 선로는 `enabled=no`로 끊어 그 아래 구간은 전압 0
    - **계산 순서** (`simulate.py`): 방사형 검사·실제 조류 방향 찾기 → 조류 계산 → 전압·선로 조류·손실·피더 송출 전력 → 고장 해석 → 지점별 3상 단락 전류
      - 완성·방사형 검사 (`dss.py`의 `check_complete`, `trace`): 전원 1개·피더별 차단기 1개·출력·`bus_id`가 빠졌거나, 전원에서 닫힌 선로를 따라가다 루프가 있으면 422. 같은 탐색으로 각 선로의 실제 전원 쪽과 전원으로부터 거리를 구함
@@ -39,7 +40,8 @@
 
    - **결과 그래프**: 화면(결과 자세히 → ② 원인 분석)은 받은 결과로 전압 프로파일·선로별 조류를 직접 그림 (`frontend/src/components/ProfileChart.jsx`, 어두운 화면 색에 맞춤). 그리는 규칙은 `simulation/plot.py`와 같음
      - `POST /api/plots`(백엔드가 matplotlib PNG를 돌려줌)는 남아 있지만 지금 화면은 부르지 않음
-   - **결과 기록 (편집 기록 × 하루 시간대)**: 편집 후 다시 계산해 기록이 쌓일 때마다 화면이 `POST /api/substations/{id}/simulations/daily`를 불러 대표일 24시간 곡선을 그 기록에 붙임 (`HistoryChart.jsx`). 백엔드는 `data/daily_profile.csv`의 시간별 배율을 부하(p_kw·q_kvar)·태양광(p_kw)에 곱해 24번 계산하고 `{ profile, hours: [{ hour, load_mult, pv_mult, result }] }`로 돌려줌. 계통 데이터의 부하는 최대부하, 태양광은 설비용량으로 봄 (가상 패턴이라 화면에 "가상 패턴 기준" 표시)
+   - **결과 기록 (편집 기록 × 하루 시간대)**: 편집 후 다시 계산해 기록이 쌓일 때마다 화면이 `POST /api/substations/{id}/simulations/daily`를 불러 고른 날의 24시간 곡선을 그 기록에 붙임 (`HistoryChart.jsx`). 백엔드는 `data/profile_2025.csv`(2025년 1년치)에서 그날 24시간 배율을 부하(p_kw·q_kvar)·태양광(p_kw)에 곱해 24번 계산하고 `{ profile, hours: [{ hour, load_mult, pv_mult, result }] }`로 돌려줌. 계통 데이터의 부하는 최대부하, 태양광은 설비용량으로 봄 (가상 패턴, 실측 아님)
+     - **날짜 고르기**: 기록 탭 위 달력에서 2025-01-01 ~ 오늘 중 하루를 고름 (본문 `{ date, graph }`). 배율 데이터가 2025년 것뿐이라 2026년 이후 날은 2025년 같은 시기(±3일)의 같은 요일 배율을 씀 (응답 `profile.source_date`). 날짜를 바꾸면 기록마다 그 편집 시점 계통(`graph`)을 새 날짜로 다시 계산함
      - 백엔드: `backend/api/simulation.py`의 `run_daily_simulation` → `simulation/daily.py`의 `simulate_daily`가 `simulate()`를 24번 부름 (모의 백엔드도 같은 `simulate_daily`에 근사 계산만 넘김). 백엔드가 이 주소를 모르면(404) 화면은 편집 시점 값만 기록함
      - 위: 변전소로부터 거리별 전압 프로파일 (정상 범위 밖은 빨간 점, 정전 구간은 그리지 않음) / 아래: 선로별 유효전력 조류 (역조류 주황, 과부하 빨강, 부하율 %)
 4. **AI 리포트** (FR-08, 09): 프론트엔드가 받은 시뮬레이션 결과를 `POST /api/reports`로 보냄 → 백엔드가 `cim/graph.py`로 같은 계통 정보를 읽어 결과와 함께 `ai_report/report.py`에 넘김 → 진단·원인·솔루션 리포트 생성

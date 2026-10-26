@@ -52,7 +52,7 @@ Claude Code가 코드를 읽고 맥락을 파악하거나 우리에게 되물을
 | 연결 특성 자동 구분 (위상 형성 논리) | `cim/graph.py`의 `classify_connection` | 동작 (차단기·개폐기에 닿으면 `switch`, 그 외 `line`) |
 | OpenDSS 스크립트 변환 (2단계) | `simulation/dss.py` | 동작 |
 | 4대 시뮬레이션 (3단계) | `simulation/simulate.py` | 동작 (한전 CIM XML로 자체 점검 통과: 역조류 방향, 루프 검출, 정전 구간, 오류 처리 포함) |
-| 하루(24시간) 시뮬레이션 | `simulation/daily.py`, `POST /api/substations/{id}/simulations/daily` | 동작 (대표일 배율 `data/daily_profile.csv`, 가상 패턴. `simulate()`를 24번 호출. 모의 백엔드로 화면 확인, OpenDSS로는 확인 필요) |
+| 하루(24시간) 시뮬레이션 | `simulation/daily.py`, `POST /api/substations/{id}/simulations/daily` | 동작 (2025년 1년치 배율 `data/profile_2025.csv`에서 고른 날 24시간, 가상 패턴. 2026년 이후 날은 2025년 같은 요일로 맞춤. `simulate()`를 24번 호출. 모의 백엔드로 화면 확인, OpenDSS로는 확인 필요) |
 | 결과 그래프 (matplotlib) | `simulation/plot.py` | 동작 (전압 프로파일, 선로별 조류·역조류·과부하). 화면은 같은 그래프를 `ProfileChart.jsx`로 직접 그려서 지금은 부르지 않음 |
 | AI 리포트 | `ai_report/report.py` | 동작 (프로토타입. 확정된 점검 결과를 코드가 계산해 LLM에 넘기고, 실패하면 503과 이유. 실제 API 호출은 `ANTHROPIC_API_KEY`가 있는 환경에서 `python -m ai_report.report --call`로 확인) |
 | 화면 흐름 (선택 → 시뮬레이션 → 결과·리포트) | `frontend/src/App.jsx` | 동작 (편집하면 자동 저장 후 자동 재계산, AI 리포트는 결과 창 버튼으로 생성하고 실패하면 이유를 "AI 리포트 실패" 메시지로 표시) |

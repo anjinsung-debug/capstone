@@ -7,7 +7,7 @@
 //     + 요소별 결과(모든 설비·선로 값), 기록(시점별)
 // AI 리포트(ai_report/models.py의 Report: diagnosis, causes, solutions)는 AiReportView에만 보여 준다 (결과 탭에는 없음, 팀 피드백).
 // 형식이 바뀌면 AiReportView를 고친다. 원인 분석 탭 그래프는 ProfileChart.jsx가 그린다 (전압 프로파일 + 선로 조류)
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import NodeIcon from './NodeIcon.jsx'
 import HistoryChart from './HistoryChart.jsx'
 import ProfileCharts from './ProfileChart.jsx'
@@ -63,10 +63,26 @@ function LevelBadge({ level }) {
 // 값은 모두 변전소 계통 전체(모든 피더)에서 가장 나쁜 지점이다. 위치는 마우스를 올리면 보인다
 const STRIP_LABELS = { voltage: '전압', loading: '부하율', reverse: '역조류', fault: '단락용량', outage: '정전' }
 
-export function SummaryStrip({ graph, result, note, busy, onRerun }) {
+// 편집 화면 계산 기준 전환: 지금 시각(오늘·현재 시 배율) | 최대 조건(저장된 부하·태양광 값 그대로)
+function SimModeSwitch({ simMode, simAt, onSimMode }) {
+  const hour = simAt?.hour ?? new Date().getHours()
+  return (
+    <span className="seg sim-mode" title="지금 시각: 오늘 날짜·현재 시각의 부하·태양광 배율로 계산 (가상 패턴, 정각마다 다시 계산)&#10;최대 조건: 부하는 최대부하, 태양광은 설비용량 그대로">
+      <button type="button" className={simMode === 'now' ? 'on' : ''} onClick={() => onSimMode('now')}>
+        지금 {hour}시
+      </button>
+      <button type="button" className={simMode === 'max' ? 'on' : ''} onClick={() => onSimMode('max')}>
+        최대 조건
+      </button>
+    </span>
+  )
+}
+
+export function SummaryStrip({ graph, result, note, busy, simMode, simAt, onSimMode, onRerun }) {
   if (!result) {
     return (
       <div className="strip">
+        {onSimMode && <SimModeSwitch simMode={simMode} simAt={simAt} onSimMode={onSimMode} />}
         <span className={note ? 'strip-note warn' : 'strip-note'}>{busy || note || '계통을 고치면 자동 저장되고 결과가 다시 계산됩니다'}</span>
         {graph && !busy && (
           <button type="button" className="mini" onClick={onRerun}>
@@ -80,6 +96,7 @@ export function SummaryStrip({ graph, result, note, busy, onRerun }) {
   const chips = hc.rows.filter((r) => r.key !== 'outage' || r.level !== 'ok')
   return (
     <div className="strip">
+      {onSimMode && <SimModeSwitch simMode={simMode} simAt={simAt} onSimMode={onSimMode} />}
       <span className="overall" style={{ color: LEVELS[hc.overall].color }} title={`${graph.substation.name} 계통 전체(피더 ${result.feeders.length}개)에서 항목마다 가장 나쁜 값으로 판정합니다`}>
         ● 전체 계통 {LEVELS[hc.overall].label}
       </span>
@@ -102,30 +119,6 @@ function FocusBtn({ id, onFocus, label }) {
     <button type="button" className={label ? 'chip' : 'focus-btn'} onClick={() => onFocus(id)} title="단선도에서 이 위치로 이동">
       ⌖{label ? ` ${label}` : ''}
     </button>
-  )
-}
-
-function ReportBox({ title, report, children, reportMessage, reportBusy, onMakeReport }) {
-  const [audience, setAudience] = useState('expert') // 해설 대상 (ai_report/report.py의 AUDIENCES)
-  return (
-    <div className="ai-box">
-      <div className="ai-head">
-        <b>{title}</b>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span className="seg">
-            {[['expert', '전문가용 설명'], ['plain', '쉬운 설명']].map(([v, label]) => (
-              <button key={v} type="button" className={audience === v ? 'on' : ''} disabled={reportBusy} onClick={() => setAudience(v)}>
-                {label}
-              </button>
-            ))}
-          </span>
-          <button type="button" className="mini primary-outline" disabled={reportBusy} onClick={() => onMakeReport(audience)}>
-            {reportBusy ? '만드는 중...' : report ? '지금 결과로 다시 만들기' : 'AI 해설 만들기'}
-          </button>
-        </span>
-      </div>
-      {report ? children : <p className="muted small">{reportMessage || 'LLM 호출은 비용·시간이 들어서 자동으로 만들지 않습니다. 버튼을 누르면 ①②③ 해설이 한 번에 만들어집니다.'}</p>}
-    </div>
   )
 }
 
@@ -391,7 +384,7 @@ export const RESULT_TABS = [
 ]
 
 // 결과 창 내용. 가운데 창과 새 창이 같은 컴포넌트를 쓴다
-export function ResultView({ graph, result, tab, onTab, history, historyNote, dailyNote, onFocus }) {
+export function ResultView({ graph, result, tab, onTab, history, historyNote, dailyNote, dailyDate, maxDate, dailyBusy, onDailyDate, onFocus }) {
   return (
     <div className="rview">
       <nav className="tabs">
@@ -417,7 +410,10 @@ export function ResultView({ graph, result, tab, onTab, history, historyNote, da
           <>
             {historyNote && <p className="muted history-note">{historyNote}</p>}
             {dailyNote && <p className="muted history-note">{dailyNote}</p>}
-            <HistoryChart points={history} />
+            <HistoryChart
+              points={history}
+              daily={!dailyNote && { date: dailyDate, max: maxDate, busy: dailyBusy, onChange: onDailyDate }}
+            />
           </>
         )}
       </div>
@@ -425,39 +421,192 @@ export function ResultView({ graph, result, tab, onTab, history, historyNote, da
   )
 }
 
-// AI 리포트 창 (위 오른쪽 "AI 리포트" 버튼). ai_report/models.py의 Report(diagnosis, causes, solutions)를 한 화면에 모은다.
+// ── AI 리포트 창 (위 오른쪽 "AI 리포트" 버튼). ai_report/models.py의 Report(diagnosis, causes, solutions)를 한 화면에 모은다 ──
+// 읽기 쉽게 (팀 피드백 10/26): 맨 위 판정 요약 → 설명 방식·만들기 버튼 → ①②③ 카드. 진단은 문장마다 줄을 나누고,
+// 원인·솔루션은 번호 붙은 항목으로, 단위가 붙은 숫자(0.93 pu, 120% 등)는 굵게 강조한다.
 // 수치·표는 창 오른쪽 위 "결과 자세히"(ResultView)에서 본다
-export function AiReportView({ graph, result, report, reportMessage, reportBusy, onMakeReport }) {
+const AUDIENCES = [
+  ['expert', '전문가용 설명'],
+  ['plain', '쉬운 설명'],
+] // 해설 대상 (ai_report/report.py의 AUDIENCES)
+
+// 단위가 붙은 숫자를 굵게: "최저 전압 0.93 pu" → 최저 전압 <b>0.93 pu</b>
+const NUM_UNIT = /(\d+(?:[.,]\d+)?\s?(?:pu|%|MVAr|MVA|MW|kW|kVA|kV|kA|A|km|개|시)(?![A-Za-z]))/g
+function Emph({ text }) {
+  return String(text)
+    .split(NUM_UNIT)
+    .map((part, i) => (i % 2 ? <b key={i} className="num-hl">{part}</b> : part))
+}
+
+// 진단 문단을 문장 단위로 나눈다 (마침표·물음표·느낌표 뒤 공백 기준. 숫자 속 마침표 0.93은 나누지 않음)
+const sentences = (text) =>
+  String(text ?? '')
+    .split(/(?<=[.!?。])\s+/)
+    .map((t) => t.trim())
+    .filter(Boolean)
+
+// 만드는 동안 걸린 시간 (초)
+function useElapsed(on) {
+  const [sec, setSec] = useState(0)
+  useEffect(() => {
+    if (!on) return undefined
+    setSec(0)
+    const t0 = Date.now()
+    const t = setInterval(() => setSec(Math.floor((Date.now() - t0) / 1000)), 500)
+    return () => clearInterval(t)
+  }, [on])
+  return sec
+}
+
+function ReportSection({ no, title, question, children }) {
+  return (
+    <section className="rp-card">
+      <header className="rp-card-head">
+        <span className="rp-no">{no}</span>
+        <div>
+          <h4>{title}</h4>
+          <small>{question}</small>
+        </div>
+      </header>
+      {children}
+    </section>
+  )
+}
+
+export function AiReportView({ graph, result, resultAt, report, reportMessage, reportBusy, onMakeReport }) {
+  const [audience, setAudience] = useState('expert')
+  const [madeFor, setMadeFor] = useState(null) // 지금 보이는 리포트를 어떤 설명 방식으로 만들었는지
+  const asked = useRef(null) // 마지막으로 누른 설명 방식 (리포트가 도착하면 madeFor로 옮김. 실패하면 그대로 둠)
+  const [copied, setCopied] = useState(false)
+  const elapsed = useElapsed(reportBusy)
+  useEffect(() => {
+    setMadeFor(report ? asked.current : null)
+  }, [report])
   if (!result) return <p className="muted">결과가 없습니다. 계통이 완성되면 자동으로 계산됩니다.</p>
   const hc = healthCheck(graph, result)
+  const failed = !reportBusy && reportMessage.startsWith('AI 리포트 실패')
+  const make = () => {
+    asked.current = audience
+    onMakeReport(audience)
+  }
+  const copy = () => {
+    const text = [
+      `[${graph.substation.name} AI 리포트]`,
+      '',
+      '① 건강도 진단',
+      report.diagnosis,
+      '',
+      '② 원인 분석',
+      ...report.causes.map((c, i) => `${i + 1}. ${c}`),
+      '',
+      '③ 솔루션 제언',
+      ...report.solutions.map((c, i) => `${i + 1}. ${c}`),
+    ].join('\n')
+    navigator.clipboard?.writeText(text).then(
+      () => {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1500)
+      },
+      () => {},
+    )
+  }
+
   return (
     <div className="ai-report">
-      <p className="lead">
-        시뮬레이션 결과를 AI가 쉬운 말로 풀어 줍니다. 계통 전체 판정: <LevelBadge level={hc.overall} />
-        {hc.problems.length > 0 && <span className="muted"> · 확인할 항목 {hc.problems.map((r) => r.label).join(', ')}</span>}
-      </p>
-      <ReportBox title="AI 리포트" report={report} reportMessage={reportMessage} reportBusy={reportBusy} onMakeReport={onMakeReport}>
-        <section className="ai-sec">
-          <h4>① 건강도 진단 · 어디가 문제인가?</h4>
-          <p>{report?.diagnosis}</p>
-        </section>
-        <section className="ai-sec">
-          <h4>② 원인 분석 · 왜 발생했는가?</h4>
-          <ul>
-            {report?.causes.map((c, i) => (
-              <li key={i}>{c}</li>
-            ))}
-          </ul>
-        </section>
-        <section className="ai-sec">
-          <h4>③ 솔루션 제언 · 어떻게 해결할까?</h4>
-          <ol>
-            {report?.solutions.map((c, i) => (
-              <li key={i}>{c}</li>
-            ))}
-          </ol>
-        </section>
-      </ReportBox>
+      {/* 판정 요약: 코드가 기준으로 계산한 값 (AI가 바꾸지 않음) */}
+      <div className={`rp-summary ${hc.overall}`}>
+        <div className="rp-overall">
+          <small>계통 전체 판정 · {resultAt ? `${resultAt.date} ${resultAt.hour}시 기준` : '최대 조건'}</small>
+          <b style={{ color: LEVELS[hc.overall].color }}>{LEVELS[hc.overall].label}</b>
+        </div>
+        <div className="rp-chips">
+          {hc.problems.length ? (
+            hc.problems.map((r) => (
+              <span key={r.key} className={`rp-chip ${r.level}`} title={r.whereName ? `가장 나쁜 곳: ${r.whereName} (기준 ${r.standard})` : `기준 ${r.standard}`}>
+                {r.label} <b>{r.worstText}</b>
+              </span>
+            ))
+          ) : (
+            <span className="rp-chip ok">모든 항목이 기준 안에 있습니다</span>
+          )}
+        </div>
+      </div>
+
+      {/* 설명 방식 + 만들기 */}
+      <div className="rp-controls">
+        <span className="rp-label">설명 방식</span>
+        <span className="seg">
+          {AUDIENCES.map(([v, label]) => (
+            <button key={v} type="button" className={audience === v ? 'on' : ''} disabled={reportBusy} onClick={() => setAudience(v)}>
+              {label}
+            </button>
+          ))}
+        </span>
+        <button type="button" className="primary rp-make" disabled={reportBusy} onClick={make}>
+          {reportBusy ? '만드는 중...' : report ? '지금 결과로 다시 만들기' : 'AI 해설 만들기'}
+        </button>
+        {report && !reportBusy && (
+          <button type="button" className="mini" onClick={copy}>
+            {copied ? '복사됨' : '글 복사'}
+          </button>
+        )}
+      </div>
+
+      {reportBusy && (
+        <div className="rp-state">
+          <span className="spinner" aria-hidden="true" />
+          <div>
+            <b>AI가 해설을 쓰고 있습니다 · {elapsed}초</b>
+            <small>보통 수 초~수십 초 걸립니다. 그동안 다른 화면을 봐도 됩니다.</small>
+          </div>
+        </div>
+      )}
+      {failed && (
+        <div className="rp-state error">
+          <b>AI 해설을 만들지 못했습니다</b>
+          <small>{reportMessage.replace(/^AI 리포트 실패 \((.*)\)$/, '$1').replace(/^HTTP \d+: /, '')}</small>
+          <small>API 키(.env)와 백엔드 연결을 확인한 뒤 다시 눌러 주세요.</small>
+        </div>
+      )}
+      {!report && !reportBusy && !failed && (
+        <div className="rp-state empty">
+          <b>아직 해설이 없습니다</b>
+          <small>LLM 호출은 비용·시간이 들어서 자동으로 만들지 않습니다. 설명 방식을 고르고 &ldquo;AI 해설 만들기&rdquo;를 누르면 ①②③이 한 번에 만들어집니다.</small>
+        </div>
+      )}
+
+      {report && (
+        <div className={`rp-body ${reportBusy ? 'stale' : ''}`}>
+          {madeFor && <p className="muted small rp-meta">{AUDIENCES.find(([v]) => v === madeFor)?.[1]}으로 만든 해설</p>}
+          <ReportSection no="1" title="건강도 진단" question="어디가 문제인가?">
+            <div className="rp-diag">
+              {sentences(report.diagnosis).map((t, i) => (
+                <p key={i}>
+                  <Emph text={t} />
+                </p>
+              ))}
+            </div>
+          </ReportSection>
+          <ReportSection no="2" title="원인 분석" question="왜 발생했는가?">
+            <ol className="rp-list">
+              {report.causes.map((c, i) => (
+                <li key={i}>
+                  <Emph text={c} />
+                </li>
+              ))}
+            </ol>
+          </ReportSection>
+          <ReportSection no="3" title="솔루션 제언" question="어떻게 해결할까?">
+            <ol className="rp-list solution">
+              {report.solutions.map((c, i) => (
+                <li key={i}>
+                  <Emph text={c} />
+                </li>
+              ))}
+            </ol>
+          </ReportSection>
+        </div>
+      )}
       <p className="muted small">AI 해설은 참고용입니다. 판정 등급과 수치는 화면이 기준으로 계산한 값이며, 표와 그래프는 오른쪽 위 &ldquo;결과 자세히&rdquo;에서 볼 수 있습니다.</p>
     </div>
   )
