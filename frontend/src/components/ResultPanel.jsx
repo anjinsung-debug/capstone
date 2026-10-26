@@ -378,7 +378,7 @@ function ElementsTab({ graph, result, onFocus }) {
 export const RESULT_TABS = [
   ['health', '① 건강도 진단'],
   ['cause', '② 원인 분석'],
-  ['solution', '③ 솔루션 제언'],
+  ['solution', '③ 솔루션 제안'],
   ['elements', '요소별 결과'],
   ['history', '기록 (시점별)'],
 ]
@@ -506,7 +506,7 @@ export function AiReportView({ graph, result, resultAt, report, reportMessage, r
       '② 원인 분석',
       ...report.causes.map((c, i) => `${i + 1}. ${c}`),
       '',
-      '③ 솔루션 제언',
+      '③ 솔루션 제안',
       ...report.solutions.map((c, i) => `${i + 1}. ${c}`),
     ].join('\n')
     navigator.clipboard?.writeText(text).then(
@@ -595,7 +595,7 @@ export function AiReportView({ graph, result, resultAt, report, reportMessage, r
               ))}
             </ol>
           </ReportSection>
-          <ReportSection no="3" title="솔루션 제언" question="어떻게 해결할까?">
+          <ReportSection no="3" title="솔루션 제안" question="어떻게 해결할까?">
             <ol className="rp-list solution">
               {report.solutions.map((c, i) => (
                 <li key={i}>
