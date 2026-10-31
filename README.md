@@ -34,6 +34,7 @@ capstone/
 │   ├── dss.py               계통 → OpenDSS 스크립트 변환
 │   ├── simulate.py          조류 계산·고장 해석 (자체 점검: python -m simulation.simulate)
 │   ├── daily.py             선택한 날짜의 시간별 배율 적용·24시간 계산
+│   ├── der.py               분산전원 연결 전후 비교, 연계 가능 최대치 (자체 점검: python -m simulation.der)
 │   └── plot.py              결과 그래프 (matplotlib → PNG)
 ├── ai_report/
 │   ├── models.py            리포트 형식 (진단, 원인, 솔루션)
@@ -69,6 +70,7 @@ data/ (한전 원본 CIM XML) ──cim/load.py──▶ Neo4j
 frontend ──HTTP──▶ backend ────────┤ cim/graph.py (조회·스냅샷 저장)
                       ├──▶ simulation/simulate.py ──▶ 시뮬레이션 결과 (dss.py로 OpenDSS 변환)
                       ├──▶ simulation/daily.py    ──▶ 선택한 날짜의 24시간 결과 (simulate.py를 24번 호출)
+                      ├──▶ simulation/der.py      ──▶ 분산전원 전후 비교·연계 가능 최대치 (simulate.py를 여러 번 호출)
                       ├──▶ simulation/plot.py     ──▶ 결과 그래프 (PNG)
                       └──▶ ai_report/report.py   ──▶ AI 리포트
 ```
@@ -77,7 +79,11 @@ frontend ──HTTP──▶ backend ────────┤ cim/graph.py (�
 2. **조회·편집**: 변전소 계통을 단선도로 보고 설비·선로를 편집하면 계통 전체를 `PUT /api/substations/{id}`로 자동 저장
 3. **한 시점 시뮬레이션**: 저장된 계통을 OpenDSS로 계산해 전압, 선로 부하율, 역조류, 고장전류(3상 단락·1선 지락·2선 지락), 피더별 송출 전력을 단선도에 표시. 출구 차단기가 고장전류를 끊을 수 있는지(정격 차단전류 25kA 가정)도 판정 (역조류 정상 조건: 선로 용량 이내 + 차단 가능). 편집 화면은 기본으로 오늘 날짜·현재 시각의 배율을 적용하며, "최대 조건"을 선택하면 저장된 부하·태양광 값을 그대로 사용
 4. **24시간 분석**: 기록 탭에서 날짜 하나를 선택하면 `POST /api/substations/{id}/simulations/daily`로 그날의 0~23시를 계산. 시간별 부하·태양광 배율을 적용해 기존 한 시점 계산 함수를 24번 실행하고, 편집 전후 계통의 하루 곡선을 비교
-5. **AI 리포트**: 버튼을 누르면 시뮬레이션 결과를 AI(Claude, 선택 시 Gemini)에 넘겨 진단·원인·솔루션 리포트 생성
+5. **분산전원 영향** (10/26 중간 발표 요청, 화면 연결 전):
+   - 연결 전후 비교 `POST /api/substations/{id}/simulations/der-comparison`: 태양광·풍력을 모두 뺀 계통과 지금 계통을 계산해 출력 합, 송출 전력, 전압 범위, 최대 부하율, 역조류 선로 수, 최대 고장전류를 나란히 돌려줌
+   - 연계 가능 최대치 `POST /api/substations/{id}/simulations/hosting-capacity?bus_id=&target_kw=`: 접속점에 태양광을 몇 kW까지 더 붙일 수 있는지 이분 탐색(10 kW 단위, 최대 20 MW)으로 찾고, 막는 원인(과전압 1.05 pu, 선로 과부하 100%, 차단기 차단 불가)과 목표 용량을 붙일 때 늘려야 할 선로 허용전류를 돌려줌. 역조류 자체는 회의 기준대로 막는 원인으로 보지 않음
+   - 둘 다 `date`·`hour`를 주면 그 시각 배율로 계산 (없으면 최대 조건)
+6. **AI 리포트**: 버튼을 누르면 시뮬레이션 결과를 AI(Claude, 선택 시 Gemini)에 넘겨 진단·원인·솔루션 리포트 생성
 
 24시간 분석의 날짜·데이터 기준:
 

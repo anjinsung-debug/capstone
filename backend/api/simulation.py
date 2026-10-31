@@ -7,6 +7,7 @@ from fastapi.responses import Response
 
 from cim import graph
 from simulation.daily import DailyRequest, DailyResult, graph_at, simulate_daily
+from simulation.der import DerComparison, HostingCapacity, compare_der, hosting_capacity
 from simulation.models import SimulationResult
 from simulation.plot import plot_result
 from simulation.simulate import simulate
@@ -39,6 +40,28 @@ def run_daily_simulation(substation_id: str, body: DailyRequest | None = None) -
     try:
         return simulate_daily(g, body.date)
     except ValueError as e:  # 고를 수 없는 날짜
+        raise HTTPException(422, str(e)) from e
+
+
+@router.post("/substations/{substation_id}/simulations/der-comparison")
+def run_der_comparison(substation_id: str, date: dt.date | None = None, hour: int | None = None) -> DerComparison:
+    """분산전원(태양광·풍력) 연결 전후 비교: 모두 뺀 계통과 지금 계통을 계산해 핵심 숫자를 나란히 (simulation/der.py).
+    date·hour는 /simulations와 같다 (없으면 최대 조건)"""
+    try:
+        return compare_der(graph_at(graph.get_substation(substation_id), date, hour))
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+
+
+@router.post("/substations/{substation_id}/simulations/hosting-capacity")
+def run_hosting_capacity(substation_id: str, bus_id: str, target_kw: float | None = None,
+                         date: dt.date | None = None, hour: int | None = None) -> HostingCapacity:
+    """접속점 bus_id에 태양광을 몇 kW까지 더 붙일 수 있는지, 무엇 때문에 막히는지 (simulation/der.py).
+    target_kw를 주면 그만큼 붙일 때 늘려야 할 선로 허용전류도 준다. date·hour는 /simulations와 같다.
+    추가하는 태양광 kW는 그 시각의 출력으로 본다 (배율을 곱하지 않음)"""
+    try:
+        return hosting_capacity(graph_at(graph.get_substation(substation_id), date, hour), bus_id, target_kw)
+    except ValueError as e:
         raise HTTPException(422, str(e)) from e
 
 
