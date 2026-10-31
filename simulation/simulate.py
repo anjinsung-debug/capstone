@@ -16,6 +16,7 @@ import opendssdirect as dss
 
 from cim.models import SubstationGraph
 from simulation.dss import (
+    DEFAULT_BREAKER_INTERRUPT_KA,
     DEFAULT_SHORT_CIRCUIT_MVA,
     SimulationError,
     bus_names,
@@ -99,7 +100,9 @@ def simulate(graph: SubstationGraph) -> SimulationResult:
     feeders = []
     for f in graph.feeders:
         out = [line_p[l.id] for l in graph.lines if breakers.get(l.from_node_id) == f.id]
-        feeders.append(FeederResult(feeder_id=f.id, p_kw=sum(p for p, _ in out), q_kvar=sum(q for _, q in out)))
+        ka = next((fault_ka[buses[b]] for b, fid in breakers.items() if fid == f.id), None)
+        feeders.append(FeederResult(feeder_id=f.id, p_kw=sum(p for p, _ in out), q_kvar=sum(q for _, q in out),
+                                    breaker_interruptible=None if ka is None else ka <= DEFAULT_BREAKER_INTERRUPT_KA))
 
     return SimulationResult(
         substation_id=graph.substation.id,
@@ -129,6 +132,12 @@ if __name__ == "__main__":
     assert all(x.loading_pct is not None for x in r.lines)  # 허용전류 기본값으로 과부하 계산
     theory_ka = DEFAULT_SHORT_CIRCUIT_MVA / (3**0.5 * 22.9)  # 전원만의 3상 단락 전류. 분산전원 기여만큼 조금 더 커야 함
     assert theory_ka < at_source.fault_current_ka < theory_ka * 1.15
+    assert r.feeders[0].breaker_interruptible is True  # 약 7.6kA < 25kA
+
+    # 단락용량이 커서 차단기 위치 고장전류가 정격 차단전류를 넘으면 못 끊음
+    strong = g.model_copy(deep=True)
+    strong.substation.short_circuit_mva = 3**0.5 * 22.9 * DEFAULT_BREAKER_INTERRUPT_KA * 1.2
+    assert simulate(strong).feeders[0].breaker_interruptible is False
 
     # 선로를 거꾸로 저장해도 역조류 판정은 같아야 함 (p_kw 부호만 반대)
     flipped = g.model_copy(deep=True)

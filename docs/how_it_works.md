@@ -25,7 +25,7 @@
      - 전원에서 닿지 않는 노드(열린 개폐기 아래)는 정전: `energized=False`, 전압 0, 고장전류 없음. 저전압과 구분
      - OpenDSS 명령 오류·수렴 실패는 계산을 멈추고 422로 알림 (잘못된 결과가 그래프·리포트로 넘어가지 않음)
      - 조류 계산 때 전원 임피던스는 거의 0으로 두어 변전소 모선 전압이 `source_voltage_pu`로 유지되고, 고장 해석 직전에만 `short_circuit_mva`·`x_r_ratio`를 넣음
-     - 데이터에 없는 값은 가정값으로 계산 (`dss.py`의 `DEFAULT_*`): 단락용량 300 MVA, X/R 10, 허용전류 400 A. 실제 값이 데이터에 있으면 그 값이 우선. 가정값으로 낸 고장전류·부하율은 실제 설비 기준이 아님
+     - 데이터에 없는 값은 가정값으로 계산 (`dss.py`의 `DEFAULT_*`): 단락용량 300 MVA, X/R 10, 허용전류 400 A, 차단기 정격 차단전류 25 kA. 실제 값이 데이터에 있으면 그 값이 우선. 가정값으로 낸 고장전류·부하율은 실제 설비 기준이 아님
      - 태양광·풍력은 인버터 전원으로 보고 고장 전류 기여를 정격의 약 1.2배로 계산 (`Xdp=1`)
      - OpenDSS 엔진은 프로세스에 하나라 동시 요청은 차례로 처리
    - **4대 시뮬레이션** (제안서 3단계): 결과 형식(`simulation/models.py`)에 아래 항목이 있음
@@ -36,6 +36,7 @@
      | 선로 과부하 | `LineResult.loading_pct` (허용전류 대비 %) |
      | 역조류 | `LineResult.reverse_flow` |
      | 단락용량 고장전류 | `NodeResult.fault_current_ka` |
+     | 출구 차단기가 고장전류를 끊을 수 있는지 (≤ 25 kA) | `FeederResult.breaker_interruptible` (역조류 정상 판정 조건, 10/26 회의) |
      | 변전소 출구 차단기(CB) 옆 피더별 송출 전력 | `SimulationResult.feeders` (`FeederResult.p_kw`, `q_kvar`, 화면에는 MW·MVAr 황색 표시) |
 
    - **결과 그래프**: 화면(결과 자세히 → ② 원인 분석)은 받은 결과로 전압 프로파일·선로별 조류를 직접 그림 (`frontend/src/components/ProfileChart.jsx`, 어두운 화면 색에 맞춤). 그리는 규칙은 `simulation/plot.py`와 같음

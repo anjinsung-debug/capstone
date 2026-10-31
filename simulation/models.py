@@ -35,6 +35,8 @@ class FeederResult(BaseModel):
     feeder_id: str
     p_kw: float
     q_kvar: float
+    # 출구 차단기 위치 3상 단락 전류 ≤ 정격 차단전류(dss.py의 DEFAULT_BREAKER_INTERRUPT_KA)면 True. 차단기가 정전 구간이면 None
+    breaker_interruptible: bool | None = None
 
 
 class SimulationResult(BaseModel):

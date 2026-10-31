@@ -44,6 +44,9 @@ class SimulationError(ValueError):
 DEFAULT_SHORT_CIRCUIT_MVA = 300.0  # 변전소 22.9kV 모선 3상 단락용량 (약 7.6kA). 154/22.9kV 주변압기 2차측 수준의 가정값
 DEFAULT_X_R_RATIO = 10.0  # 전원 임피던스 X/R. 변전소 근처 계통의 일반적인 가정값
 DEFAULT_RATED_CURRENT_A = 400.0  # 선로·개폐기 허용전류. 22.9kV 간선 굵은 전선 수준의 가정값 (선종별 구분 없음)
+# 변전소 출구 차단기 정격 차단전류. 22.9kV(정격 25.8kV) 진공·가스 차단기에 흔히 쓰는 값 (세부 기준은 한전 ES 150, 원문 미확인).
+# 10/26 회의: 역조류는 선로 용량 안이고 차단기가 끊을 수 있으면 정상. 실제 정격을 받으면 바꾼다
+DEFAULT_BREAKER_INTERRUPT_KA = 25.0
 
 CIRCUIT_NAME = "substation"
 STIFF_MVA = 1e6  # 조류 계산용 전원 단락용량. 사실상 무한대라 변전소 모선 전압이 source_voltage_pu로 유지됨
