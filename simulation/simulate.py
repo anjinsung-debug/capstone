@@ -27,7 +27,14 @@ from simulation.dss import (
     to_dss_script,
     trace,
 )
-from simulation.models import FeederResult, LineResult, NodeResult, SimulationResult
+from simulation.models import (
+    OVERLOAD_PCT,
+    REVERSE_FLOW_MIN_KW,
+    FeederResult,
+    LineResult,
+    NodeResult,
+    SimulationResult,
+)
 
 # ponytail: OpenDSS 엔진은 프로세스에 하나라 동시 요청을 한 줄로 세운다. 느려지면 요청별 프로세스로 분리
 _lock = threading.Lock()
@@ -99,10 +106,10 @@ def simulate(graph: SubstationGraph) -> SimulationResult:
                 p_kw=p,
                 q_kvar=q,
                 loading_pct=amps / rated_current(line) * 100,
-                # ponytail: 역조류는 방향만 본다 (크기 기준 없음, 1 kW도 역조류). 제안서에 수치가 없어 비워 두었다.
-                #   기준이 필요함: ① 아주 작은 값(계산 오차) 무시 ② 피더 송출 전력 < 0(변전소 뱅크 역송)은 위험으로 따로 판정.
-                #   한전 자문으로 기준이 정해지면 여기와 frontend/src/lib/overlay.js의 healthCheck, ai_report/report.py의 check_findings를 같이 고친다
-                reverse_flow=(p > 0) if line.id in reversed_ids else (p < 0),  # 실제 전원 쪽에서 멀어지는 방향이 정상
+                # 실제 전원 쪽에서 멀어지는 방향이 정상. REVERSE_FLOW_MIN_KW보다 작은 반대 방향은 무시.
+                # ponytail: 피더 송출 전력 < 0(변전소 뱅크 역송)은 따로 판정하지 않는다 (10/26 회의: 선로 용량·차단기만 보면 됨).
+                #   기준을 바꾸면 frontend/src/lib/overlay.js의 healthCheck, ai_report/report.py의 check_findings도 같이 고친다
+                reverse_flow=(p if line.id in reversed_ids else -p) >= REVERSE_FLOW_MIN_KW,
             ))
         loss_kw = dss.Circuit.Losses()[0] / 1000  # W → kW
 
@@ -122,6 +129,13 @@ def simulate(graph: SubstationGraph) -> SimulationResult:
                    if fid == f.id and fault_ka[buses[b]] is not None), None)
         feeders.append(FeederResult(feeder_id=f.id, p_kw=sum(p for p, _ in out), q_kvar=sum(q for _, q in out),
                                     breaker_interruptible=None if ka is None else ka <= DEFAULT_BREAKER_INTERRUPT_KA))
+
+    # 역조류 정상 판정 (10/26 회의): 선로 용량 안 + 그 피더 출구 차단기가 끊을 수 있음. 차단기 판정이 없으면(None) 용량만 본다
+    interruptible = {f.feeder_id: f.breaker_interruptible for f in feeders}
+    line_feeder = {l.id: l.feeder_id for l in graph.lines}
+    for r in line_results:
+        if r.reverse_flow:
+            r.reverse_flow_ok = (r.loading_pct or 0) <= OVERLOAD_PCT and interruptible.get(line_feeder[r.line_id]) is not False
 
     return SimulationResult(
         substation_id=graph.substation.id,
@@ -175,7 +189,12 @@ if __name__ == "__main__":
     # 단락용량이 커서 차단기 위치 고장전류가 정격 차단전류를 넘으면 못 끊음
     strong = g.model_copy(deep=True)
     strong.substation.short_circuit_mva = 3**0.5 * 22.9 * DEFAULT_BREAKER_INTERRUPT_KA * 1.2
-    assert simulate(strong).feeders[0].breaker_interruptible is False
+    r_strong = simulate(strong)
+    assert r_strong.feeders[0].breaker_interruptible is False
+    # 역조류 정상 판정: 기본 계통은 용량 안·차단 가능이라 정상, 차단기가 못 끊으면 비정상, 역조류가 아니면 None
+    assert all(x.reverse_flow_ok is True for x in r.lines if x.reverse_flow)
+    assert all(x.reverse_flow_ok is False for x in r_strong.lines if x.reverse_flow) and any(x.reverse_flow for x in r_strong.lines)
+    assert all(x.reverse_flow_ok is None for x in r.lines if not x.reverse_flow)
 
     # 선로를 거꾸로 저장해도 역조류 판정은 같아야 함 (p_kw 부호만 반대)
     flipped = g.model_copy(deep=True)
@@ -184,6 +203,11 @@ if __name__ == "__main__":
     r_flipped = simulate(flipped)
     assert [x.reverse_flow for x in r_flipped.lines] == [x.reverse_flow for x in r.lines]
     assert any(x.reverse_flow for x in r.lines)  # 이 계통에는 태양광 때문에 역조류 구간이 있음
+    # REVERSE_FLOW_MIN_KW보다 작은 반대 방향 조류는 역조류 아님: 부하를 모두 빼고 태양광을 아주 작게
+    for kw, expect in ((0.1, False), (100.0, True)):
+        tiny = g.model_copy(deep=True)
+        tiny.nodes = [n.model_copy(update={"p_kw": kw}) if n.type == "pv" else n for n in tiny.nodes if n.type != "load"]
+        assert any(x.reverse_flow for x in simulate(tiny).lines) == expect, kw
 
     # 말단 두 곳을 잇는 선로를 더하면 루프
     looped = g.model_copy(deep=True)

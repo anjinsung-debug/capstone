@@ -10,6 +10,7 @@ from pydantic import BaseModel
 VOLTAGE_MIN_PU = 0.95  # 전압 정상 범위 하한 (OpenDSS 기본 정상 범위)
 VOLTAGE_MAX_PU = 1.05  # 전압 정상 범위 상한
 OVERLOAD_PCT = 100.0  # loading_pct가 이 값을 넘으면 선로 과부하
+REVERSE_FLOW_MIN_KW = 1.0  # 역조류로 보는 최소 크기. 이보다 작은 반대 방향 조류는 계산 오차·밤 태양광 최소 출력(daily.py의 PV_MIN_MULT)으로 보고 무시
 
 
 class NodeResult(BaseModel):
@@ -28,7 +29,10 @@ class LineResult(BaseModel):
     p_kw: float  # from → to 방향이 +
     q_kvar: float
     loading_pct: float | None = None  # 선로 과부하 (전류 / 허용전류 × 100). 허용전류가 없으면 None
-    reverse_flow: bool = False  # 역조류 (p_kw < 0, 분산전원 때문에 to → from으로 흐름)
+    reverse_flow: bool = False  # 역조류 (분산전원 때문에 전원 반대쪽으로 REVERSE_FLOW_MIN_KW 이상 흐름)
+    # 역조류가 정상인지 (10/26 회의 기준): 부하율 ≤ OVERLOAD_PCT이고 그 피더 출구 차단기가 고장전류를 끊을 수 있으면 True.
+    # 역조류가 아니면 None. 정상이어도 역조류 표시는 그대로 한다
+    reverse_flow_ok: bool | None = None
 
 
 class FeederResult(BaseModel):

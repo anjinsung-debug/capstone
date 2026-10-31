@@ -34,7 +34,8 @@
      |-----------|-----------|
      | 전압 영향 | `NodeResult.voltage_pu` (정전 구간은 `energized=False`, 저전압과 구분) |
      | 선로 과부하 | `LineResult.loading_pct` (허용전류 대비 %) |
-     | 역조류 | `LineResult.reverse_flow` |
+     | 역조류 (전원 반대쪽으로 1 kW 이상, 그보다 작으면 계산 오차로 무시) | `LineResult.reverse_flow` |
+     | 역조류가 정상인지 (부하율 ≤ 100% + 그 피더 차단기 차단 가능, 10/26 회의 기준. 역조류가 아니면 None) | `LineResult.reverse_flow_ok` |
      | 단락용량 고장전류 | `NodeResult.fault_current_ka` |
      | 1선 지락 전류 (선로 영상분 r0·x0, 없으면 정상분 × 3) | `NodeResult.ground_fault_current_ka` |
      | 2선 지락 전류 (고장 난 두 상 중 큰 상전류) | `NodeResult.double_ground_fault_current_ka` |

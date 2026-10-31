@@ -61,7 +61,7 @@ P·Q는 3상 합계다. 누락된 Q는 일반적으로 0으로 처리한다. 단
 | 일반 선로 정전용량 | `C1=0`, `C0=0` | 정전용량 영향 무시 |
 | 전압 판정 | `VOLTAGE_MIN_PU=0.95`, `VOLTAGE_MAX_PU=1.05` | 전압 영향: 범위 밖이면 이상 표시. 정전은 별도 처리 |
 | 과부하 판정 | `OVERLOAD_PCT=100` | 부하율이 100%를 초과하면 과부하 |
-| 역조류 판정 | 실제 전원→말단 방향과 P의 방향 비교 | 저장 방향이 정방향이면 P<0, 반대 방향이면 P>0 |
+| 역조류 판정 | 실제 전원→말단 방향과 P의 방향 비교, `REVERSE_FLOW_MIN_KW=1` | 저장 방향이 정방향이면 P ≤ -1 kW, 반대 방향이면 P ≥ 1 kW. 정상 여부 `reverse_flow_ok` = 부하율 ≤ 100% + 그 피더 차단기 차단 가능 |
 | 고장 종류 | `Solve mode=faultstudy` 후 `Bus.Isc()`, `Bus.Zsc1()`·`Zsc0()` 조회 | 3상 단락·1선 지락·2선 지락 전류 반환. 피더 출구 차단기 위치의 셋 중 큰 값을 정격 차단전류 25kA(`DEFAULT_BREAKER_INTERRUPT_KA`, 가정값)와 비교해 `FeederResult.breaker_interruptible` |
 
 ## 4. OpenDSS 결과와 최종 결과
