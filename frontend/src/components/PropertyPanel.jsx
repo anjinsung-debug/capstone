@@ -148,6 +148,13 @@ function LineProps({ graph, line, result, editing, onChange }) {
           <NumberField key={`${line.id}-len`} label="길이" unit="km" value={line.length_km} disabled={!editing} required onCommit={(v) => set({ length_km: v ?? 0 })} />
           <NumberField key={`${line.id}-r`} label="저항 R1" unit="Ω/km" value={line.r_ohm_per_km} disabled={!editing} required onCommit={(v) => set({ r_ohm_per_km: v ?? 0 })} />
           <NumberField key={`${line.id}-x`} label="리액턴스 X1" unit="Ω/km" value={line.x_ohm_per_km} disabled={!editing} required onCommit={(v) => set({ x_ohm_per_km: v ?? 0 })} />
+          {/* 구현 참고 (고영민·최민준 확인 필요): 선로 전체 임피던스 = Ω/km × 길이 (OpenDSS가 계산에 쓰는 값과 같음, 안진성 추가) */}
+          <dl className="meta">
+            <dt>선로 임피던스</dt>
+            <dd>
+              {(line.r_ohm_per_km * line.length_km).toFixed(3)} + j{(line.x_ohm_per_km * line.length_km).toFixed(3)} Ω
+            </dd>
+          </dl>
           {/* 구현 참고 (고영민·최민준 확인 필요): 영상분 R0·X0 편집 칸 (1선·2선 지락 계산용, 안진성 추가).
               비우면 시뮬레이션이 정상분 × 3으로 계산 (simulation/dss.py의 DEFAULT_ZERO_SEQ_RATIO) */}
           <NumberField key={`${line.id}-r0`} label="영상분 저항 R0" unit="Ω/km" value={line.r0_ohm_per_km} disabled={!editing} onCommit={(v) => set({ r0_ohm_per_km: v })} />
