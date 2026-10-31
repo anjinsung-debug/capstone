@@ -37,7 +37,7 @@
      | 역조류 (전원 반대쪽으로 1 kW 이상, 그보다 작으면 계산 오차로 무시) | `LineResult.reverse_flow` |
      | 역조류가 정상인지 (부하율 ≤ 100% + 그 피더 차단기 차단 가능, 10/26 회의 기준. 역조류가 아니면 None) | `LineResult.reverse_flow_ok` |
      | 단락용량 고장전류 | `NodeResult.fault_current_ka` |
-     | 1선 지락 전류 (선로 영상분 r0·x0, 없으면 정상분 × 3) | `NodeResult.ground_fault_current_ka` |
+     | 1선 지락 전류 (선로 영상분 r0·x0, 화면 선로 속성의 "영상분 저항 R0·리액턴스 X0"에서 고침, 비우면 정상분 × 3) | `NodeResult.ground_fault_current_ka` |
      | 2선 지락 전류 (고장 난 두 상 중 큰 상전류) | `NodeResult.double_ground_fault_current_ka` |
      | 출구 차단기가 고장전류(3상 단락·1선 지락·2선 지락 중 큰 값)를 끊을 수 있는지 (≤ 25 kA) | `FeederResult.breaker_interruptible` (역조류 정상 판정 조건, 10/26 회의) |
      | 변전소 출구 차단기(CB) 옆 피더별 송출 전력 | `SimulationResult.feeders` (`FeederResult.p_kw`, `q_kvar`, 화면에는 MW·MVAr 황색 표시) |

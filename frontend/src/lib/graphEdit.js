@@ -298,7 +298,7 @@ export function toSnapshot(graph) {
       is_open: type === 'switch' ? Boolean(is_open) : false,
       bus_id: NODE_TYPES[type].oneTerminal ? bus_id : null,
     })),
-    // 구현 참고 (고영민·최민준 확인 필요): 영상분 r0·x0는 저장할 때 지워지지 않게 그대로 돌려보냄 (1선 지락 계산용, 안진성 추가). 편집 칸은 아직 없음
+    // 구현 참고 (고영민·최민준 확인 필요): 영상분 r0·x0는 저장할 때 지워지지 않게 그대로 돌려보냄 (지락 계산용, 안진성 추가). 편집 칸은 PropertyPanel.jsx
     lines: g.lines.map(({ id, substation_id, feeder_id, name, kind, from_node_id, to_node_id, length_km, r_ohm_per_km, x_ohm_per_km, r0_ohm_per_km, x0_ohm_per_km, rated_current_a }) => ({
       id, substation_id, feeder_id, name, kind, from_node_id, to_node_id, length_km, r_ohm_per_km, x_ohm_per_km, r0_ohm_per_km, x0_ohm_per_km, rated_current_a,
     })),
