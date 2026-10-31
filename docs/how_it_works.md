@@ -2,7 +2,7 @@
 
 전체 구조와 화면 흐름은 [README의 작동 방식](../README.md#작동-방식)에 있습니다. 이 문서는 단계별 세부 규칙입니다.
 
-**해석 범위**: 22.9kV 배전계통, 3상 평형(정상분 1상 등가), 방사형 계통, 한 시점 계산, 3상 단락만. 데이터 형식(`cim/models.py`)과 OpenDSS 변환(`simulation/dss.py`)이 이 범위를 전제로 합니다.
+**해석 범위**: 22.9kV 배전계통, 3상 평형(정상분 1상 등가), 방사형 계통, 한 시점 계산, 고장은 3상 단락·1선 지락·2선 지락. 데이터 형식(`cim/models.py`)과 OpenDSS 변환(`simulation/dss.py`)이 이 범위를 전제로 합니다.
 
 ## 단계별 규칙
 
@@ -19,7 +19,7 @@
 3. **시뮬레이션** (FR-03, 04): 프론트엔드 → `POST /api/substations/{id}/simulations` → 백엔드가 `cim/graph.py`로 계통을 읽어 `simulation/simulate.py`에 넘김 → `simulation/dss.py`가 OpenDSS 스크립트로 변환 → `simulate.py`가 실행해 결과 반환 → 결과를 프론트엔드가 단선도에 표시
    - **지금 시각 기준**: 편집 화면은 기본으로 `?date=오늘&hour=지금 시`를 붙여 부름 → 백엔드가 그 시각 배율(`data/profile_2025.csv`, 2026년 이후는 2025년 같은 요일)을 부하·태양광에 곱해 계산 (`simulation/daily.py`의 `graph_at`). 정각이 지나면 화면이 다시 계산함. 요약 줄의 "최대 조건"을 누르면 date·hour 없이 불러 저장된 값 그대로(부하 = 최대부하, 태양광 = 설비용량) 계산. AI 리포트도 같은 date·hour를 보내 프롬프트의 kW를 같은 시각 값으로 맞춤. 실측 실시간 값이 아니라 가상 패턴의 같은 시각 값임
    - **OpenDSS 변환** (`dss.py`): 접속점·차단기·개폐기 노드가 OpenDSS 버스가 되고, 전원·부하·분산전원은 `bus_id`의 버스에 붙음. 열린 개폐기에 닿은 선로는 `enabled=no`로 끊어 그 아래 구간은 전압 0
-   - **계산 순서** (`simulate.py`): 방사형 검사·실제 조류 방향 찾기 → 조류 계산 → 전압·선로 조류·손실·피더 송출 전력 → 고장 해석 → 지점별 3상 단락 전류
+   - **계산 순서** (`simulate.py`): 방사형 검사·실제 조류 방향 찾기 → 조류 계산 → 전압·선로 조류·손실·피더 송출 전력 → 고장 해석(부하는 끄고 계산) → 지점별 3상 단락·1선 지락·2선 지락 전류
      - 완성·방사형 검사 (`dss.py`의 `check_complete`, `trace`): 전원 1개·피더별 차단기 1개·출력·`bus_id`가 빠졌거나, 전원에서 닫힌 선로를 따라가다 루프가 있으면 422. 같은 탐색으로 각 선로의 실제 전원 쪽과 전원으로부터 거리를 구함
      - 역조류는 저장된 `from_node_id`가 아니라 실제 전원 쪽 기준으로 판정 (편집 중 선을 거꾸로 그려도 맞게 나옴). `p_kw` 부호는 저장된 from → to 기준
      - 전원에서 닿지 않는 노드(열린 개폐기 아래)는 정전: `energized=False`, 전압 0, 고장전류 없음. 저전압과 구분
@@ -36,7 +36,9 @@
      | 선로 과부하 | `LineResult.loading_pct` (허용전류 대비 %) |
      | 역조류 | `LineResult.reverse_flow` |
      | 단락용량 고장전류 | `NodeResult.fault_current_ka` |
-     | 출구 차단기가 고장전류를 끊을 수 있는지 (≤ 25 kA) | `FeederResult.breaker_interruptible` (역조류 정상 판정 조건, 10/26 회의) |
+     | 1선 지락 전류 (선로 영상분 r0·x0, 없으면 정상분 × 3) | `NodeResult.ground_fault_current_ka` |
+     | 2선 지락 전류 (고장 난 두 상 중 큰 상전류) | `NodeResult.double_ground_fault_current_ka` |
+     | 출구 차단기가 고장전류(3상 단락·1선 지락·2선 지락 중 큰 값)를 끊을 수 있는지 (≤ 25 kA) | `FeederResult.breaker_interruptible` (역조류 정상 판정 조건, 10/26 회의) |
      | 변전소 출구 차단기(CB) 옆 피더별 송출 전력 | `SimulationResult.feeders` (`FeederResult.p_kw`, `q_kvar`, 화면에는 MW·MVAr 황색 표시) |
 
    - **결과 그래프**: 화면(결과 자세히 → ② 원인 분석)은 받은 결과로 전압 프로파일·선로별 조류를 직접 그림 (`frontend/src/components/ProfileChart.jsx`, 어두운 화면 색에 맞춤). 그리는 규칙은 `simulation/plot.py`와 같음

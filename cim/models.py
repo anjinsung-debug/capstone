@@ -78,6 +78,10 @@ class Line(BaseModel):
     length_km: float
     r_ohm_per_km: float  # 정상분 저항
     x_ohm_per_km: float  # 정상분 리액턴스
+    # 영상분 저항·리액턴스 (1선 지락 고장 계산용). 없으면 시뮬레이션이 정상분 × 3으로 계산 (simulation/dss.py의 DEFAULT_*)
+    # 구현 참고 (한승우 확인 필요): 1선 지락 계산을 위해 안진성이 추가 (원본 ACLineSegment.r0·x0 → mapping.py, load.py·graph.py의 LINE_PROPS)
+    r0_ohm_per_km: float | None = None
+    x0_ohm_per_km: float | None = None
     rated_current_a: float | None = None  # 허용전류 (없으면 시뮬레이션이 가정값 사용)
 
 

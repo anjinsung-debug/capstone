@@ -1,7 +1,7 @@
 """시뮬레이션 결과 형식. 단위: 전압 pu, 전력 kW·kvar(3상 합계), 부하율 %, 고장전류 kA
 
 4대 시뮬레이션 (3단계): 전압 영향, 선로 과부하, 역조류, 단락용량 고장전류
-해석 범위 (cim/models.py와 같음): 22.9kV, 3상 평형이라 상별 값 대신 한 값, 방사형, 한 시점 결과, 고장은 3상 단락만
+해석 범위 (cim/models.py와 같음): 22.9kV, 3상 평형이라 상별 값 대신 한 값, 방사형, 한 시점 결과, 고장은 3상 단락·1선 지락·2선 지락
 """
 
 from pydantic import BaseModel
@@ -19,6 +19,8 @@ class NodeResult(BaseModel):
     energized: bool = True
     voltage_pu: float  # 전압 영향
     fault_current_ka: float | None = None  # 이 지점 3상 단락 전류 (대칭 실효값). 정전 구간이면 None
+    ground_fault_current_ka: float | None = None  # 이 지점 1선 지락 전류 (고장 저항 0, 대칭 실효값). 정전 구간이면 None
+    double_ground_fault_current_ka: float | None = None  # 이 지점 2선 지락 전류 (고장 난 두 상 중 큰 상전류). 정전 구간이면 None
 
 
 class LineResult(BaseModel):
@@ -35,7 +37,7 @@ class FeederResult(BaseModel):
     feeder_id: str
     p_kw: float
     q_kvar: float
-    # 출구 차단기 위치 3상 단락 전류 ≤ 정격 차단전류(dss.py의 DEFAULT_BREAKER_INTERRUPT_KA)면 True. 차단기가 정전 구간이면 None
+    # 출구 차단기 위치 고장전류(3상 단락·1선 지락·2선 지락 중 큰 값) ≤ 정격 차단전류(dss.py의 DEFAULT_BREAKER_INTERRUPT_KA)면 True. 차단기가 정전 구간이면 None
     breaker_interruptible: bool | None = None
 
 

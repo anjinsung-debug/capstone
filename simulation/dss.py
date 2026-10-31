@@ -3,7 +3,7 @@
 Neo4j에서 읽은 SubstationGraph를 OpenDSS가 이해하는 명령어 목록으로 바꾼다.
 변환만 하고 실행은 simulate.py가 맡으므로, OpenDSS 없이도 생성된 스크립트를 확인할 수 있다.
 
-해석 범위 (cim/models.py와 같음): 22.9kV, 3상 평형, 방사형, 한 시점, 3상 단락만. 모든 요소는 phases=3.
+해석 범위 (cim/models.py와 같음): 22.9kV, 3상 평형, 방사형, 한 시점, 고장은 3상 단락·1선 지락·2선 지락. 모든 요소는 phases=3.
 
 변환 대응:
     bus·breaker·switch 노드 → OpenDSS 버스 (차단기는 투입 상태로 보고, 피더별 송출 전력 측정 위치로 씀)
@@ -15,7 +15,8 @@ Neo4j에서 읽은 SubstationGraph를 OpenDSS가 이해하는 명령어 목록�
     pv·wind 노드     → New Generator, bus_id의 버스에 연결 (kW=p_kw, kvar=q_kvar, 한 시점 고정 출력)
                        인버터 전원으로 보고 Xdp=1 (고장 해석에 쓰는 과도 리액턴스. 고장 전류 기여 ≈ 정격의 1.2배, 기본값 0.27은 동기발전기 기준)
     switch 노드 is_open=True → 이 노드에 닿은 Line을 enabled=no로 끊음 (끊긴 쪽 노드는 전압 0)
-    Line kind=line   → New Line (R1=r_ohm_per_km, X1=x_ohm_per_km, length=length_km, units=km, 정전용량 0)
+    Line kind=line   → New Line (R1=r_ohm_per_km, X1=x_ohm_per_km, R0=r0_ohm_per_km, X0=x0_ohm_per_km,
+                       length=length_km, units=km, 정전용량 0). 영상분이 없으면 정상분 × DEFAULT_ZERO_SEQ_RATIO
     Line kind=switch → New Line switch=yes (차단기·개폐기 연결)
     모든 Line        → normamps=rated_current_a (값이 없으면 DEFAULT_RATED_CURRENT_A)
 
@@ -47,6 +48,8 @@ DEFAULT_RATED_CURRENT_A = 400.0  # 선로·개폐기 허용전류. 22.9kV 간선
 # 변전소 출구 차단기 정격 차단전류. 22.9kV(정격 25.8kV) 진공·가스 차단기에 흔히 쓰는 값 (세부 기준은 한전 ES 150, 원문 미확인).
 # 10/26 회의: 역조류는 선로 용량 안이고 차단기가 끊을 수 있으면 정상. 실제 정격을 받으면 바꾼다
 DEFAULT_BREAKER_INTERRUPT_KA = 25.0
+# 선로 영상분 임피던스 = 정상분 × 이 값 (r0·x0가 없을 때). 한전 원본 선로는 모두 정확히 3배라 같은 값을 씀
+DEFAULT_ZERO_SEQ_RATIO = 3.0
 
 CIRCUIT_NAME = "substation"
 STIFF_MVA = 1e6  # 조류 계산용 전원 단락용량. 사실상 무한대라 변전소 모선 전압이 source_voltage_pu로 유지됨
@@ -65,6 +68,13 @@ def line_names(graph: SubstationGraph) -> dict[str, str]:
 
 def rated_current(line: Line) -> float:
     return line.rated_current_a if line.rated_current_a is not None else DEFAULT_RATED_CURRENT_A
+
+
+def zero_sequence(line: Line) -> tuple[float, float]:
+    """선로 영상분 (R0, X0) Ω/km. 없으면 정상분 × DEFAULT_ZERO_SEQ_RATIO"""
+    r0 = line.r0_ohm_per_km if line.r0_ohm_per_km is not None else line.r_ohm_per_km * DEFAULT_ZERO_SEQ_RATIO
+    x0 = line.x0_ohm_per_km if line.x0_ohm_per_km is not None else line.x_ohm_per_km * DEFAULT_ZERO_SEQ_RATIO
+    return r0, x0
 
 
 def open_line_ids(graph: SubstationGraph) -> set[str]:
@@ -148,7 +158,8 @@ def to_dss_script(graph: SubstationGraph) -> list[str]:
         if line.kind == "switch":
             cmd += " switch=yes"
         else:
-            cmd += (f" R1={line.r_ohm_per_km} X1={line.x_ohm_per_km} C1=0 C0=0"
+            r0, x0 = zero_sequence(line)
+            cmd += (f" R1={line.r_ohm_per_km} X1={line.x_ohm_per_km} R0={r0} X0={x0} C1=0 C0=0"
                     f" length={line.length_km} units=km")
         cmd += f" normamps={rated_current(line)}"
         if line.id in disabled:
@@ -169,8 +180,13 @@ def to_dss_script(graph: SubstationGraph) -> list[str]:
 
 
 def fault_study_script(graph: SubstationGraph) -> list[str]:
-    """조류 계산 뒤 전원에 단락용량·X/R을 넣고 3상 단락 고장 해석을 실행하는 명령어 (값이 없으면 기본값)"""
+    """조류 계산 뒤 전원에 단락용량·X/R을 넣고 고장 해석(3상 단락·지락)을 실행하는 명령어 (값이 없으면 기본값)
+
+    부하는 끈다: 켜 두면 고장점 임피던스(Zsc)에 부하가 병렬로 들어가 고장전류가 4~9% 크게 나온다
+    (OpenDSS에 Fault를 직접 넣어 푼 값·이론값과 비교해 확인). 고장전류 계산에서 부하를 빼는 것은 IEC 60909와 같다.
+    분산전원은 Xdp로 고장전류에 기여하므로 그대로 둔다"""
     sub = graph.substation
     mva = sub.short_circuit_mva if sub.short_circuit_mva is not None else DEFAULT_SHORT_CIRCUIT_MVA
     x_r = sub.x_r_ratio if sub.x_r_ratio is not None else DEFAULT_X_R_RATIO
-    return [f"Edit Vsource.source MVAsc3={mva} MVAsc1={mva} X1R1={x_r} X0R0={x_r}", "Solve mode=faultstudy"]
+    loads_off = ["Batchedit Load..* enabled=no"] if any(n.type == "load" for n in graph.nodes) else []
+    return loads_off + [f"Edit Vsource.source MVAsc3={mva} MVAsc1={mva} X1R1={x_r} X0R0={x_r}", "Solve mode=faultstudy"]

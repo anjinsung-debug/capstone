@@ -266,7 +266,7 @@ def to_substation_graphs(objs: dict[str, CimObject]) -> list[SubstationGraph]:
 # ───────────────────────────── 3. Neo4j 적재 ─────────────────────────────
 NODE_PROPS = ("id", "substation_id", "feeder_id", "name", "type", "p_kw", "q_kvar", "is_open")
 LINE_PROPS = ("id", "substation_id", "feeder_id", "name", "kind",
-              "length_km", "r_ohm_per_km", "x_ohm_per_km", "rated_current_a")
+              "length_km", "r_ohm_per_km", "x_ohm_per_km", "r0_ohm_per_km", "x0_ohm_per_km", "rated_current_a")
 
 
 def ensure_schema(session) -> None:

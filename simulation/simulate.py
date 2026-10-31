@@ -4,17 +4,18 @@
 OpenDSS 스크립트 변환은 simulation/dss.py의 to_dss_script가 맡는다.
 
 계산 순서: 완성·방사형 검사, 실제 조류 방향(dss.py의 trace) → 조류 계산(Solve) → 전압·선로 조류·손실·피더 송출 전력 읽기
-          → 고장 해석(dss.py의 fault_study_script) → 각 지점 3상 단락 전류 읽기
+          → 고장 해석(dss.py의 fault_study_script) → 각 지점 3상 단락·1선 지락·2선 지락 전류 읽기
 단락용량·X/R·허용전류가 데이터에 없으면 dss.py의 DEFAULT_* 가정값으로 계산한다.
 3상 평형이므로 상별 값 중 1상 값만 쓴다.
 미완성 계통, 루프, OpenDSS 명령 오류, 수렴 실패는 SimulationError로 알린다 (백엔드가 422로 응답).
 """
 
+import cmath
 import threading
 
 import opendssdirect as dss
 
-from cim.models import SubstationGraph
+from cim.models import BASE_KV, SubstationGraph
 from simulation.dss import (
     DEFAULT_BREAKER_INTERRUPT_KA,
     DEFAULT_SHORT_CIRCUIT_MVA,
@@ -40,11 +41,26 @@ def _bus_value(bus: str, read) -> float:
     return values[0] if len(values) else 0.0
 
 
-def _node_result(node_id: str, energized: bool, bus: str, voltages: dict, fault_ka: dict) -> NodeResult:
+def _ground_faults() -> tuple[float, float]:
+    """활성 버스의 (1선 지락, 2선 지락) 고장전류 kA. 대칭분법, 고장 저항 0, 역상분 = 정상분 (Z2 = Z1)
+    Zsc1·Zsc0: 고장점에서 본 정상분·영상분 임피던스 (Ω). 2선 지락은 고장 난 두 상 중 큰 상전류"""
+    z1, z0 = complex(*dss.Bus.Zsc1()), complex(*dss.Bus.Zsc0())
+    e = BASE_KV / 3**0.5  # 상전압 (kV). Ω로 나누면 kA
+    slg = 3 * e / abs(2 * z1 + z0)
+    i1 = e / (z1 + z1 * z0 / (z1 + z0))
+    i2, i0 = -i1 * z0 / (z1 + z0), -i1 * z1 / (z1 + z0)
+    a = cmath.exp(2j * cmath.pi / 3)
+    dlg = max(abs(i0 + a * a * i1 + a * i2), abs(i0 + a * i1 + a * a * i2))
+    return slg, dlg
+
+
+def _node_result(node_id: str, energized: bool, bus: str, voltages: dict, fault_ka: dict, ground_ka: dict) -> NodeResult:
     """정전 구간(전원에서 닿지 않는 노드)은 OpenDSS 값과 상관없이 전압 0, 고장전류 None"""
     if not energized:
         return NodeResult(node_id=node_id, energized=False, voltage_pu=0.0)
-    return NodeResult(node_id=node_id, voltage_pu=voltages[bus], fault_current_ka=fault_ka[bus])
+    slg, dlg = ground_ka[bus] or (None, None)
+    return NodeResult(node_id=node_id, voltage_pu=voltages[bus], fault_current_ka=fault_ka[bus],
+                      ground_fault_current_ka=slg, double_ground_fault_current_ka=dlg)
 
 
 def _run(commands: list[str]) -> None:
@@ -94,13 +110,16 @@ def simulate(graph: SubstationGraph) -> SimulationResult:
         # Bus.Isc: 모든 상을 묶은 단락(3상 단락) 전류 [실수, 허수, ...] (A). 정전 구간 버스는 None
         fault_ka = {bus: abs(complex(*dss.Bus.Isc()[:2])) / 1000 if dss.Circuit.SetActiveBus(bus) >= 0 else None
                     for bus in voltages}
+        ground_ka = {bus: _ground_faults() if dss.Circuit.SetActiveBus(bus) >= 0 else None for bus in voltages}
 
     # 피더 송출 전력 = 출구 차단기에서 아래쪽(from=차단기)으로 나가는 선로의 조류 합
     breakers = {n.id: n.feeder_id for n in graph.nodes if n.type == "breaker"}
     feeders = []
     for f in graph.feeders:
         out = [line_p[l.id] for l in graph.lines if breakers.get(l.from_node_id) == f.id]
-        ka = next((fault_ka[buses[b]] for b, fid in breakers.items() if fid == f.id), None)
+        # 차단기가 끊어야 하는 전류 = 3상 단락·1선 지락·2선 지락 중 큰 값
+        ka = next((max(fault_ka[buses[b]], *ground_ka[buses[b]]) for b, fid in breakers.items()
+                   if fid == f.id and fault_ka[buses[b]] is not None), None)
         feeders.append(FeederResult(feeder_id=f.id, p_kw=sum(p for p, _ in out), q_kvar=sum(q for _, q in out),
                                     breaker_interruptible=None if ka is None else ka <= DEFAULT_BREAKER_INTERRUPT_KA))
 
@@ -109,7 +128,7 @@ def simulate(graph: SubstationGraph) -> SimulationResult:
         converged=converged,
         loss_kw=loss_kw,
         feeders=feeders,
-        nodes=[_node_result(n.id, (n.bus_id or n.id) in traced.distance_km, buses[n.id], voltages, fault_ka)
+        nodes=[_node_result(n.id, (n.bus_id or n.id) in traced.distance_km, buses[n.id], voltages, fault_ka, ground_ka)
                for n in graph.nodes],
         lines=line_results,
     )
@@ -133,6 +152,25 @@ if __name__ == "__main__":
     theory_ka = DEFAULT_SHORT_CIRCUIT_MVA / (3**0.5 * 22.9)  # 전원만의 3상 단락 전류. 분산전원 기여만큼 조금 더 커야 함
     assert theory_ka < at_source.fault_current_ka < theory_ka * 1.15
     assert r.feeders[0].breaker_interruptible is True  # 약 7.6kA < 25kA
+
+    # 1선 지락: 전원은 MVAsc1 = MVAsc3이라 모선에서는 3상 단락과 거의 같고, 선로 영상분(정상분 × 3) 때문에 말단으로 갈수록 더 작음
+    assert all(x.r0_ohm_per_km is not None for x in g.lines if x.kind == "line")  # 원본 r0·x0 적재
+    assert abs(at_source.ground_fault_current_ka / at_source.fault_current_ka - 1) < 0.05
+    assert all(x.ground_fault_current_ka < x.fault_current_ka for x in r.nodes if x.fault_current_ka < at_source.fault_current_ka * 0.9)  # 모선에서 떨어진 지점
+    # 2선 지락: Z0 = Z1(모선)이면 3상 단락과 같고, Z0가 커질수록 선간 단락(3상의 √3/2배) 쪽으로 줄어듦
+    assert abs(at_source.double_ground_fault_current_ka / at_source.fault_current_ka - 1) < 0.05
+    assert all(0.85 * x.fault_current_ka < x.double_ground_fault_current_ka < 1.05 * x.fault_current_ka for x in r.nodes)
+    # 분산전원을 빼면 모선 고장전류 3종 모두 이론값(전원만)과 같아야 함. 부하가 고장 해석에 섞이면 4% 정도 커짐
+    no_der = g.model_copy(deep=True)
+    no_der.nodes = [n for n in no_der.nodes if n.type not in ("pv", "wind")]
+    bare = next(x for x in simulate(no_der).nodes if x.node_id == source.id)
+    for ka in (bare.fault_current_ka, bare.ground_fault_current_ka, bare.double_ground_fault_current_ka):
+        assert abs(ka / theory_ka - 1) < 0.005, (ka, theory_ka)
+    # r0·x0가 없으면 정상분 × 3 가정값. 원본도 정확히 3배라 결과가 같아야 함
+    no_zero = g.model_copy(deep=True)
+    for line in no_zero.lines:
+        line.r0_ohm_per_km = line.x0_ohm_per_km = None
+    assert [round(x.ground_fault_current_ka, 6) for x in simulate(no_zero).nodes] == [round(x.ground_fault_current_ka, 6) for x in r.nodes]
 
     # 단락용량이 커서 차단기 위치 고장전류가 정격 차단전류를 넘으면 못 끊음
     strong = g.model_copy(deep=True)
@@ -194,4 +232,6 @@ if __name__ == "__main__":
     assert not r_opened[cut].energized and r_opened[cut].voltage_pu == 0 and r_opened[cut].fault_current_ka is None
     assert r_opened[branch.id].energized and r_opened[branch.id].voltage_pu > 0.9
 
-    print(f"OK: 수렴, 송출 {r.feeders[0].p_kw:.0f} kW, 손실 {r.loss_kw:.1f} kW, 모선 고장전류 {at_source.fault_current_ka:.2f} kA")
+    print(f"OK: 수렴, 송출 {r.feeders[0].p_kw:.0f} kW, 손실 {r.loss_kw:.1f} kW, "
+          f"모선 고장전류 3상 {at_source.fault_current_ka:.2f} kA · 1선 지락 {at_source.ground_fault_current_ka:.2f} kA"
+          f" · 2선 지락 {at_source.double_ground_fault_current_ka:.2f} kA")

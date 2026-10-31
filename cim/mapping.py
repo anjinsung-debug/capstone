@@ -124,7 +124,10 @@ CLASS_MAP: dict[str, ClassMap] = {
             FieldMap("Conductor.length", "length_km"),
             FieldMap("ACLineSegment.r", "r_ohm_per_km", per_km),
             FieldMap("ACLineSegment.x", "x_ohm_per_km", per_km),
-            # r0·x0(영상분)은 3상 단락만 다루므로 사용 안 함. 지락 해석을 넣으면 Line에 필드 추가
+            # 영상분은 1선 지락 고장 계산에 씀. 없으면 시뮬레이션이 정상분 × 3 가정값 사용
+            # 구현 참고 (한승우 확인 필요): 1선 지락 계산을 위해 안진성이 추가
+            FieldMap("ACLineSegment.r0", "r0_ohm_per_km", per_km, required=False),
+            FieldMap("ACLineSegment.x0", "x0_ohm_per_km", per_km, required=False),
         ),
     ),
     "EnergyConsumer": ClassMap(

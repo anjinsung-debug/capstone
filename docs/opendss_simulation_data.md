@@ -6,7 +6,7 @@
 
 ## 1. 계산 구조
 
-계통 입력·연결 검사 → OpenDSS 모델 생성 → `Solve` → 전압·선로 전류·전력 읽기 → 전압/과부하/역조류 판정 → 전원 고장 파라미터 변경 → `Solve mode=faultstudy` → 3상 단락전류 읽기.
+계통 입력·연결 검사 → OpenDSS 모델 생성 → `Solve` → 전압·선로 전류·전력 읽기 → 전압/과부하/역조류 판정 → 부하 끄기·전원 고장 파라미터 변경 → `Solve mode=faultstudy` → 3상 단락·1선 지락·2선 지락 전류 읽기.
 
 앞의 세 항목은 같은 조류 계산 결과를 사용한다. 고장전류는 별도의 고장 해석으로 구한다. 과부하 비율과 역조류 여부는 OpenDSS 결과를 읽은 뒤 Python에서 계산한다.
 
@@ -32,8 +32,9 @@
 | 선로 길이 `length_km` | 일반 선로 `length`, `units=km` | 원본 숫자를 km로 해석하는 가정. 단위 확인 필요 | 전체: 구간 임피던스 구성 |
 | 정상분 저항 `r_ohm_per_km` | 일반 선로 `R1` | 원본 구간 `ACLineSegment.r`(Ω) ÷ 길이(km) | 전체: 저항 성분 |
 | 정상분 리액턴스 `x_ohm_per_km` | 일반 선로 `X1` | 원본 구간 `ACLineSegment.x`(Ω) ÷ 길이(km) | 전체: 리액턴스 성분 |
-| 부하 `p_kw` | `Load.kW` | 원본 `EnergyConsumer.p` ÷ 1,000. 8개 합계 12,100kW | 조류 3종의 소비전력 입력. 고장 해석에서도 부하 모델 유지 |
-| 부하 `q_kvar` | `Load.kvar` | 원본 `EnergyConsumer.q` ÷ 1,000. 현재 8개 모두 있음 | 조류 3종의 무효전력 입력. 고장 해석에서도 부하 모델 유지 |
+| 영상분 저항·리액턴스 `r0_ohm_per_km`, `x0_ohm_per_km` | 일반 선로 `R0`, `X0` | 원본 `ACLineSegment.r0`·`x0`(Ω) ÷ 길이(km). 없으면 정상분 × 3 (`DEFAULT_ZERO_SEQ_RATIO`, 원본도 모두 3배) | 1선 지락 전류 |
+| 부하 `p_kw` | `Load.kW` | 원본 `EnergyConsumer.p` ÷ 1,000. 8개 합계 12,100kW | 조류 3종의 소비전력 입력. 고장 해석에서는 끔 (IEC 60909와 같음, 켜 두면 고장전류가 4~9% 크게 나옴) |
+| 부하 `q_kvar` | `Load.kvar` | 원본 `EnergyConsumer.q` ÷ 1,000. 현재 8개 모두 있음 | 조류 3종의 무효전력 입력. 고장 해석에서는 끔 (IEC 60909와 같음, 켜 두면 고장전류가 4~9% 크게 나옴) |
 | 태양광 `p_kw` | `Generator.kW` | 원본 `nominalP` ÷ 1,000을 실제 출력으로 가정. PV1~4: 1,000/2,000/1,500/500kW | 조류 3종의 발전량. 고장 해석의 발전기 모델 구성에도 사용 |
 | 태양광 `q_kvar` | `Generator.kvar` | 원본 없음 → 0kvar, 역률 1 가정 | 조류 3종의 발전원 운전 조건 |
 | 일반 선로 허용전류 `rated_current_a` | `Line.normamps`; Python의 부하율 분모 | 원본 없음 → 400A | 과부하 판정 기준. 전류를 400A로 제한하는 값은 아님 |
@@ -43,7 +44,7 @@
 | 전원 단락용량 `short_circuit_mva` | 고장 해석 전 `Vsource.MVAsc3` 및 `MVAsc1` | 원본 없음 → 300MVA | 고장전류: 전원 임피던스 구성 |
 | 전원 X/R비 `x_r_ratio` | 고장 해석 전 `X1R1` 및 `X0R0` | 원본 없음 → 10 | 고장전류: 전원 저항·리액턴스 비율 |
 
-P·Q는 3상 합계다. 누락된 Q는 일반적으로 0으로 처리한다. 단락용량·X/R비·허용전류는 별도 입력값이 있으면 기본 가정값보다 우선한다. `MVAsc1`, `X0R0`에도 값을 지정하지만, 현재 반환하는 고장 결과는 3상 단락전류뿐이다.
+P·Q는 3상 합계다. 누락된 Q는 일반적으로 0으로 처리한다. 단락용량·X/R비·허용전류는 별도 입력값이 있으면 기본 가정값보다 우선한다. `MVAsc1`, `X0R0`에도 값을 지정하지만, 1선 지락 전류는 전원 `MVAsc1`·`X0R0`과 선로 `R0`·`X0`로 정해진다.
 
 ## 3. 모델 설정과 판정 기준
 
@@ -61,7 +62,7 @@ P·Q는 3상 합계다. 누락된 Q는 일반적으로 0으로 처리한다. 단
 | 전압 판정 | `VOLTAGE_MIN_PU=0.95`, `VOLTAGE_MAX_PU=1.05` | 전압 영향: 범위 밖이면 이상 표시. 정전은 별도 처리 |
 | 과부하 판정 | `OVERLOAD_PCT=100` | 부하율이 100%를 초과하면 과부하 |
 | 역조류 판정 | 실제 전원→말단 방향과 P의 방향 비교 | 저장 방향이 정방향이면 P<0, 반대 방향이면 P>0 |
-| 고장 종류 | `Solve mode=faultstudy` 후 `Bus.Isc()` 조회 | 3상 단락전류 크기 반환. 피더 출구 차단기 위치 값을 정격 차단전류 25kA(`DEFAULT_BREAKER_INTERRUPT_KA`, 가정값)와 비교해 `FeederResult.breaker_interruptible` |
+| 고장 종류 | `Solve mode=faultstudy` 후 `Bus.Isc()`, `Bus.Zsc1()`·`Zsc0()` 조회 | 3상 단락·1선 지락·2선 지락 전류 반환. 피더 출구 차단기 위치의 셋 중 큰 값을 정격 차단전류 25kA(`DEFAULT_BREAKER_INTERRUPT_KA`, 가정값)와 비교해 `FeederResult.breaker_interruptible` |
 
 ## 4. OpenDSS 결과와 최종 결과
 
@@ -71,16 +72,17 @@ P·Q는 3상 합계다. 누락된 Q는 일반적으로 0으로 처리한다. 단
 | 선로 과부하 | `CktElement.CurrentsMagAng()`의 첫 상 전류 크기 | 전류 ÷ 허용전류 × 100; 100% 초과 판정 | `loading_pct` / % |
 | 역조류 | `CktElement.Powers()`의 첫 단자 3상 P·Q | 3상 P 합산 후 실제 전원 방향으로 부호 해석 | `p_kw`, `q_kvar`, `reverse_flow` |
 | 단락 고장전류 | `Bus.Isc()`의 첫 상 복소전류 | 복소전류 크기 ÷ 1,000 | `fault_current_ka` / kA, 대칭 실효값 |
+| 1선 지락 전류 | `Bus.Zsc1()`, `Bus.Zsc0()` (Ω) | 3 × 상전압 ÷ \|2·Z1 + Z0\| (고장 저항 0) | `ground_fault_current_ka` / kA, 대칭 실효값 |
+| 2선 지락 전류 | `Bus.Zsc1()`, `Bus.Zsc0()` (Ω) | 대칭분법 (Z2 = Z1, 고장 저항 0), 고장 난 두 상 중 큰 상전류 | `double_ground_fault_current_ka` / kA, 대칭 실효값 |
 | 공통 상태 | `Solution.Converged()` 및 연결 탐색 | 수렴 실패 시 중단. 전원과 단절되면 정전 처리 | `converged`, `energized` |
 | 부가 결과 | `Circuit.Losses()` 및 선로 P·Q | 손실 W→kW, 출구 차단기에서 나가는 선로 전력 합산 | `loss_kw`, 피더별 `p_kw`, `q_kvar` |
 
-정전 노드는 `energized=False`, `voltage_pu=0`, `fault_current_ka=None`으로 반환한다. 입력 설비의 `p_kw`와 결과 선로의 `p_kw`는 이름이 같지만 각각 소비·발전량과 계산된 선로 전력을 뜻한다.
+정전 노드는 `energized=False`, `voltage_pu=0`, `fault_current_ka=None`, `ground_fault_current_ka=None`, `double_ground_fault_current_ka=None`으로 반환한다. 입력 설비의 `p_kw`와 결과 선로의 `p_kw`는 이름이 같지만 각각 소비·발전량과 계산된 선로 전력을 뜻한다.
 
 ## 5. 원본에 있으나 미사용인 값과 화면 정보
 
 | 항목 | 현재 처리 |
 |---|---|
-| 선로 `r0`, `x0` | 원본에는 있으나 현재 변환에서 전달하지 않음. 지락 해석 확장 시 검토 필요 |
 | 태양광 `maxOperatingP`, `minOperatingP` | 원본에는 있으나 현재 출력 결정에 사용하지 않음 |
 | 부하 `pfixed` | 원본 p와 같은 값이어서 미사용 |
 | 단자 순번 | 연결 정리에는 읽지만 전원 방향을 보장하는 값으로 사용하지 않음 |

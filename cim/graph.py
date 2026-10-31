@@ -5,7 +5,7 @@ Neo4j 구조 (속성은 cim/models.py와 같음):
     (:Substation)-[:HAS_FEEDER]->(:Feeder {id, substation_id, name})
     (:Node {id, substation_id, feeder_id, name, type, p_kw, q_kvar, is_open})
     (:Node)-[:CONNECTED_TO]->(:Node {type: 'bus'})   source·load·pv·wind가 붙은 접속점 (Node.bus_id, CIM Terminal)
-    (:Node)-[:LINE {id, substation_id, feeder_id, name, kind, length_km, r_ohm_per_km, x_ohm_per_km, rated_current_a}]->(:Node)
+    (:Node)-[:LINE {id, substation_id, feeder_id, name, kind, length_km, r_ohm_per_km, x_ohm_per_km, r0_ohm_per_km, x0_ohm_per_km, rated_current_a}]->(:Node)
     (:Node)-[:HAS_DIAGRAM]->(:DiagramObject {x, y})   좌표 메타데이터 노드 (설비 속성과 분리, 제안서)
 
 API의 Node.x, y는 조회할 때 DiagramObject에서 읽고, 저장할 때 DiagramObject에 쓴다.
@@ -94,7 +94,7 @@ class InvalidSnapshot(ValueError):
 
 NODE_PROPS = ("id", "substation_id", "feeder_id", "name", "type", "p_kw", "q_kvar", "is_open")
 LINE_PROPS = ("id", "substation_id", "feeder_id", "name", "kind",
-              "length_km", "r_ohm_per_km", "x_ohm_per_km", "rated_current_a")
+              "length_km", "r_ohm_per_km", "x_ohm_per_km", "r0_ohm_per_km", "x0_ohm_per_km", "rated_current_a")
 
 
 def _prepare_snapshot(substation: Substation, snapshot: SubstationSnapshot) -> SubstationGraph:

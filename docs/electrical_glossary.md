@@ -69,14 +69,14 @@
 | 전력손실 | loss_kw | 계통 내부에서 소비되어 부하에 전달되지 못한 전력 |
 | 정전·비가압 | energized=False | 전원에서 연결이 끊긴 구간. 코드상 전압 0, 고장전류 None |
 | 단락 | Short circuit | 서로 다른 전위의 도체가 낮은 임피던스로 연결되는 고장 |
-| 3상 단락 | Three-phase short circuit | 세 상이 단락되는 고장. 현재 반환하는 고장 해석 대상 |
-| 고장전류 | fault_current_ka | 고장 시 흐르는 전류. 현재 3상 단락 대칭 실효값 |
+| 3상 단락 | Three-phase short circuit | 세 상이 단락되는 고장. fault_current_ka |
+| 고장전류 | fault_current_ka | 고장 시 흐르는 전류. 3상 단락 대칭 실효값 (1선 지락은 ground_fault_current_ka) |
 | 단락용량 | Short-circuit level, MVA | 단락전류 수준을 전력 단위로 나타낸 값. 전원 기본 가정 300MVA |
 | 차단용량 | Breaking capacity | 차단기가 차단할 수 있는 고장 수준. 정격전류 600A와 다르며 현재 비교 기능 없음 |
-| 지락 | Ground fault | 전력선이 대지와 연결되는 고장. 현재 해석 범위 밖 |
+| 지락 | Ground fault | 전력선이 대지와 연결되는 고장. 1선 지락(ground_fault_current_ka)·2선 지락(double_ground_fault_current_ka) 계산 |
 | 3상 평형 | Balanced three-phase | 세 상 크기가 같고 위상이 120°씩 차이 나는 상태 |
 | 정상분 | Positive sequence | 정상 상순서의 평형 3상 성분. R1·X1 사용 |
-| 영상분 | Zero sequence | 세 상이 같은 위상을 갖는 성분. 원본 r0·x0는 현재 미사용 |
+| 영상분 | Zero sequence | 세 상이 같은 위상을 갖는 성분. 선로 r0·x0로 1선 지락 계산에 씀 |
 | 방사형 계통 | Radial network | 전원에서 각 지점으로 연결이 나뭇가지처럼 뻗은 계통 |
 | 루프 | Loop | 연결에 폐회로가 있는 구조. 전원 연결 구간에서 발견 시 계산 중단 |
 | 무한 모선 | Infinite bus | 전압·주파수가 일정하다고 보는 이상적 전원. 조류 계산 전원을 이에 가깝게 설정 |
