@@ -119,7 +119,8 @@ def simulate(g: SubstationGraph) -> SimulationResult:
             rated = line.rated_current_a or DEFAULT_RATED_CURRENT_A
             forward = line.from_node_id == nid  # 저장된 방향이 실제 전원 쪽 → 반대쪽인지
             line_res[line.id] = LineResult(line_id=line.id, p_kw=p if forward else -p, q_kvar=q if forward else -q,
-                                           loading_pct=amps / rated * 100, reverse_flow=p < 0)
+                                           loading_pct=amps / rated * 100, reverse_flow=p < -1,
+                                           reverse_flow_ok=(amps / rated * 100 <= 100) if p < -1 else None)  # 차단기는 모의에서 항상 차단 가능으로 봄
     lines = [line_res.get(line.id) or LineResult(line_id=line.id, p_kw=0, q_kvar=0, loading_pct=0) for line in g.lines]
 
     def node_result(n: Node) -> NodeResult:
@@ -133,7 +134,8 @@ def simulate(g: SubstationGraph) -> SimulationResult:
     feeders = []
     for f in g.feeders:
         out = [r for r in lines if breakers.get(next(l for l in g.lines if l.id == r.line_id).from_node_id) == f.id]
-        feeders.append(FeederResult(feeder_id=f.id, p_kw=sum(r.p_kw for r in out), q_kvar=sum(r.q_kvar for r in out)))
+        feeders.append(FeederResult(feeder_id=f.id, p_kw=sum(r.p_kw for r in out), q_kvar=sum(r.q_kvar for r in out),
+                                    breaker_interruptible=True))
     return SimulationResult(substation_id=g.substation.id, converged=True, loss_kw=loss, feeders=feeders,
                             nodes=[node_result(n) for n in g.nodes], lines=lines)
 
@@ -144,7 +146,7 @@ def mock_report(g: SubstationGraph, r: SimulationResult) -> dict:
     lnames = {line.id: line.name for line in g.lines}
     low = [x for x in r.nodes if x.energized and x.voltage_pu < 0.95]
     off = [x for x in r.nodes if not x.energized]
-    rev = [x for x in r.lines if x.reverse_flow]
+    rev = [x for x in r.lines if x.reverse_flow and x.reverse_flow_ok is not True]  # 정상 역조류는 문제가 아님 (10/26 회의)
     over = [x for x in r.lines if (x.loading_pct or 0) > 100]
     problems = len(low) + len(off) + len(rev) + len(over)
     grade = "양호" if problems == 0 else "주의" if not (low or over) else "개선 필요"

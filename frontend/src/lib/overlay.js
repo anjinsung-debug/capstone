@@ -195,22 +195,25 @@ export function healthCheck(graph, result) {
   }
 
   // 3) 역조류: 거꾸로 흐르는 전력이 가장 큰 선로
-  // ponytail: 크기와 상관없이 역조류가 있으면 '주의'다 (제안서에 수치 없음). 기준이 필요함: 아주 작은 값 무시,
-  //   피더 송출 전력 < 0(변전소 뱅크 역송)은 '위험'. 정해지면 simulation/simulate.py의 reverse_flow, ai_report/report.py의 check_findings와 같은 규칙으로 고친다
+  // 10/26 회의 기준: 선로 용량 이내이고 출구 차단기가 끊을 수 있으면 정상(reverse_flow_ok = true, simulation/simulate.py가 판정).
+  //   정상은 표시만 하고(단선도 역조류 모드, 이 줄의 값) 등급은 '정상'. 기준 초과(false)나 판정 값이 없는 예전 결과는 '주의'.
+  //   ai_report/report.py의 check_findings와 같은 규칙이다. 바꾸면 두 곳을 함께 고친다
+  // ponytail: 피더 송출 전력 < 0(변전소 뱅크 역송)은 따로 판정하지 않는다 (회의 기준에 없음)
   const rev = result.lines.filter((r) => r.reverse_flow && lineById[r.line_id])
+  const revBad = rev.filter((r) => r.reverse_flow_ok !== true)
   const rWorst = rev.reduce((a, r) => (!a || Math.abs(r.p_kw) > Math.abs(a.p_kw) ? r : a), null)
   const reverse = {
     key: 'reverse',
     label: '역조류',
-    standard: '없음 (제한 내)',
+    standard: '선로 용량 이내 + 차단기 차단 가능이면 정상',
     worst: rWorst ? Math.abs(rWorst.p_kw) / 1000 : 0,
-    worstText: rWorst ? fmtMw(rWorst.p_kw) : '없음',
+    worstText: rWorst ? `${fmtMw(rWorst.p_kw)}${revBad.length ? '' : ` (정상 ${rev.length}개)`}` : '없음',
     whereId: rWorst?.line_id ?? null,
     whereName: rWorst ? lineName(lineById[rWorst.line_id]) : '',
-    problem: rev.length ? '역조류' : '',
-    count: rev.length,
-    items: rev.map((r) => ({ id: r.line_id, name: lineName(lineById[r.line_id]), value: fmtMw(r.p_kw) })),
-    level: rev.length ? 'warn' : 'ok',
+    problem: revBad.length ? '기준 초과 역조류' : '',
+    count: revBad.length,
+    items: revBad.map((r) => ({ id: r.line_id, name: lineName(lineById[r.line_id]), value: fmtMw(r.p_kw) })),
+    level: revBad.length ? 'warn' : 'ok',
   }
 
   // 4) 단락용량: 가장 큰 노드 (보통 변전소 모선)

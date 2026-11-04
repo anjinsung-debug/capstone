@@ -90,7 +90,7 @@ _INTRO = "당신은 22.9kV 배전계통 해석 결과를 설명하는 전력계�
 _RULES = f"""사용자가 계통 정보와 시뮬레이션 수치, 그리고 코드가 이미 판정한 "확정된 점검 결과"를 줍니다. 아래 규칙을 지키세요.
 1. 제공된 수치와 설비 이름만 쓰세요. 없는 값을 추측하거나 만들어 내지 마세요. 모르는 것은 "데이터에 없음"이라고 쓰세요.
 2. 건강도 등급(정상·주의·위험)은 "확정된 점검 결과"에 적힌 등급을 그대로 쓰세요. 바꾸거나 다시 판정하지 마세요.
-3. 판정 기준: 전압 정상 범위 {VOLTAGE_MIN_PU}~{VOLTAGE_MAX_PU} pu({VOLTAGE_DANGER_LOW_PU} pu 미만·{VOLTAGE_DANGER_HIGH_PU} pu 초과는 위험), 선로 부하율 {OVERLOAD_PCT:.0f}% 초과면 과부하(위험), {LOADING_WATCH_PCT}% 이상이면 부하율 높음(주의), 분산전원 때문에 전력이 반대로 흐르면 역조류, 3상 단락용량이 {FAULT_HIGH_MVA} MVA를 넘으면 단락용량 증가(차단기 정격·보호계전기 검토 대상), 전원에서 끊기면 정전입니다. 정전은 저전압이 아닙니다.
+3. 판정 기준: 전압 정상 범위 {VOLTAGE_MIN_PU}~{VOLTAGE_MAX_PU} pu({VOLTAGE_DANGER_LOW_PU} pu 미만·{VOLTAGE_DANGER_HIGH_PU} pu 초과는 위험), 선로 부하율 {OVERLOAD_PCT:.0f}% 초과면 과부하(위험), {LOADING_WATCH_PCT}% 이상이면 부하율 높음(주의), 분산전원 때문에 전력이 반대로 흐르면 역조류(선로 용량 이내이고 출구 차단기가 고장전류를 끊을 수 있으면 정상이라 문제로 다루지 말고 있다는 사실만 알림, 아니면 주의), 3상 단락용량이 {FAULT_HIGH_MVA} MVA를 넘으면 단락용량 증가(차단기 정격·보호계전기 검토 대상), 전원에서 끊기면 정전입니다. 정전은 저전압이 아닙니다.
 4. 원인은 문제가 있는 설비 이름과 수치를 인용해서, 왜 그렇게 되는지 전기적 이유(선로 길이와 임피던스에 따른 전압강하, 분산전원 출력이 부하보다 큰 구간, 전류가 허용전류를 넘음 등)를 설명하세요. 입력에 없는 연결 구조를 가정하지 마세요.
 5. 솔루션은 원인과 하나씩 대응시키고 우선순위 순서로 쓰세요. 전선 굵기 교체, 전압조정기(SVR) 설치, 부하 절체, 역조류 보호계전 점검, 차단기 정격 검토, ESS 설치, 개폐기 조작처럼 엔지니어가 실제로 할 수 있는 조치로 쓰고, 효과를 수치로 약속하지 마세요.
 6. 문제가 없으면 원인에는 "기준 안에 있음"을 근거 수치와 함께 쓰고, 솔루션에는 유지·재점검 방법만 쓰세요. 문제를 지어내지 마세요.
@@ -185,9 +185,12 @@ def check_findings(graph: SubstationGraph, result: SimulationResult) -> dict:
     outage = [names.get(r.node_id, r.node_id) for r in result.nodes if not r.energized]
     overload = [(line_names.get(r.line_id, r.line_id), r.loading_pct) for r in result.lines if r.loading_pct is not None and r.loading_pct > OVERLOAD_PCT]
     watch = [(line_names.get(r.line_id, r.line_id), r.loading_pct) for r in result.lines if r.loading_pct is not None and LOADING_WATCH_PCT <= r.loading_pct <= OVERLOAD_PCT]
-    # ponytail: 역조류는 크기와 상관없이 '주의'다 (제안서에 수치 없음). 기준이 필요함: 아주 작은 값 무시,
-    #   피더 송출 전력 < 0(변전소 뱅크 역송)은 '위험'. 정해지면 simulation/simulate.py의 reverse_flow, frontend/src/lib/overlay.js의 healthCheck와 같은 규칙으로 고친다
-    reverse = [(line_names.get(r.line_id, r.line_id), r.p_kw) for r in result.lines if r.reverse_flow]
+    # 역조류 (10/26 회의 기준): 선로 용량 이내이고 출구 차단기가 끊을 수 있으면 정상(reverse_flow_ok=True, simulation/simulate.py가 판정).
+    #   정상은 표시만 하고 등급에 넣지 않는다. 기준 초과(False)나 판정 값이 없는 예전 결과(None)는 '주의'.
+    #   frontend/src/lib/overlay.js의 healthCheck와 같은 규칙이다. 바꾸면 두 곳을 함께 고친다
+    # ponytail: 피더 송출 전력 < 0(변전소 뱅크 역송)은 따로 판정하지 않는다 (회의 기준에 없음)
+    reverse = [(line_names.get(r.line_id, r.line_id), r.p_kw) for r in result.lines if r.reverse_flow and r.reverse_flow_ok is not True]
+    reverse_ok = [(line_names.get(r.line_id, r.line_id), r.p_kw) for r in result.lines if r.reverse_flow and r.reverse_flow_ok is True]
     # 3상 단락용량(MVA) = √3 × 선간전압(kV) × 단락전류(kA). 정전 지점은 단락전류가 없으니 뺀다
     fault = [
         (names.get(r.node_id, r.node_id), math.sqrt(3) * BASE_KV * r.fault_current_ka)
@@ -201,7 +204,7 @@ def check_findings(graph: SubstationGraph, result: SimulationResult) -> dict:
     watch.sort(key=lambda x: -x[1])
     # ponytail: 항목 개수와 상관없이 하나라도 있으면 같은 등급이다. 심각도 가중치가 필요해지면 그때 점수 계산을 넣는다
     # 등급 (화면 진단표와 같은 규칙): 항목마다 판정하고 가장 나쁜 것이 전체 등급
-    #   위험: 전압 0.9 pu 미만·1.1 pu 초과, 과부하, 정전 / 주의: 전압 정상 범위 밖, 부하율 80% 이상, 역조류, 단락용량 초과
+    #   위험: 전압 0.9 pu 미만·1.1 pu 초과, 과부하, 정전 / 주의: 전압 정상 범위 밖, 부하율 80% 이상, 기준 초과 역조류, 단락용량 초과
     danger_v = any(v < VOLTAGE_DANGER_LOW_PU for _, v in low) or any(v > VOLTAGE_DANGER_HIGH_PU for _, v in high)
     if danger_v or overload or outage:
         grade = GRADES[2]
@@ -209,7 +212,7 @@ def check_findings(graph: SubstationGraph, result: SimulationResult) -> dict:
         grade = GRADES[1]
     else:
         grade = GRADES[0]
-    return {"grade": grade, "low": low, "high": high, "outage": outage, "overload": overload, "watch": watch, "reverse": reverse, "fault": fault}
+    return {"grade": grade, "low": low, "high": high, "outage": outage, "overload": overload, "watch": watch, "reverse": reverse, "reverse_ok": reverse_ok, "fault": fault}
 
 
 def _assumptions(graph: SubstationGraph) -> list[str]:
@@ -301,7 +304,9 @@ def build_prompt(graph: SubstationGraph, result: SimulationResult) -> str:
     lines.append(f"- 과전압(>{VOLTAGE_MAX_PU} pu) {len(f['high'])}곳" + (": " + ", ".join(f"{n} {v:.3f} pu" for n, v in f["high"]) if f["high"] else ""))
     lines.append(f"- 과부하(>{OVERLOAD_PCT:.0f}%) 선로 {len(f['overload'])}개" + (": " + ", ".join(f"{n} {p:.0f}%" for n, p in f["overload"]) if f["overload"] else ""))
     lines.append(f"- 부하율 높음({LOADING_WATCH_PCT}~{OVERLOAD_PCT:.0f}%) 선로 {len(f['watch'])}개" + (": " + ", ".join(f"{n} {p:.0f}%" for n, p in f["watch"]) if f["watch"] else ""))
-    lines.append(f"- 역조류 선로 {len(f['reverse'])}개" + (": " + ", ".join(f"{n} {p:.0f} kW" for n, p in f["reverse"]) if f["reverse"] else ""))
+    lines.append(f"- 기준 초과 역조류 선로 {len(f['reverse'])}개 (선로 용량 초과 또는 차단기 차단 불가)" + (": " + ", ".join(f"{n} {p:.0f} kW" for n, p in f["reverse"]) if f["reverse"] else ""))
+    lines.append(f"- 정상 역조류 선로 {len(f['reverse_ok'])}개 (선로 용량 이내·차단기 차단 가능. 문제 아님, 있다는 사실만 알리세요)"
+                 + (": " + ", ".join(f"{n} {p:.0f} kW" for n, p in f["reverse_ok"]) if f["reverse_ok"] else ""))
     shown = f["fault"][:MAX_FAULT_LISTED]
     more = f" 외 {len(f['fault']) - len(shown)}곳" if len(f["fault"]) > len(shown) else ""
     lines.append(f"- 단락용량(>{FAULT_HIGH_MVA} MVA) {len(f['fault'])}곳" + (": " + ", ".join(f"{n} {m:.0f} MVA" for n, m in shown) + more if f["fault"] else ""))
