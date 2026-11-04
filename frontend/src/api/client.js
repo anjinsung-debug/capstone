@@ -84,8 +84,8 @@ export const runHostingCapacity = (substationId, busId, targetKw, at) =>
 // 신청 용량 붙여 보기 (backend/api/simulation.py의 pv-trial): 지금 vs 접속점에 태양광 kw를 더 붙인 계통
 export const runPvTrial = (substationId, busId, kw, at) =>
   request('POST', withQuery(`/substations/${substationId}/simulations/pv-trial`, `bus_id=${encodeURIComponent(busId)}&kw=${kw}`, at))
-// AI 추천·권고 (ai_report/report.py, 쉬운 설명). 응답은 Report (보강 우선순위는 { ranking, report })
-export const createHostingReport = (body, at) => request('POST', withQuery('/reports/hosting', 'audience=plain', at), body)
-export const createDailyReport = (substationId, body) => request('POST', `/reports/daily/${substationId}?audience=plain`, body)
+// AI 추천·권고 (ai_report/report.py, 전문가용 설명: 한전 담당자용 화면). 응답은 Report (보강 우선순위는 { ranking, report })
+export const createHostingReport = (body, at) => request('POST', withQuery('/reports/hosting', 'audience=expert', at), body)
+export const createDailyReport = (substationId, body) => request('POST', `/reports/daily/${substationId}?audience=expert`, body)
 export const createReinforcementReport = (substationId, body) =>
-  request('POST', `/reports/reinforcement/${substationId}?audience=plain`, body)
+  request('POST', `/reports/reinforcement/${substationId}?audience=expert`, body)

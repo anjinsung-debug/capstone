@@ -54,7 +54,7 @@ class HostingReportRequest(BaseModel):
 
 @router.post("/reports/hosting")
 def create_hosting_report(
-    body: HostingReportRequest, audience: Literal["expert", "plain"] = "plain", date: dt.date | None = None, hour: int | None = None
+    body: HostingReportRequest, audience: Literal["expert", "plain"] = "expert", date: dt.date | None = None, hour: int | None = None
 ) -> Report:
     """태양광 연계 검토 AI 추천: 연계 가능 여부, 막는 원인, 선로 보강(필요 허용전류) 추천 (ai_report/report.py의 generate_hosting_report)"""
     g = _graph_at(body.substation_id, date, hour)
@@ -70,7 +70,7 @@ def _graph_for(substation_id: str, g: SubstationGraph | None) -> SubstationGraph
 
 
 @router.post("/reports/daily/{substation_id}")
-def create_daily_report(substation_id: str, body: DailyRequest | None = None, audience: Literal["expert", "plain"] = "plain") -> Report:
+def create_daily_report(substation_id: str, body: DailyRequest | None = None, audience: Literal["expert", "plain"] = "expert") -> Report:
     """고른 날 24시간 AI 운영 권고 (유스케이스 2 ⑥): 0~23시를 계산하고(simulation/daily.py) 시간대별 위험과 대비 조치를 쓴다.
     본문은 /simulations/daily와 같다 (date 없으면 2025-05-26, graph 없으면 DB의 지금 계통)"""
     body = body or DailyRequest()
@@ -93,7 +93,7 @@ class ReinforcementRequest(BaseModel):
 
 @router.post("/reports/reinforcement/{substation_id}")
 def create_reinforcement_report(substation_id: str, body: ReinforcementRequest,
-                                audience: Literal["expert", "plain"] = "plain") -> ReinforcementReport:
+                                audience: Literal["expert", "plain"] = "expert") -> ReinforcementReport:
     """설비 보강 우선순위 (유스케이스 3): 고른 날들의 24시간 결과로 선로 순위를 매기고(코드) 증강 순서를 권고한다(AI)"""
     dates = list(dict.fromkeys(body.dates))
     if not 1 <= len(dates) <= MAX_REINFORCE_DATES:

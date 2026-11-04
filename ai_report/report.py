@@ -520,7 +520,7 @@ _HOSTING_TASK = f"""[이번 작업: 태양광 연계 검토 추천. 이 지침�
 - 계산으로 확인하지 않은 조치(전압 조정, 출력 제한 등)는 효과를 약속하지 말고 "검토"로 쓰세요. 선로 증강은 필요 허용전류 이상이면 위반이 풀린다는 계산 결과이므로 그대로 써도 됩니다."""
 
 
-def hosting_system_prompt(audience: str = "plain") -> str:
+def hosting_system_prompt(audience: str = "expert") -> str:
     return f"{system_prompt(audience)}\n\n{_HOSTING_TASK}"
 
 
@@ -601,7 +601,7 @@ def build_hosting_prompt(graph: SubstationGraph, hosting, trial: tuple | None = 
 
 
 def generate_hosting_report(graph: SubstationGraph, hosting, trial: tuple | None = None, der: tuple | None = None,
-                            at: str = "최대 조건", audience: str = "plain", client=None) -> Report:
+                            at: str = "최대 조건", audience: str = "expert", client=None) -> Report:
     """유스케이스 1 ⑤ "AI 추천": 연계 가능량·막는 원인·필요 허용전류를 받아 연계 가능 여부와 보강 추천을 쓴다"""
     return _ask(hosting_system_prompt(audience), build_hosting_prompt(graph, hosting, trial, der, at), graph.substation.id, client)
 
@@ -697,7 +697,7 @@ def build_daily_prompt(graph: SubstationGraph, daily) -> str:
     return "\n".join(lines)
 
 
-def generate_daily_report(graph: SubstationGraph, daily, audience: str = "plain", client=None) -> Report:
+def generate_daily_report(graph: SubstationGraph, daily, audience: str = "expert", client=None) -> Report:
     """유스케이스 2 ⑥ "AI 운영 권고": 고른 날 24시간 결과(simulation/daily.py의 DailyResult)로 시간대별 위험과 대비 조치를 쓴다"""
     return _ask(f"{system_prompt(audience)}\n\n{_DAILY_TASK}", build_daily_prompt(graph, daily), graph.substation.id, client)
 
@@ -709,6 +709,7 @@ _REINFORCE_TASK = """[이번 작업: 설비 보강 우선순위. 이 지침이 �
 - 진단(요약, 2~4문장): 어떤 날들을 봤는지 → 기준(100%)을 넘는 선로가 있는지 → 예산 안에서 먼저 증강할 선로.
 - 원인(선로별 위험): 순위 위쪽 선로마다 항목 하나. 최대 부하율과 그 날·시각, 기준 초과 시간 수, 왜 그 선로에 전기가 몰리는지(변전소 가까운 간선이라 아래쪽 전기를 다 실어 나름, 태양광 역송이 몰림 등 입력으로 알 수 있는 만큼)를 쓰세요.
 - 솔루션(증강 순서 권고): 순위대로 "1순위 ○○: 허용전류를 지금 ○○ A에서 ○○ A 이상으로 증강"처럼 입력의 필요 허용전류를 그대로 인용하세요. 예산 밖 선로는 감시 대상으로 쓰세요. 마지막에 "증강 후 허용전류를 바꿔 다시 시뮬레이션해 연계 가능량이 얼마나 느는지 확인"을 권하세요.
+- 기준(100%)을 넘는 선로가 하나도 없으면 "올해 증강이 꼭 필요한 선로는 없음"이라고 쓰고, 솔루션은 "1순위 증강"이 아니라 순위 위쪽 선로를 "우선 감시 대상"(최대 부하율과 그때를 인용)으로 쓰세요. 이때 허용전류를 "유지하라"는 문장은 쓰지 마세요. 80% 이상 시간이 있는 선로는 다음 해 증강 후보로 쓰세요.
 - 코드가 매긴 순위를 바꾸지 마세요. 입력의 kW·A·% 숫자는 그대로 써도 됩니다(쉬운 설명이면 숫자 뒤에 쉬운 뜻을 붙이세요). 허용전류가 가정값이면 "가정값 기준"이라고 밝히세요."""
 
 
@@ -746,7 +747,7 @@ def build_reinforcement_prompt(graph: SubstationGraph, dailies: list, ranking: l
              "| --- | --- | --- | --- | --- | --- | --- | --- |"]
     for i, x in enumerate(ranking[:MAX_FAULT_LISTED], 1):
         now = f"{x.rated_current_a:.0f} A" if x.rated_current_a is not None else f"{DEFAULT_RATED_CURRENT_A:.0f} A (가정값)"
-        need = f"{math.ceil(x.required_rated_current_a):,} A 이상" if x.max_loading_pct > OVERLOAD_PCT else "지금도 충분"
+        need = f"{math.ceil(x.required_rated_current_a):,} A 이상" if x.max_loading_pct > OVERLOAD_PCT else "증강 불필요 (기준 안)"
         lines.append(f"| {i} | {x.name} | {x.max_loading_pct:.0f}% | {x.worst_date} {x.worst_hour}시 | {x.hours_over} | {x.hours_watch} | {now} | {need} |")
     assumptions = _assumptions(graph)
     if assumptions:
@@ -755,7 +756,7 @@ def build_reinforcement_prompt(graph: SubstationGraph, dailies: list, ranking: l
     return "\n".join(lines)
 
 
-def generate_reinforcement_report(graph: SubstationGraph, dailies: list, budget_lines: int = 2, audience: str = "plain",
+def generate_reinforcement_report(graph: SubstationGraph, dailies: list, budget_lines: int = 2, audience: str = "expert",
                                   client=None) -> ReinforcementReport:
     """유스케이스 3 ④ "AI 정리": 선로 순위(코드)와 증강 순서 권고(AI)를 함께 돌려준다"""
     ranking = rank_lines(graph, dailies)
