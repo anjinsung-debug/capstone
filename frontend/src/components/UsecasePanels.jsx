@@ -267,10 +267,10 @@ export function HostingPanel({ graph, at, onFocus }) {
           </span>
         </label>
         <button type="button" className="primary" disabled={!!busy || !busId} onClick={check}>
-          ② 연계 가능량 확인
+          연계 가능량 확인
         </button>
         <button type="button" className="mini" disabled={!!busy || !busId || !validKw} onClick={tryPv}>
-          ④ 신청 용량 붙여 보기
+          신청 용량 붙여 보기
         </button>
       </div>
 
@@ -296,7 +296,7 @@ export function HostingPanel({ graph, at, onFocus }) {
           </h4>
           {h.limited_by.length > 0 && (
             <>
-              <p className="muted small">③ 막히는 원인 (최대치를 넘기면 처음 생기는 위반, ⌖를 누르면 단선도에서 위치를 보여 줍니다)</p>
+              <p className="muted small">막히는 원인 (최대치를 넘기면 처음 생기는 위반, ⌖를 누르면 단선도에서 위치를 보여 줍니다)</p>
               <ViolationList graph={graph} items={h.limited_by} onFocus={onFocus} />
             </>
           )}
@@ -312,7 +312,7 @@ export function HostingPanel({ graph, at, onFocus }) {
       {trial && (
         <section className="uc-result">
           <h4>
-            ④ {busName(trial.data.bus_id)}에 {fmtKw(trial.data.kw)} 붙였을 때 <small className="muted">({atLabel(trial.at)})</small>
+            {busName(trial.data.bus_id)}에 {fmtKw(trial.data.kw)} 붙였을 때 <small className="muted">({atLabel(trial.at)})</small>
           </h4>
           <CompareTable before={trial.data.before} after={trial.data.after} left="지금" right="붙인 뒤" />
         </section>
@@ -334,12 +334,12 @@ export function HostingPanel({ graph, at, onFocus }) {
 
       <section className="uc-result">
         <h4>
-          ⑤ AI 추천{' '}
+          AI 추천{' '}
           <button type="button" className="primary-outline mini" disabled={!!busy || !h} onClick={recommend}>
             {report ? '다시 만들기' : 'AI 추천 만들기'}
           </button>
         </h4>
-        {!h && <p className="muted small">먼저 &ldquo;② 연계 가능량 확인&rdquo;을 누르세요. ④와 전체 연결 전후를 계산해 두면 AI가 같이 참고합니다.</p>}
+        {!h && <p className="muted small">먼저 &ldquo;연계 가능량 확인&rdquo;을 누르세요. 신청 용량 붙여 보기와 전체 연결 전후를 계산해 두면 AI가 같이 참고합니다.</p>}
         {report && <ReportCards report={report} titles={['연계 가능 여부', '막히는 원인', '보강 추천']} />}
       </section>
     </div>
