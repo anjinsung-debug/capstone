@@ -251,6 +251,10 @@ class Handler(SimpleHTTPRequestHandler):
                 except ImportError:
                     return self._send(501, {"detail": "matplotlib이 없어 그래프를 그리지 않습니다"})
                 return self._send(200, plot_result(STORE[r.substation_id], r), "image/png")
+            # 유스케이스 화면(UsecasePanels.jsx)의 분산전원 분석·AI 추천은 OpenDSS·LLM이 필요해 모의 백엔드에는 없다
+            if m == "POST" and ((len(p) == 4 and p[0] == "substations" and p[2] == "simulations" and p[3] in ("der-comparison", "hosting-capacity", "pv-trial"))
+                                or (p[:1] == ["reports"] and len(p) >= 2 and p[1] in ("hosting", "daily", "reinforcement"))):
+                return self._send(501, {"detail": "모의 백엔드에는 없는 기능입니다. 진짜 백엔드(uvicorn + Docker Neo4j)로 확인하세요"})
             if m == "POST" and p == ["reports"]:
                 r = SimulationResult.model_validate(self._body())
                 return self._send(200, mock_report(self._at(STORE[r.substation_id]), r))

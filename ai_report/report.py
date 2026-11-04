@@ -26,7 +26,7 @@ import os
 import urllib.error
 import urllib.request
 
-from ai_report.models import Report
+from ai_report.models import LineRank, ReinforcementReport, Report
 from cim.models import BASE_KV, SubstationGraph
 from simulation.dss import (
     DEFAULT_BREAKER_INTERRUPT_KA,
@@ -483,10 +483,13 @@ def generate_report(graph: SubstationGraph, result: SimulationResult, client=Non
     client: 테스트용 (anthropic.Anthropic과 같은 messages.create를 가진 객체). 없으면 환경 변수로 만든다."""
     if not result.converged:
         raise ReportError("계산이 수렴하지 않은 결과로는 리포트를 만들 수 없습니다")
-    system = system_prompt(audience)
-    prompt = build_prompt(graph, result)
+    return _ask(system_prompt(audience), build_prompt(graph, result), result.substation_id, client)
+
+
+def _ask(system: str, prompt: str, substation_id: str, client=None) -> Report:
+    """시스템 프롬프트와 입력으로 LLM을 불러 Report(진단·원인·솔루션)를 받는다. AI_PROVIDER로 Gemini·Claude를 고른다 (모든 리포트 공통)"""
     if os.environ.get("AI_PROVIDER", "anthropic").strip().lower() == "gemini":
-        return _build_report(_call_gemini(prompt, system=system), result.substation_id)
+        return _build_report(_call_gemini(prompt, system=system), substation_id)
     client = client or _make_client()
     try:
         response = client.messages.create(
@@ -502,7 +505,263 @@ def generate_report(graph: SubstationGraph, result: SimulationResult, client=Non
     # ponytail: 자동 재시도 없이 오류를 그대로 사용자에게 알린다 (SDK가 네트워크 오류는 2회 재시도함). 실패가 잦으면 오류 종류별로 나눈다
     except Exception as e:  # 네트워크·인증·한도 등 API 오류는 종류와 상관없이 같은 방식으로 알린다
         raise ReportError(f"AI 호출에 실패했습니다 ({type(e).__name__}: {e})") from e
-    return _parse(response, result.substation_id)
+    return _parse(response, substation_id)
+
+
+# ── 유스케이스 1: 신규 태양광 연계 검토 → AI 추천 ──
+# 연계 가능량·막는 원인·필요 허용전류는 simulation/der.py(안진성)가 계산한 값을 그대로 쓴다. AI는 설명과 추천만 한다
+_HOSTING_TASK = f"""[이번 작업: 태양광 연계 검토 추천. 이 지침이 위 지침보다 우선합니다]
+사용자가 한 접속점에 태양광을 새로 붙일 수 있는지 코드가 계산한 결과를 줍니다. 리포트 형식(진단·원인·솔루션)은 같고 내용은 아래처럼 쓰세요.
+- 진단: 신청 용량을 붙일 수 있는지(가능/불가) → 지금 최대 몇 kW까지 되는지 → 무엇이 막는지를 2~4문장으로.
+- 원인: 막는 원인마다 항목 하나. 어느 선로·접속점·차단기가 기준을 얼마나 넘는지, 태양광이 늘면 왜 그렇게 되는지(남는 전기가 변전소 쪽으로 거꾸로 많이 흘러 선로가 감당 못 함, 전압이 올라감 등)를 쓰세요. 막는 원인이 없으면 "검토 상한까지 기준 안"이라고 쓰세요.
+- 솔루션: 우선순위 순서. 과부하 선로는 "○○ 선로 허용전류를 지금 ○○ A에서 ○○ A 이상으로 증강(더 굵은 전선으로 교체)"처럼 입력의 필요 허용전류를 그대로 인용하세요. 과전압은 전압 조정·태양광 출력 제한·연계 지점 변경을, 차단기는 정격 상향을 "검토"로 쓰세요. 신청 용량이 가능하면 "연계 가능, 연계 후 다시 시뮬레이션으로 확인"처럼 쓰세요.
+- 이 검토에서는 입력에 적힌 kW·A·pu 숫자를 그대로 써도 됩니다(쉬운 설명이면 숫자 뒤에 쉬운 뜻을 붙이세요). 새로 계산하거나 반올림을 바꾸지 마세요.
+- 허용전류·차단기 정격이 가정값이면 그 결과에 "가정값 기준"이라고 밝히세요. 역조류 자체는 문제가 아닙니다(선로 용량 이내·차단기 차단 가능이면 정상).
+- 계산으로 확인하지 않은 조치(전압 조정, 출력 제한 등)는 효과를 약속하지 말고 "검토"로 쓰세요. 선로 증강은 필요 허용전류 이상이면 위반이 풀린다는 계산 결과이므로 그대로 써도 됩니다."""
+
+
+def hosting_system_prompt(audience: str = "plain") -> str:
+    return f"{system_prompt(audience)}\n\n{_HOSTING_TASK}"
+
+
+def _names(graph: SubstationGraph) -> dict[str, str]:
+    return {n.id: n.name for n in graph.nodes} | {line.id: line.name for line in graph.lines} | {f.id: f.name for f in graph.feeders}
+
+
+def _violation_text(graph: SubstationGraph, v) -> str:
+    """simulation/der.py의 Violation 하나를 사람이 읽는 문장으로 (이름·기준·필요 허용전류 포함)"""
+    name = _names(graph).get(v.element_id, v.element_id)
+    if v.kind == "overload":
+        line = next((x for x in graph.lines if x.id == v.element_id), None)
+        rated = line.rated_current_a if line and line.rated_current_a is not None else None
+        now = f"{rated:.0f} A" if rated is not None else f"{DEFAULT_RATED_CURRENT_A:.0f} A (가정값)"
+        need = f", 필요 허용전류 {math.ceil(v.required_rated_current_a):,} A 이상" if v.required_rated_current_a else ""
+        return f"{name}: 선로 과부하, 부하율 {v.value:.0f}% (기준 {v.limit:.0f}%), 지금 허용전류 {now}{need}"
+    if v.kind == "overvoltage":
+        return f"{name}: 접속점 과전압, {v.value:.3f} pu (기준 {v.limit} pu 이하)"
+    return f"{name}: 출구 차단기 차단 불가, 고장전류 {v.value:.2f} kA > 정격 {v.limit:.0f} kA (가정값)"
+
+
+_SUMMARY_ROWS = (  # simulation/der.py의 DerSummary 항목: (이름, 필드, 표시 형식)
+    ("분산전원 출력 합", "der_kw", "{:,.0f} kW"),
+    ("피더 송출 합 (음수면 역송)", "feeder_kw", "{:,.0f} kW"),
+    ("선로 손실", "loss_kw", "{:,.1f} kW"),
+    ("최저 전압", "min_voltage_pu", "{:.3f} pu"),
+    ("최고 전압", "max_voltage_pu", "{:.3f} pu"),
+    ("최대 선로 부하율", "max_loading_pct", "{:.0f}%"),
+    ("역조류 선로 수", "reverse_flow_lines", "{}개"),
+    ("최대 고장전류 (3상·1선·2선 중)", "max_fault_ka", "{:.2f} kA"),
+)
+
+
+def _compare_rows(before, after, left: str, right: str) -> list[str]:
+    rows = [f"| 항목 | {left} | {right} |", "| --- | --- | --- |"]
+    for label, attr, fmt in _SUMMARY_ROWS:
+        rows.append(f"| {label} | {fmt.format(getattr(before, attr))} | {fmt.format(getattr(after, attr))} |")
+    return rows
+
+
+def build_hosting_prompt(graph: SubstationGraph, hosting, trial: tuple | None = None, der: tuple | None = None, at: str = "최대 조건") -> str:
+    """연계 검토 결과(simulation/der.py의 HostingCapacity)와 전후 비교(DerSummary 쌍)를 AI 입력 글로 만든다.
+    trial: (지금, 신청 용량을 붙인 뒤), der: (분산전원 전부 뺌, 지금). 둘 다 없어도 된다"""
+    names = _names(graph)
+    bus = names.get(hosting.bus_id, hosting.bus_id)
+    lines = [f"# 태양광 연계 검토 ({graph.substation.name})", f"- 연계할 접속점: {bus}", f"- 검토 시각: {at}",
+             f"- 연계 기준: 접속점 전압 {VOLTAGE_MAX_PU} pu 이하, 선로 부하율 {OVERLOAD_PCT:.0f}% 이하, 출구 차단기 차단 가능"
+             f"(정격 {DEFAULT_BREAKER_INTERRUPT_KA:.0f} kA 가정값). 역조류 자체는 문제 아님", ""]
+    lines.append("## 결과 (코드가 계산한 사실. 그대로 쓰세요)")
+    if hosting.max_kw <= 0:
+        lines.append("- 더 붙일 수 있는 최대 출력: 0 kW (지금 계통이 이미 기준을 넘었거나 조금도 붙일 수 없음)")
+    elif not hosting.limited_by:
+        lines.append(f"- 더 붙일 수 있는 최대 출력: {hosting.max_kw:,.0f} kW 이상 (검토 상한까지 기준 안)")
+    else:
+        lines.append(f"- 더 붙일 수 있는 최대 출력: {hosting.max_kw:,.0f} kW")
+    lines.append("- 최대치를 넘기면 막는 원인: " + ("; ".join(_violation_text(graph, v) for v in hosting.limited_by) or "없음"))
+    if hosting.target_kw is not None:
+        ok = not hosting.target_violations
+        lines.append(f"- 신청 용량 {hosting.target_kw:,.0f} kW: " + ("연계 가능 (기준 위반 없음)" if ok else f"연계 불가 (위반 {len(hosting.target_violations)}건)"))
+        for v in hosting.target_violations:
+            lines.append(f"  - {_violation_text(graph, v)}")
+    lines.append("")
+    if trial:
+        lines.append(f"## 신청 용량을 붙였을 때 전후 ({bus})")
+        lines += _compare_rows(trial[0], trial[1], "지금", "붙인 뒤")
+        lines.append("")
+    if der:
+        lines.append("## 지금 있는 태양광·풍력 전체의 연결 전후")
+        lines += _compare_rows(der[0], der[1], "분산전원 없음", "지금")
+        lines.append("")
+    assumptions = _assumptions(graph)
+    if assumptions:
+        lines.append("## 가정값")
+        lines += [f"- {a}" for a in assumptions]
+        lines.append("")
+    lines.append("위 정보로 연계 가능 여부(진단), 막는 원인(원인), 보강 추천(솔루션)을 제출하세요.")
+    return "\n".join(lines)
+
+
+def generate_hosting_report(graph: SubstationGraph, hosting, trial: tuple | None = None, der: tuple | None = None,
+                            at: str = "최대 조건", audience: str = "plain", client=None) -> Report:
+    """유스케이스 1 ⑤ "AI 추천": 연계 가능량·막는 원인·필요 허용전류를 받아 연계 가능 여부와 보강 추천을 쓴다"""
+    return _ask(hosting_system_prompt(audience), build_hosting_prompt(graph, hosting, trial, der, at), graph.substation.id, client)
+
+
+# ── 유스케이스 2: 고른 날 24시간 결과 → 시간대별 위험과 대비 조치 (AI 운영 권고) ──
+# 시간대별 수치·위험 시간대는 코드가 계산하고(check_findings를 시간마다 적용), AI는 묶어서 설명하고 대비 조치를 권고한다
+_DAILY_TASK = """[이번 작업: 하루 24시간 운영 권고. 이 지침이 위 지침보다 우선합니다]
+사용자가 고른 날 0~23시를 시간마다 시뮬레이션한 결과와, 코드가 정리한 시간대별 위험을 줍니다. 리포트 형식(진단·원인·솔루션)은 같고 내용은 아래처럼 쓰세요.
+- 진단(하루 요약, 3~5문장): 하루 중 가장 위험한 시간대와 구간 1~2개 → 태양광이 가장 많은 시각과 전기를 가장 많이 쓰는 시각 → 그 밖의 시간은 괜찮은지.
+- 원인(시간대별 위험): 위험 시간대마다 항목 하나. "11~14시: 태양광이 많고 사용량이 적어 ○○ 선로에 전기가 거꾸로 흐르고 전압이 올라감 (최고 1.048 pu, 12시, ○○)"처럼 시간대 → 이유 → 최악 값·시각·위치 순서로 쓰세요.
+- 솔루션(대비 조치): 원인과 하나씩 대응. 전압조정기 탭 조정, 태양광 출력 제한, 개폐기 전환·부하 절체, ESS 충방전 시간 조정처럼 운영자가 그 시간대에 할 수 있는 조치를 쓰세요. 이 조치들은 시뮬레이션으로 확인한 것이 아니므로 반드시 "검토"로 쓰고 효과를 약속하지 마세요.
+- 위험 시간대가 없으면 원인에 "하루 내내 기준 안"을 근거 수치와 함께 쓰고, 솔루션에는 평상 운영과 다시 점검할 시점만 쓰세요.
+- 이 작업에서는 입력에 적힌 kW·pu·% 숫자와 시각을 그대로 써도 됩니다(쉬운 설명이면 숫자 뒤에 쉬운 뜻을 붙이세요). 새로 계산하지 마세요.
+- 배율은 실측이 아니라 가상 패턴이라는 점을 진단 끝에 한 번 밝히세요."""
+
+_DAILY_ITEMS = (  # (check_findings 키, 이름, 값 형식)
+    ("low", "저전압(0.95 pu 미만)", "{:.3f} pu"),
+    ("high", "과전압(1.05 pu 초과)", "{:.3f} pu"),
+    ("overload", "선로 과부하(100% 초과)", "{:.0f}%"),
+    ("watch", "부하율 높음(80~100%)", "{:.0f}%"),
+    ("reverse", "기준 초과 역조류", "{:.0f} kW"),
+    ("reverse_ok", "정상 역조류(문제 아님)", "{:.0f} kW"),
+    ("fault", "단락용량 300 MVA 초과", "{:.0f} MVA"),
+)
+
+
+def _hour_ranges(hours: list[int]) -> str:
+    """[11, 12, 13, 19] → "11~13시, 19시" """
+    out, start = [], None
+    for i, h in enumerate(hours):
+        if start is None:
+            start = h
+        if i == len(hours) - 1 or hours[i + 1] != h + 1:
+            out.append(f"{start}~{h}시" if start != h else f"{h}시")
+            start = None
+    return ", ".join(out)
+
+
+def daily_summary(graph: SubstationGraph, daily) -> list[str]:
+    """simulation/daily.py의 DailyResult → AI 입력용 시간대별 표와 위험 시간대 (숫자는 모두 코드가 계산)"""
+    from simulation.daily import scaled_graph  # 배율 곱한 계통 (시간마다 kW·이름)
+
+    rows = ["| 시각 | 태양광 kW | 부하 kW | 피더 송출 kW | 최저 전압 pu | 최고 전압 pu | 최대 부하율 | 역조류(기준 초과/정상) | 등급 |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
+    found: dict[str, list[tuple[int, str, float]]] = {k: [] for k, _, _ in _DAILY_ITEMS}
+    outage_hours, peaks = [], {}
+    for h in daily.hours:
+        g = scaled_graph(graph, h.load_mult, h.pv_mult)
+        r = h.result
+        pv = sum(n.p_kw for n in g.nodes if n.type == "pv" and n.p_kw is not None)
+        load = sum(n.p_kw for n in g.nodes if n.type == "load" and n.p_kw is not None)
+        send = sum(f.p_kw for f in r.feeders)
+        volts = [x.voltage_pu for x in r.nodes if x.energized]
+        loads = [x.loading_pct for x in r.lines if x.loading_pct is not None]
+        f = check_findings(g, r)
+        rows.append(f"| {h.hour}시 | {pv:,.0f} | {load:,.0f} | {send:,.0f} | {min(volts, default=0):.3f} | {max(volts, default=0):.3f} | "
+                    f"{max(loads, default=0):.0f}% | {len(f['reverse'])}/{len(f['reverse_ok'])} | {f['grade']} |")
+        for key, _, _ in _DAILY_ITEMS:
+            for name, value in f[key]:
+                found[key].append((h.hour, name, value))
+        if f["outage"]:
+            outage_hours.append(h.hour)
+        for key, value in (("태양광 최대", pv), ("부하 최대", load), ("피더 송출 최소(역송 쪽)", -send)):
+            if key not in peaks or value > peaks[key][1]:
+                peaks[key] = (h.hour, value)
+    out = ["## 시간대별 결과 (코드가 계산한 값)", *rows, "", "## 위험 시간대 (코드가 정리한 사실. 그대로 쓰세요)"]
+    for key, label, fmt in _DAILY_ITEMS:
+        items = found[key]
+        if not items:
+            out.append(f"- {label}: 없음")
+            continue
+        worst = (min if key == "low" else max)(items, key=lambda x: x[2] if key != "reverse" and key != "reverse_ok" else -x[2])
+        hours = sorted({x[0] for x in items})
+        places = sorted({x[1] for x in items})
+        out.append(f"- {label}: {_hour_ranges(hours)} (최악 {fmt.format(worst[2])}, {worst[0]}시, {worst[1]}; 해당 위치 {', '.join(places[:5])}"
+                   + (f" 외 {len(places) - 5}곳" if len(places) > 5 else "") + ")")
+    out.append(f"- 정전: {_hour_ranges(outage_hours) if outage_hours else '없음'}")
+    out.append(f"- 태양광이 가장 많은 시각: {peaks['태양광 최대'][0]}시 ({peaks['태양광 최대'][1]:,.0f} kW)")
+    out.append(f"- 전기를 가장 많이 쓰는 시각: {peaks['부하 최대'][0]}시 ({peaks['부하 최대'][1]:,.0f} kW)")
+    out.append(f"- 피더 송출이 가장 작은 시각: {peaks['피더 송출 최소(역송 쪽)'][0]}시 ({-peaks['피더 송출 최소(역송 쪽)'][1]:,.0f} kW, 음수면 변전소 쪽으로 역송)")
+    return out
+
+
+def build_daily_prompt(graph: SubstationGraph, daily) -> str:
+    p = daily.profile
+    src = f" (배율은 {p.source_date} 값을 씀)" if p.source_date != p.date else ""
+    lines = [f"# 하루 운영 점검 ({graph.substation.name})", f"- 날짜: {p.name}{src}", f"- 배율: {p.note}", ""]
+    lines += daily_summary(graph, daily)
+    assumptions = _assumptions(graph)
+    if assumptions:
+        lines += ["", "## 가정값", *[f"- {a}" for a in assumptions]]
+    lines += ["", "위 정보로 하루 요약(진단), 시간대별 위험(원인), 대비 조치(솔루션)를 제출하세요."]
+    return "\n".join(lines)
+
+
+def generate_daily_report(graph: SubstationGraph, daily, audience: str = "plain", client=None) -> Report:
+    """유스케이스 2 ⑥ "AI 운영 권고": 고른 날 24시간 결과(simulation/daily.py의 DailyResult)로 시간대별 위험과 대비 조치를 쓴다"""
+    return _ask(f"{system_prompt(audience)}\n\n{_DAILY_TASK}", build_daily_prompt(graph, daily), graph.substation.id, client)
+
+
+# ── 유스케이스 3: 여러 날 24시간 결과 → 선로 순위 → 증강 순서 권고 ──
+# ponytail: 순위는 (100% 초과 시간 수, 최대 부하율) 순서로 단순 정렬한다. 비용·공사 기간 같은 기준이 생기면 점수제로 바꾼다
+_REINFORCE_TASK = """[이번 작업: 설비 보강 우선순위. 이 지침이 위 지침보다 우선합니다]
+사용자가 여러 날의 24시간 결과로 코드가 매긴 선로 순위와 예산(증강할 수 있는 선로 수)을 줍니다. 리포트 형식(진단·원인·솔루션)은 같고 내용은 아래처럼 쓰세요.
+- 진단(요약, 2~4문장): 어떤 날들을 봤는지 → 기준(100%)을 넘는 선로가 있는지 → 예산 안에서 먼저 증강할 선로.
+- 원인(선로별 위험): 순위 위쪽 선로마다 항목 하나. 최대 부하율과 그 날·시각, 기준 초과 시간 수, 왜 그 선로에 전기가 몰리는지(변전소 가까운 간선이라 아래쪽 전기를 다 실어 나름, 태양광 역송이 몰림 등 입력으로 알 수 있는 만큼)를 쓰세요.
+- 솔루션(증강 순서 권고): 순위대로 "1순위 ○○: 허용전류를 지금 ○○ A에서 ○○ A 이상으로 증강"처럼 입력의 필요 허용전류를 그대로 인용하세요. 예산 밖 선로는 감시 대상으로 쓰세요. 마지막에 "증강 후 허용전류를 바꿔 다시 시뮬레이션해 연계 가능량이 얼마나 느는지 확인"을 권하세요.
+- 코드가 매긴 순위를 바꾸지 마세요. 입력의 kW·A·% 숫자는 그대로 써도 됩니다(쉬운 설명이면 숫자 뒤에 쉬운 뜻을 붙이세요). 허용전류가 가정값이면 "가정값 기준"이라고 밝히세요."""
+
+
+def rank_lines(graph: SubstationGraph, dailies: list) -> list[LineRank]:
+    """여러 날의 DailyResult로 선로(차단기·개폐기 연결 제외)마다 최대 부하율·기준 초과 시간을 세어 순위를 매긴다"""
+    lines = {x.id: x for x in graph.lines if x.kind != "switch"}
+    stat: dict[str, dict] = {lid: {"max": 0.0, "date": "", "hour": 0, "over": 0, "watch": 0} for lid in lines}
+    for daily in dailies:
+        for h in daily.hours:
+            for r in h.result.lines:
+                if r.line_id not in stat or r.loading_pct is None:
+                    continue
+                st = stat[r.line_id]
+                if r.loading_pct > st["max"]:
+                    st.update(max=r.loading_pct, date=str(daily.profile.date), hour=h.hour)
+                st["over"] += r.loading_pct > OVERLOAD_PCT
+                st["watch"] += r.loading_pct >= LOADING_WATCH_PCT
+    out = []
+    for lid, st in stat.items():
+        line = lines[lid]
+        rated = line.rated_current_a if line.rated_current_a is not None else DEFAULT_RATED_CURRENT_A
+        out.append(LineRank(line_id=lid, name=line.name, max_loading_pct=st["max"], worst_date=st["date"], worst_hour=st["hour"],
+                            hours_over=st["over"], hours_watch=st["watch"], rated_current_a=line.rated_current_a,
+                            required_rated_current_a=rated * st["max"] / 100))
+    out.sort(key=lambda x: (-x.hours_over, -x.max_loading_pct))
+    return out
+
+
+def build_reinforcement_prompt(graph: SubstationGraph, dailies: list, ranking: list[LineRank], budget_lines: int) -> str:
+    days = ", ".join(d.profile.name for d in dailies)
+    lines = [f"# 설비 보강 우선순위 ({graph.substation.name})", f"- 점검한 날: {days} (날마다 0~23시)",
+             f"- 예산: 선로 {budget_lines}개 증강 가능", f"- 기준: 부하율 {OVERLOAD_PCT:.0f}% 초과면 과부하, {LOADING_WATCH_PCT}% 이상이면 주의", "",
+             "## 선로 순위 (코드가 계산. 순위를 바꾸지 마세요)",
+             "| 순위 | 선로 | 최대 부하율 | 그때 | 100% 초과 시간 | 80% 이상 시간 | 지금 허용전류 | 필요 허용전류(최대 부하율 100% 이하) |",
+             "| --- | --- | --- | --- | --- | --- | --- | --- |"]
+    for i, x in enumerate(ranking[:MAX_FAULT_LISTED], 1):
+        now = f"{x.rated_current_a:.0f} A" if x.rated_current_a is not None else f"{DEFAULT_RATED_CURRENT_A:.0f} A (가정값)"
+        need = f"{math.ceil(x.required_rated_current_a):,} A 이상" if x.max_loading_pct > OVERLOAD_PCT else "지금도 충분"
+        lines.append(f"| {i} | {x.name} | {x.max_loading_pct:.0f}% | {x.worst_date} {x.worst_hour}시 | {x.hours_over} | {x.hours_watch} | {now} | {need} |")
+    assumptions = _assumptions(graph)
+    if assumptions:
+        lines += ["", "## 가정값", *[f"- {a}" for a in assumptions]]
+    lines += ["", "위 정보로 요약(진단), 선로별 위험(원인), 증강 순서 권고(솔루션)를 제출하세요."]
+    return "\n".join(lines)
+
+
+def generate_reinforcement_report(graph: SubstationGraph, dailies: list, budget_lines: int = 2, audience: str = "plain",
+                                  client=None) -> ReinforcementReport:
+    """유스케이스 3 ④ "AI 정리": 선로 순위(코드)와 증강 순서 권고(AI)를 함께 돌려준다"""
+    ranking = rank_lines(graph, dailies)
+    prompt = build_reinforcement_prompt(graph, dailies, ranking, budget_lines)
+    report = _ask(f"{system_prompt(audience)}\n\n{_REINFORCE_TASK}", prompt, graph.substation.id, client)
+    return ReinforcementReport(ranking=ranking, report=report)
 
 
 def _sample() -> tuple[SubstationGraph, SimulationResult]:

@@ -4,10 +4,12 @@ import datetime as dt
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
+from pydantic import BaseModel
 
 from cim import graph
 from simulation.daily import DailyRequest, DailyResult, graph_at, simulate_daily
-from simulation.der import DerComparison, HostingCapacity, compare_der, hosting_capacity
+from simulation.der import DerComparison, DerSummary, HostingCapacity, compare_der, hosting_capacity, with_pv
+from simulation.der import summarize as der_summary
 from simulation.models import SimulationResult
 from simulation.plot import plot_result
 from simulation.simulate import simulate
@@ -63,6 +65,32 @@ def run_hosting_capacity(substation_id: str, bus_id: str, target_kw: float | Non
         return hosting_capacity(graph_at(graph.get_substation(substation_id), date, hour), bus_id, target_kw)
     except ValueError as e:
         raise HTTPException(422, str(e)) from e
+
+
+# 구현 참고 (안진성 확인 필요): 유스케이스 1 ④ "신청 용량 붙여 보기" 전후 표를 위해 최민준이 추가. simulation/der.py 함수만 쓴다
+class PvTrial(BaseModel):
+    bus_id: str
+    kw: float
+    before: DerSummary  # 지금 계통
+    after: DerSummary  # bus_id에 태양광 kw를 더 붙인 계통
+    after_result: SimulationResult  # 붙인 뒤 시뮬레이션 결과 (화면에서 단선도·표로 볼 때)
+
+
+@router.post("/substations/{substation_id}/simulations/pv-trial")
+def run_pv_trial(substation_id: str, bus_id: str, kw: float, date: dt.date | None = None, hour: int | None = None) -> PvTrial:
+    """접속점 bus_id에 태양광 kw를 붙여 보고 지금과 나란히 비교 (der-comparison은 '분산전원 전부 뺌 vs 지금', 이건 '지금 vs 더 붙임').
+    date·hour는 /simulations와 같다. 추가하는 kW는 그 시각 출력으로 본다 (hosting-capacity와 같음)"""
+    try:
+        g = graph_at(graph.get_substation(substation_id), date, hour)
+        if bus_id not in {n.id for n in g.nodes if n.type == "bus"}:
+            raise ValueError(f"접속점(bus) 노드가 아닙니다: {bus_id}")
+        if kw <= 0:
+            raise ValueError(f"kw는 0보다 커야 합니다: {kw}")
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+    g2 = with_pv(g, bus_id, kw)
+    r1, r2 = simulate(g), simulate(g2)
+    return PvTrial(bus_id=bus_id, kw=kw, before=der_summary(g, r1), after=der_summary(g2, r2), after_result=r2)
 
 
 @router.post(
