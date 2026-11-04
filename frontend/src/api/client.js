@@ -66,3 +66,26 @@ export async function createPlot(simulationResult) {
 // at: 결과를 계산한 시각 (runSimulation에 준 값). 백엔드가 프롬프트의 부하·태양광 kW를 같은 시각 값으로 맞춘다
 export const createReport = (simulationResult, audience = 'expert', at = null) =>
   request('POST', `/reports?audience=${audience}${at ? `&${atQuery(at)}` : ''}`, simulationResult)
+
+// 유스케이스 화면 (frontend/src/components/UsecasePanels.jsx). at = { date, hour } | null (없으면 최대 조건)
+const withQuery = (path, params, at) => {
+  const q = [params, at ? atQuery(at) : ''].filter(Boolean).join('&')
+  return q ? `${path}?${q}` : path
+}
+// 분산전원 연결 전후 비교 (simulation/der.py의 compare_der): 태양광·풍력을 모두 뺀 계통 vs 지금 계통
+export const runDerComparison = (substationId, at) =>
+  request('POST', withQuery(`/substations/${substationId}/simulations/der-comparison`, '', at))
+// 연계 가능 최대치 (simulation/der.py의 hosting_capacity): 접속점에 태양광을 몇 kW까지 더 붙일 수 있는지, 막는 원인, 필요 허용전류
+export const runHostingCapacity = (substationId, busId, targetKw, at) =>
+  request(
+    'POST',
+    withQuery(`/substations/${substationId}/simulations/hosting-capacity`, `bus_id=${encodeURIComponent(busId)}${targetKw != null ? `&target_kw=${targetKw}` : ''}`, at),
+  )
+// 신청 용량 붙여 보기 (backend/api/simulation.py의 pv-trial): 지금 vs 접속점에 태양광 kw를 더 붙인 계통
+export const runPvTrial = (substationId, busId, kw, at) =>
+  request('POST', withQuery(`/substations/${substationId}/simulations/pv-trial`, `bus_id=${encodeURIComponent(busId)}&kw=${kw}`, at))
+// AI 추천·권고 (ai_report/report.py, 쉬운 설명). 응답은 Report (보강 우선순위는 { ranking, report })
+export const createHostingReport = (body, at) => request('POST', withQuery('/reports/hosting', 'audience=plain', at), body)
+export const createDailyReport = (substationId, body) => request('POST', `/reports/daily/${substationId}?audience=plain`, body)
+export const createReinforcementReport = (substationId, body) =>
+  request('POST', `/reports/reinforcement/${substationId}?audience=plain`, body)

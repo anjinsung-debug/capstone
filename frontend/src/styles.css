@@ -1517,3 +1517,38 @@ body.popup {
   font-size: 10px;
   font-weight: 400;
 }
+
+/* 유스케이스 화면 (components/UsecasePanels.jsx): 태양광 연계 검토, AI 운영 권고, 보강 우선순위 */
+.uc-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.uc-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+}
+.uc-controls .field {
+  margin-bottom: 0;
+}
+.uc-result {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+}
+.uc-result h4 {
+  margin: 0;
+  font-size: 15px;
+}
+.uc-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.7;
+}

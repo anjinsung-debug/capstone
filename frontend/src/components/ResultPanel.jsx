@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from 'react'
 import NodeIcon from './NodeIcon.jsx'
 import HistoryChart from './HistoryChart.jsx'
 import ProfileCharts from './ProfileChart.jsx'
+import { DailyAiBox, HostingPanel, ReinforceBox } from './UsecasePanels.jsx'
 import {
   CAUSE_QUESTIONS,
   COLORS,
@@ -379,12 +380,13 @@ export const RESULT_TABS = [
   ['health', '① 건강도 진단'],
   ['cause', '② 원인 분석'],
   ['solution', '③ 솔루션 제안'],
+  ['hosting', '태양광 연계 검토'],
   ['elements', '요소별 결과'],
   ['history', '기록 (시점별)'],
 ]
 
 // 결과 창 내용. 가운데 창과 새 창이 같은 컴포넌트를 쓴다
-export function ResultView({ graph, result, tab, onTab, history, historyNote, dailyNote, dailyDate, maxDate, dailyBusy, onDailyDate, onFocus }) {
+export function ResultView({ graph, result, resultAt, tab, onTab, history, historyNote, dailyNote, dailyDate, maxDate, dailyBusy, onDailyDate, onFocus }) {
   return (
     <div className="rview">
       <nav className="tabs">
@@ -406,6 +408,8 @@ export function ResultView({ graph, result, tab, onTab, history, historyNote, da
           <SolutionTab graph={graph} result={result} />
         ) : tab === 'elements' ? (
           <ElementsTab graph={graph} result={result} onFocus={onFocus} />
+        ) : tab === 'hosting' ? (
+          <HostingPanel graph={graph} at={resultAt} onFocus={onFocus} />
         ) : (
           <>
             {historyNote && <p className="muted history-note">{historyNote}</p>}
@@ -414,6 +418,8 @@ export function ResultView({ graph, result, tab, onTab, history, historyNote, da
               points={history}
               daily={!dailyNote && { date: dailyDate, max: maxDate, busy: dailyBusy, onChange: onDailyDate }}
             />
+            {graph && !dailyNote && dailyDate && <DailyAiBox graph={graph} date={dailyDate} />}
+            {graph && !dailyNote && <ReinforceBox graph={graph} onFocus={onFocus} />}
           </>
         )}
       </div>

@@ -445,6 +445,7 @@ export default function App() {
     <ResultView
       graph={graph}
       result={result}
+      resultAt={resultAt}
       tab={resultTab}
       onTab={setResultTab}
       history={resultHistory}
