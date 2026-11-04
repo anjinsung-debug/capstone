@@ -240,11 +240,12 @@ function SeqSmall({ metric, points, hover, setHover }) {
 }
 
 // 칸 색: 기준을 넘으면 빨강·주황 (lib/overlay.js의 판정 기준과 같은 구간)
-function cellLevel(key, v) {
+// reverseBad: 그 시각에 기준 초과 역조류가 있는지 (overlay.js의 dailyPoints). 정상 역조류(10/26 회의 기준)는 색칠하지 않는다
+function cellLevel(key, v, reverseBad) {
   if (v == null) return ''
   if (key === 'minV') return v < VOLTAGE_MIN_PU ? 'bad' : ''
   if (key === 'maxLoading') return v > OVERLOAD_PCT ? 'bad' : v >= 80 ? 'warn' : ''
-  if (key === 'reverseMw') return v > 0.0005 ? 'warn' : ''
+  if (key === 'reverseMw') return v > 0.0005 && reverseBad !== false ? 'warn' : ''
   if (key === 'maxMva') return v > FAULT_HIGH_MVA ? 'warn' : ''
   return ''
 }
@@ -286,7 +287,7 @@ function HourlyTable({ cur, prev, sel, hour, setHour }) {
                   const diff = v != null && pv != null ? v - pv : null
                   const shown = diff != null && m.fmt(Math.abs(diff)) !== m.fmt(0) // 표시 자릿수로 0이 아닐 때만
                   return (
-                    <td key={m.key} className={`num ${cellLevel(m.key, v)} ${worstHour[m.key] === d.hour ? 'worst' : ''}`}>
+                    <td key={m.key} className={`num ${cellLevel(m.key, v, d.reverseBad)} ${worstHour[m.key] === d.hour ? 'worst' : ''}`}>
                       {v == null ? '-' : m.fmt(v)}
                       {shown && (
                         <small className={diff > 0 ? 'up' : 'down'}>
@@ -302,7 +303,7 @@ function HourlyTable({ cur, prev, sel, hour, setHour }) {
           </tbody>
         </table>
       </div>
-      <p className="muted small">굵은 글씨 = 하루 중 가장 나쁜 시각 · 빨강 = 기준 넘음 · 주황 = 주의 (부하율 80% 이상, 역조류 있음, 단락용량 300 MVA 초과)</p>
+      <p className="muted small">굵은 글씨 = 하루 중 가장 나쁜 시각 · 빨강 = 기준 넘음 · 주황 = 주의 (부하율 80% 이상, 기준 초과 역조류, 단락용량 300 MVA 초과. 정상 역조류는 값만 표시)</p>
     </div>
   )
 }

@@ -475,6 +475,7 @@ export function dailyPoints(graph, hours) {
       minV: hc.minV,
       maxLoading: hc.maxLoading,
       reverseMw: hc.reverseMw,
+      reverseBad: hc.rows.find((r) => r.key === 'reverse').level !== 'ok', // 기준 초과 역조류가 있는지 (기록 표 색)
       maxMva: hc.maxMva,
       lossKw: result.loss_kw,
       totalMw: hc.totalMw,

@@ -95,10 +95,11 @@ function describeViolation(graph, v) {
     const line = graph.lines.find((l) => l.id === v.element_id)
     const now = line?.rated_current_a != null ? `${Math.round(line.rated_current_a)} A` : '400 A (가정값)'
     const need = v.required_rated_current_a ? ` → 허용전류 ${Math.ceil(v.required_rated_current_a).toLocaleString('ko-KR')} A 이상 필요` : ''
-    return { id: v.element_id, text: `${name}: 선로 과부하 ${v.value.toFixed(0)}% (기준 ${v.limit}%), 지금 허용전류 ${now}${need}` }
+    const pct = v.value < v.limit + 1 ? v.value.toFixed(2) : v.value.toFixed(0) // 100.02%가 "100%"로 보여 기준 안처럼 읽히지 않게
+    return { id: v.element_id, text: `${name}: 선로 과부하 ${pct}% (기준 ${v.limit}% 초과), 지금 허용전류 ${now}${need}` }
   }
   if (v.kind === 'overvoltage') {
-    return { id: v.element_id, text: `${name}: 접속점 과전압 ${v.value.toFixed(3)} pu (기준 ${v.limit} pu 이하)` }
+    return { id: v.element_id, text: `${name}: 접속점 과전압 ${v.value.toFixed(3)} pu (기준 ${v.limit} pu 초과)` }
   }
   const cb = graph.nodes.find((n) => n.type === 'breaker' && n.feeder_id === v.element_id)
   return { id: cb?.id ?? null, text: `${name}: 출구 차단기 차단 불가, 고장전류 ${v.value.toFixed(2)} kA > 정격 ${v.limit} kA (가정값)` }
@@ -416,12 +417,17 @@ export function ReinforceBox({ graph, onFocus }) {
         {dates.map((d, i) => (
           <label key={i} className="field">
             점검 날짜 {i + 1}
-            <input type="date" min="2025-01-01" value={d} disabled={busy} onChange={(e) => setDates(dates.map((x, j) => (j === i ? e.target.value : x)))} />
+            <span className="field-input">
+              <input type="date" min="2025-01-01" value={d} disabled={busy} onChange={(e) => setDates(dates.map((x, j) => (j === i ? e.target.value : x)))} />
+            </span>
           </label>
         ))}
         <label className="field">
           증강할 선로 수
-          <input type="number" min="1" max="10" value={count} disabled={busy} onChange={(e) => setCount(e.target.value)} />
+          <span className="field-input">
+            <input type="number" min="1" max="10" value={count} disabled={busy} onChange={(e) => setCount(e.target.value)} />
+            <i>개</i>
+          </span>
         </label>
         <button type="button" className="primary-outline mini" disabled={busy || !dates.some(Boolean)} onClick={make}>
           순위 계산 + AI 정리

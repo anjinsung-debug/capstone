@@ -536,9 +536,10 @@ def _violation_text(graph: SubstationGraph, v) -> str:
         rated = line.rated_current_a if line and line.rated_current_a is not None else None
         now = f"{rated:.0f} A" if rated is not None else f"{DEFAULT_RATED_CURRENT_A:.0f} A (가정값)"
         need = f", 필요 허용전류 {math.ceil(v.required_rated_current_a):,} A 이상" if v.required_rated_current_a else ""
-        return f"{name}: 선로 과부하, 부하율 {v.value:.0f}% (기준 {v.limit:.0f}%), 지금 허용전류 {now}{need}"
+        pct = f"{v.value:.2f}" if v.value < v.limit + 1 else f"{v.value:.0f}"  # 100.02%가 "100%"로 보여 기준 안처럼 읽히지 않게
+        return f"{name}: 선로 과부하, 부하율 {pct}% (기준 {v.limit:.0f}% 초과), 지금 허용전류 {now}{need}"
     if v.kind == "overvoltage":
-        return f"{name}: 접속점 과전압, {v.value:.3f} pu (기준 {v.limit} pu 이하)"
+        return f"{name}: 접속점 과전압, {v.value:.3f} pu (기준 {v.limit} pu 초과)"
     return f"{name}: 출구 차단기 차단 불가, 고장전류 {v.value:.2f} kA > 정격 {v.limit:.0f} kA (가정값)"
 
 
