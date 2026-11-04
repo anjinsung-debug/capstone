@@ -28,7 +28,13 @@ import urllib.request
 
 from ai_report.models import Report
 from cim.models import BASE_KV, SubstationGraph
-from simulation.dss import DEFAULT_RATED_CURRENT_A, DEFAULT_SHORT_CIRCUIT_MVA, DEFAULT_X_R_RATIO
+from simulation.dss import (
+    DEFAULT_BREAKER_INTERRUPT_KA,
+    DEFAULT_RATED_CURRENT_A,
+    DEFAULT_SHORT_CIRCUIT_MVA,
+    DEFAULT_X_R_RATIO,
+    DEFAULT_ZERO_SEQ_RATIO,
+)
 from simulation.models import OVERLOAD_PCT, VOLTAGE_MAX_PU, VOLTAGE_MIN_PU, SimulationResult
 
 # ponytail: 모델은 회의록 "AI 리포트 구성"에서 아직 정하지 않았다. 확정되면 기본값을 바꾸거나 .env의 ANTHROPIC_MODEL로 지정한다
@@ -88,7 +94,9 @@ _RULES = f"""사용자가 계통 정보와 시뮬레이션 수치, 그리고 코
 4. 원인은 문제가 있는 설비 이름과 수치를 인용해서, 왜 그렇게 되는지 전기적 이유(선로 길이와 임피던스에 따른 전압강하, 분산전원 출력이 부하보다 큰 구간, 전류가 허용전류를 넘음 등)를 설명하세요. 입력에 없는 연결 구조를 가정하지 마세요.
 5. 솔루션은 원인과 하나씩 대응시키고 우선순위 순서로 쓰세요. 전선 굵기 교체, 전압조정기(SVR) 설치, 부하 절체, 역조류 보호계전 점검, 차단기 정격 검토, ESS 설치, 개폐기 조작처럼 엔지니어가 실제로 할 수 있는 조치로 쓰고, 효과를 수치로 약속하지 마세요.
 6. 문제가 없으면 원인에는 "기준 안에 있음"을 근거 수치와 함께 쓰고, 솔루션에는 유지·재점검 방법만 쓰세요. 문제를 지어내지 마세요.
-7. 허용전류나 단락용량이 가정값으로 계산됐다고 알려 주면, 그 값에 의존하는 부하율·고장전류 설명에 "가정값 기준"이라고 밝히세요."""
+7. 허용전류나 단락용량이 가정값으로 계산됐다고 알려 주면, 그 값에 의존하는 부하율·고장전류 설명에 "가정값 기준"이라고 밝히세요.
+8. 진단은 등급 다음에 "지금 상황 요약"(태양광·풍력이 얼마나 들어오는지, 전기를 얼마나 쓰는지, 변전소가 얼마나 보내는지)을 1~2문장으로 쓰세요. 숫자는 요약에 적힌 값을 그대로 쓰고, 직접 더하거나 다시 계산하지 마세요.
+9. "고장 전류와 출구 차단기"는 참고 정보입니다. 등급을 바꾸지 마세요. 차단 불가인 차단기가 있으면 원인과 솔루션에 "차단기 정격 검토 필요"로 쓰고, 모두 차단 가능이면 진단에 한 마디만 쓰세요. 지락(1선·2선)은 전깃줄이 땅에 닿는 사고로, 3상 단락과 구분해서 쓰세요."""
 
 _STYLE = {
     "expert": """[독자와 말투: 전문가용]
@@ -108,6 +116,8 @@ _STYLE = {
 - 차단기, 개폐기 → 전기 스위치
 - 정전 → 전기가 끊김
 - 단락용량, 고장전류 → 사고가 나면 한꺼번에 흐를 수 있는 전기의 양
+- 1선 지락, 2선 지락 → 전깃줄 하나(또는 둘)가 땅에 닿는 사고
+- 출구 차단기 차단 가능 → 사고가 나면 변전소 출구 스위치가 전기를 바로 끊을 수 있음
 - 역조류 → 전기가 거꾸로 흐름
 - 부하 → 전기를 쓰는 집과 가게
 - 분산전원, PV → 태양광 발전기 (풍력이면 풍력 발전기)
@@ -118,13 +128,13 @@ _STYLE = {
 - 가정값 → "정확한 자료가 없어 보통 쓰는 값으로 계산했어요"
 - 등급 이름(정상·주의·위험)만 그대로 쓰세요.
 
-2) 숫자: 단위가 붙은 숫자(kW, MVA, kV, pu, A)와 마이너스 숫자는 쓰지 마세요. "기준보다 조금 높아요", "쓰는 양보다 두 배 넘게 만들어요"처럼 비교로만 말하세요. 비교는 입력 수치로 바로 확인되는 것만 쓰세요. 꼭 필요하면 퍼센트(%)는 하나까지 써도 됩니다.
+2) 숫자: 단위가 붙은 숫자(kW, MVA, kV, pu, A)와 마이너스 숫자는 쓰지 마세요. 단, "지금 상황 요약"의 태양광·풍력·사용량·송출량은 요약에 적힌 kW·MW 숫자를 그대로 써도 됩니다(예: "태양광 3곳에서 2,000 kW가 들어오고 있어요"). "기준보다 조금 높아요", "쓰는 양보다 두 배 넘게 만들어요"처럼 비교로만 말하세요. 비교는 입력 수치로 바로 확인되는 것만 쓰세요. 꼭 필요하면 퍼센트(%)는 하나까지 써도 됩니다.
 
 3) 이름: 영어·밑줄·기호가 섞인 내부 이름(예: CN_…, BS_…, CB_…, Section⑧_…)은 쓰지 마세요. 위치는 "변전소 바로 앞", "왼쪽 끝 태양광 발전기 근처", "2번 스위치"처럼 말로 설명하세요. 같은 문제가 여러 곳이면 "변전소 근처 4곳"처럼 묶으세요.
 설비 이름에 '차단기·개폐기·선로·모선·접속점' 같은 말이 들어 있으면 그 말도 바꾸세요. 예: "차단기 2" → "2번 전기 스위치", "선로 1" → "1번 전깃줄", "접속점 3" → "3번 연결 지점".
 
 4) 구성과 길이: 한두 문장으로 끝내지 말고 아래 내용을 모두 담으세요.
-- 진단(3~5문장): 등급 → 문제가 있는 것 → 기준 안이라 괜찮은 것(전기의 힘, 전깃줄 사용량 등 확정된 점검 결과에서 0곳인 항목) → 그래서 주민에게 어떤 영향이 있는지. 영향은 입력으로 알 수 있는 만큼만 쓰세요. 예: 전기가 끊긴 지점에 연결된 집과 가게는 전기를 쓸 수 없어요.
+- 진단(3~5문장): 등급 → 지금 상황 요약(규칙 8) → 문제가 있는 것 → 기준 안이라 괜찮은 것(전기의 힘, 전깃줄 사용량 등 확정된 점검 결과에서 0곳인 항목) → 그래서 주민에게 어떤 영향이 있는지. 영향은 입력으로 알 수 있는 만큼만 쓰세요. 예: 전기가 끊긴 지점에 연결된 집과 가게는 전기를 쓸 수 없어요.
 - 원인(항목당 2~3문장): 진단을 되풀이하지 말고 "왜 그런지"를 설명하세요. 입력의 연결 정보(어느 스위치·전깃줄 뒤쪽인지, 근처 발전기가 만드는 양과 쓰는 양 비교, 전깃줄 길이)를 근거로 쓰세요. 자료로 알 수 없는 이유는 지어내지 말고 "자료만으로는 ~까지는 알 수 없어요"라고 쓰세요. 이해를 돕는 쉬운 비유를 한 번 넣어도 됩니다.
 - 솔루션(항목당 2~3문장): 전력회사 담당자가 무엇을 하는지 → 그게 왜 도움이 되는지 → (필요할 때만) 그동안 알아 두면 좋은 점. 주민이 직접 할 일처럼 쓰지 마세요. 효과를 숫자로 약속하지 마세요.
 - "정확한 자료가 없어 보통 쓰는 값으로 계산했어요"는 가정값에 기대는 설명(전깃줄 사용량, 사고 때 흐를 수 있는 전기의 양)에만 붙이세요. 전기가 끊김, 전기의 힘, 전기가 거꾸로 흐름 설명에는 붙이지 마세요.
@@ -213,6 +223,10 @@ def _assumptions(graph: SubstationGraph) -> list[str]:
         out.append(f"변전소 3상 단락용량 데이터가 없어 {DEFAULT_SHORT_CIRCUIT_MVA:.0f} MVA 가정값으로 고장전류를 계산했습니다.")
     if sub.x_r_ratio is None:
         out.append(f"변전소 X/R 데이터가 없어 {DEFAULT_X_R_RATIO:.0f} 가정값으로 고장전류를 계산했습니다.")
+    no_zero = [line for line in graph.lines if line.kind != "switch" and (line.r0_ohm_per_km is None or line.x0_ohm_per_km is None)]
+    if no_zero:
+        out.append(f"선로 {len(no_zero)}개는 영상분(R0·X0) 데이터가 없어 정상분 × {DEFAULT_ZERO_SEQ_RATIO:g} 가정값으로 지락 전류를 계산했습니다.")
+    out.append(f"출구 차단기 정격 차단전류는 데이터가 없어 {DEFAULT_BREAKER_INTERRUPT_KA:.0f} kA 가정값으로 차단 가능 여부를 판정했습니다.")
     return out
 
 
@@ -221,6 +235,45 @@ def _limit(rows: list[str], total: int, what: str) -> list[str]:
     if len(rows) <= MAX_ROWS:
         return rows
     return rows[:MAX_ROWS] + [f"(... {what} {total - MAX_ROWS}개는 문제가 작아 생략)"]
+
+
+def summarize(graph: SubstationGraph, result: SimulationResult) -> list[str]:
+    """지금 상황 요약 (회의 10/26: "시뮬레이션 봤을 때 큰 usecase 하나씩, 예: 태양광이 몇 들어오고 있는지").
+    합계·개수는 LLM이 더하다 틀리지 않게 코드가 계산한다. 값은 이 결과를 계산한 시각의 값(backend가 graph_at으로 맞춘 계통)"""
+    out = []
+    for kind, ko, verb in (("pv", "태양광", "출력"), ("wind", "풍력", "출력"), ("load", "부하", "소비")):
+        items = [n for n in graph.nodes if n.type == kind and n.p_kw is not None]
+        if not items:
+            out.append(f"- {ko} 0곳")
+            continue
+        total = sum(n.p_kw for n in items)
+        top = max(items, key=lambda n: n.p_kw)
+        out.append(f"- {ko} {len(items)}곳, {verb} 합계 {total:,.0f} kW (가장 큰 곳: {top.name} {top.p_kw:,.0f} kW)")
+    gen = sum(n.p_kw for n in graph.nodes if n.type in ("pv", "wind") and n.p_kw is not None)
+    load = sum(n.p_kw for n in graph.nodes if n.type == "load" and n.p_kw is not None)
+    if load > 0 and gen > 0:
+        out.append(f"- 분산전원(태양광+풍력) 출력은 부하 소비의 {gen / load * 100:.0f}%")
+    send = sum(fr.p_kw for fr in result.feeders)
+    direction = "변전소가 내보냄" if send >= 0 else "변전소 쪽으로 거꾸로 들어옴"
+    out.append(f"- 변전소 송출 합계 {send / 1000:,.2f} MW ({direction}), 선로 손실 {result.loss_kw:,.1f} kW")
+    return out
+
+
+def fault_summary(graph: SubstationGraph, result: SimulationResult) -> list[str]:
+    """고장 전류(3상 단락·1선 지락·2선 지락)의 최댓값과 피더별 출구 차단기 차단 가능 여부. 등급에는 넣지 않는 참고 정보
+    ponytail: 지락·차단기 판정은 진성이 시뮬레이션(simulation/simulate.py) 값을 그대로 옮긴다. 등급에 넣기로 정하면 check_findings와 overlay.js healthCheck를 같이 고친다"""
+    names = {n.id: n.name for n in graph.nodes}
+    feeder_names = {fd.id: fd.name for fd in graph.feeders}
+    out = []
+    for attr, ko in (("fault_current_ka", "3상 단락"), ("ground_fault_current_ka", "1선 지락"), ("double_ground_fault_current_ka", "2선 지락")):
+        vals = [(getattr(r, attr), r.node_id) for r in result.nodes if getattr(r, attr) is not None]
+        if vals:
+            v, nid = max(vals)
+            out.append(f"- 최대 {ko} 전류 {v:.2f} kA ({names.get(nid, nid)})")
+    for fr in result.feeders:
+        state = {True: "차단 가능", False: "차단 불가 (정격 초과)", None: "판정 값 없음 (정전 구간이거나 계산되지 않음)"}[fr.breaker_interruptible]
+        out.append(f"- {feeder_names.get(fr.feeder_id, fr.feeder_id)} 출구 차단기: {state} (정격 {DEFAULT_BREAKER_INTERRUPT_KA:.0f} kA 기준)")
+    return out
 
 
 def build_prompt(graph: SubstationGraph, result: SimulationResult) -> str:
@@ -238,6 +291,10 @@ def build_prompt(graph: SubstationGraph, result: SimulationResult) -> str:
 
     lines = [f"# 변전소 {sub.name}", f"기준 전압 {BASE_KV} kV, 변전소 모선 전압 {sub.source_voltage_pu:.3f} pu, 선로 손실 합계 {result.loss_kw:.1f} kW", ""]
 
+    lines.append("## 지금 상황 요약 (코드가 계산한 값. 진단에서 등급 다음에 쓰세요)")
+    lines += summarize(graph, result)
+    lines.append("")
+
     lines.append("## 확정된 점검 결과 (코드가 판정 기준으로 계산한 사실. 그대로 쓰세요)")
     lines.append(f"- 건강도 등급: {f['grade']}")
     lines.append(f"- 저전압(<{VOLTAGE_MIN_PU} pu) {len(f['low'])}곳" + (": " + ", ".join(f"{n} {v:.3f} pu" for n, v in f["low"]) if f["low"] else ""))
@@ -253,6 +310,12 @@ def build_prompt(graph: SubstationGraph, result: SimulationResult) -> str:
     if assumptions:
         lines.append("- 가정값 사용: " + " ".join(assumptions))
     lines.append("")
+
+    fault_rows = fault_summary(graph, result)
+    if fault_rows:
+        lines.append("## 고장 전류와 출구 차단기 (참고 정보. 등급에는 반영하지 않음)")
+        lines += fault_rows
+        lines.append("")
 
     lines.append("## 피더별 변전소 출구 송출 전력")
     for fr in result.feeders:
@@ -283,6 +346,10 @@ def build_prompt(graph: SubstationGraph, result: SimulationResult) -> str:
             node_rows.append(f"- {n.name}({n.type}): 정전")
             continue
         extra = f", 단락전류 {r.fault_current_ka:.2f} kA" if r.fault_current_ka is not None else ""
+        if r.ground_fault_current_ka is not None:
+            extra += f", 1선 지락 {r.ground_fault_current_ka:.2f} kA"
+        if r.double_ground_fault_current_ka is not None:
+            extra += f", 2선 지락 {r.double_ground_fault_current_ka:.2f} kA"
         power = f", 출력/소비 {n.p_kw:.0f} kW" if n.type in ("load", "pv", "wind") and n.p_kw is not None else ""
         node_rows.append(f"- {n.name}({n.type}): {r.voltage_pu:.3f} pu{extra}{power}")
     lines.append("## 지점별 (전압 낮은 순)")
@@ -472,13 +539,13 @@ def _sample() -> tuple[SubstationGraph, SimulationResult]:
     )
     result = SimulationResult(
         substation_id=s, converged=True, loss_kw=186.4,
-        feeders=[FeederResult(feeder_id="F1", p_kw=1680, q_kvar=600)],
+        feeders=[FeederResult(feeder_id="F1", p_kw=1680, q_kvar=600, breaker_interruptible=True)],
         nodes=[
-            NodeResult(node_id="b0", voltage_pu=1.0, fault_current_ka=7.56),
-            NodeResult(node_id="cb", voltage_pu=1.0, fault_current_ka=7.56),
-            NodeResult(node_id="b1", voltage_pu=0.982, fault_current_ka=3.1),
-            NodeResult(node_id="b2", voltage_pu=0.931, fault_current_ka=1.4),
-            NodeResult(node_id="sw", voltage_pu=0.931, fault_current_ka=1.4),
+            NodeResult(node_id="b0", voltage_pu=1.0, fault_current_ka=7.56, ground_fault_current_ka=7.9, double_ground_fault_current_ka=6.8),
+            NodeResult(node_id="cb", voltage_pu=1.0, fault_current_ka=7.56, ground_fault_current_ka=7.9, double_ground_fault_current_ka=6.8),
+            NodeResult(node_id="b1", voltage_pu=0.982, fault_current_ka=3.1, ground_fault_current_ka=2.6, double_ground_fault_current_ka=2.8),
+            NodeResult(node_id="b2", voltage_pu=0.931, fault_current_ka=1.4, ground_fault_current_ka=1.1, double_ground_fault_current_ka=1.3),
+            NodeResult(node_id="sw", voltage_pu=0.931, fault_current_ka=1.4, ground_fault_current_ka=1.1, double_ground_fault_current_ka=1.3),
             NodeResult(node_id="b3", voltage_pu=0.0, energized=False),
         ],
         lines=[
