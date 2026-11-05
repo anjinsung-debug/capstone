@@ -38,14 +38,16 @@ capstone/
 │   └── plot.py              결과 그래프 (matplotlib → PNG)
 ├── ai_report/
 │   ├── models.py            리포트 형식 (진단, 원인, 솔루션)
-│   └── report.py            Claude(또는 Gemini)로 리포트 생성 (자체 점검: python -m ai_report.report)
+│   ├── report.py            Claude(또는 Gemini)로 리포트 생성 (자체 점검: python -m ai_report.report)
+│   └── capacity.py          접속점별 신재생·부하 추가 가능량 (이분 탐색)
 ├── frontend/
 │   ├── src/
 │   │   ├── App.jsx          화면 흐름: 변전소 선택 → 단선도 → 자동 저장·시뮬레이션 → 결과·리포트
-│   │   ├── components/      Diagram(단선도), NavDrawer(편집 메뉴), PropertyPanel(속성), ResultPanel(결과), HistoryChart, Modal, SubstationDialog, PopupWindow
+│   │   ├── components/      Diagram(단선도), NavDrawer(편집 메뉴), PropertyPanel(속성), ResultPanel(결과), UsecasePanels(추가 가능량·AI 추천·권고), SubstationOverview(변전소 전체 단선도), NodeIcon(설비 모양·색), HistoryChart, ProfileChart, Modal, SubstationDialog, PopupWindow
 │   │   ├── lib/             graphEdit.js(편집 로직), overlay.js(결과 → 단선도 표시)
 │   │   ├── api/client.js    백엔드 API 호출
 │   │   └── main.jsx, styles.css
+│   ├── public/overview/wangsan_22kv.html  왕산변전소 22.9kV 전체 단선도 (정적 그림)
 │   ├── mock/mock_server.py  Neo4j·OpenDSS·LLM 없이 화면 개발용 모의 백엔드
 │   └── vite.config.js       /api 요청을 백엔드(localhost:8000)로 전달
 ├── data/                    계통 XML·시간대별 가상 배율 (korean_distribution_cim.xml, profile_2025.csv, 출처 NOTICE.md)
