@@ -8,7 +8,7 @@
 // 백엔드에 하루 계산이 없으면(예전 백엔드) 예전처럼 가로축 = 기록 순서인 그래프를 보여 준다.
 // ponytail: 기록은 브라우저 메모리에만 있다(새로고침하면 사라짐)
 import { useState } from 'react'
-import { FAULT_HIGH_MVA, OVERLOAD_PCT, VOLTAGE_MIN_PU } from '../lib/overlay.js'
+import { FAULT_HIGH_MVA, LOADING_WATCH_PCT, OVERLOAD_PCT, VOLTAGE_MAX_PU, VOLTAGE_MIN_PU } from '../lib/overlay.js'
 
 const W = 320
 const H = 130
@@ -315,6 +315,146 @@ function HourlyTable({ cur, prev, sel, hour, setHour, date, onViewHour }) {
   )
 }
 
+// ── 두 시각 나란히 비교 (유스케이스 2 ⑤ "낮과 저녁 비교") ──
+// 낮(태양광 많고 부하 적음 → 역조류·과전압)과 저녁(태양광 0, 부하 최대 → 저전압·과부하)의 문제가 다르다는 걸 한눈에 보려는 표.
+// 값은 이미 계산한 하루 곡선(cur.daily)에서 꺼내 쓴다 (새 계산 없음). 기준을 넘는 칸은 빨강·주황, 두 시각 중 더 나쁜 쪽은 굵게
+// bad(v) = 'bad' | 'warn' | '' (칸 색), worse = 두 값 중 나쁜 쪽 방향 ('max' 클수록 나쁨, 'min' 작을수록 나쁨, null 비교 안 함)
+const COMPARE_ROWS = [
+  { key: 'pvMw', label: '태양광 출력', unit: 'MW', fmt: (v) => v.toFixed(2), worse: null },
+  { key: 'loadMw', label: '부하 합계', unit: 'MW', fmt: (v) => v.toFixed(2), worse: null },
+  { key: 'totalMw', label: '변전소 송출', unit: 'MW', fmt: (v) => v.toFixed(2), worse: null },
+  { key: 'maxV', label: '최고 전압', unit: 'pu', fmt: (v) => v.toFixed(3), worse: 'max', bad: (v) => (v > VOLTAGE_MAX_PU ? 'bad' : '') },
+  { key: 'minV', label: '최저 전압', unit: 'pu', fmt: (v) => v.toFixed(3), worse: 'min', bad: (v) => (v < VOLTAGE_MIN_PU ? 'bad' : '') },
+  { key: 'maxLoading', label: '최대 부하율', unit: '%', fmt: (v) => v.toFixed(0), worse: 'max', bad: (v) => (v > OVERLOAD_PCT ? 'bad' : v >= LOADING_WATCH_PCT ? 'warn' : '') },
+  { key: 'revLines', label: '역조류 선로 수', unit: '곳', fmt: (v) => String(v), worse: 'max', bad: (v) => (v > 0 ? 'warn' : '') },
+  { key: 'revBad', label: '역조류 비정상', unit: '곳', fmt: (v) => String(v), worse: 'max', bad: (v) => (v > 0 ? 'bad' : '') },
+  { key: 'reverseMw', label: '최대 역조류', unit: 'MW', fmt: (v) => v.toFixed(2), worse: 'max' },
+  { key: 'maxMva', label: '최대 단락용량', unit: 'MVA', fmt: (v) => v.toFixed(0), worse: 'max', bad: (v) => (v > FAULT_HIGH_MVA ? 'warn' : '') },
+  { key: 'lossKw', label: '선로 손실', unit: 'kW', fmt: (v) => v.toFixed(1), worse: 'max' },
+]
+const DEFAULT_PAIR = [12, 19] // 시나리오 예시: 낮 12시(태양광 최대) vs 저녁 19시(부하 최대)
+
+// 한 시각의 문제 요약 (표 아래 한 줄). 기준을 넘은 항목만
+function problemsAt(d) {
+  if (!d) return []
+  const out = []
+  if (d.maxV != null && d.maxV > VOLTAGE_MAX_PU) out.push(`과전압 ${d.maxV.toFixed(3)} pu`)
+  if (d.minV != null && d.minV < VOLTAGE_MIN_PU) out.push(`저전압 ${d.minV.toFixed(3)} pu`)
+  if (d.maxLoading != null && d.maxLoading > OVERLOAD_PCT) out.push(`과부하 ${d.maxLoading.toFixed(0)}%`)
+  else if (d.maxLoading != null && d.maxLoading >= LOADING_WATCH_PCT) out.push(`부하율 주의 ${d.maxLoading.toFixed(0)}%`)
+  if (d.revBad) out.push(`역조류 비정상 ${d.revBad}곳`)
+  else if (d.revLines) out.push(`역조류 ${d.revLines}곳 (정상 범위)`)
+  return out
+}
+
+function CompareHours({ daily, date, onViewHour }) {
+  const [pair, setPair] = useState(DEFAULT_PAIR)
+  const byHour = Object.fromEntries(daily.map((d) => [d.hour, d]))
+  const [a, b] = pair
+  const A = byHour[a]
+  const B = byHour[b]
+  // "가장 다른 두 시각": 역조류가 가장 큰 시각(없으면 태양광 최대) vs 부하율이 가장 큰 시각
+  const peakOf = (key) => daily.reduce((best, d) => (d[key] != null && (!best || d[key] > best[key]) ? d : best), null)?.hour
+  const hasReverse = daily.some((d) => d.reverseMw > 0.0005)
+  const autoPair = [hasReverse ? peakOf('reverseMw') : peakOf('pvMw'), peakOf('maxLoading')]
+  const setAt = (i, h) => setPair((p) => (i === 0 ? [h, p[1]] : [p[0], h]))
+  const hourSelect = (i, h) => (
+    <select value={h} onChange={(e) => setAt(i, Number(e.target.value))} aria-label={`${i + 1}번째 비교 시각`}>
+      {daily.map((d) => (
+        <option key={d.hour} value={d.hour}>
+          {String(d.hour).padStart(2, '0')}시
+        </option>
+      ))}
+    </select>
+  )
+  const head = (h, i) => (
+    <th className="num">
+      {hourSelect(i, h)}
+      {onViewHour && date && (
+        <button type="button" className="mini" onClick={() => onViewHour(date, h)} title={`${date} ${h}시 계통으로 단선도 보기`}>
+          단선도
+        </button>
+      )}
+    </th>
+  )
+  return (
+    <div className="compare-hours">
+      <h3 className="sub">
+        두 시각 비교 <span className="muted">· 낮(태양광 많음)과 저녁(부하 많음)처럼 성격이 다른 두 시각을 나란히</span>
+      </h3>
+      <div className="compare-quick">
+        <button type="button" className={`date-quick ${a === DEFAULT_PAIR[0] && b === DEFAULT_PAIR[1] ? 'on' : ''}`} onClick={() => setPair(DEFAULT_PAIR)}>
+          낮 12시 vs 저녁 19시
+        </button>
+        {autoPair.every((h) => h != null) && autoPair[0] !== autoPair[1] && (
+          <button
+            type="button"
+            className={`date-quick ${a === autoPair[0] && b === autoPair[1] ? 'on' : ''}`}
+            onClick={() => setPair(autoPair)}
+            title="역조류가 가장 큰 시각(역조류가 없으면 태양광 최대 시각) vs 부하율이 가장 큰 시각"
+          >
+            {hasReverse ? '역조류' : '태양광'} 최대 {autoPair[0]}시 vs 부하율 최대 {autoPair[1]}시
+          </button>
+        )}
+      </div>
+      <div className="hourly-scroll">
+        <table className="rtable compare-table">
+          <thead>
+            <tr>
+              <th>항목</th>
+              {head(a, 0)}
+              {head(b, 1)}
+              <th className="num">
+                차이 ({b}시 − {a}시)
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {COMPARE_ROWS.map((r) => {
+              const va = A?.[r.key]
+              const vb = B?.[r.key]
+              const both = va != null && vb != null
+              const diff = both ? vb - va : null
+              const shown = diff != null && r.fmt(Math.abs(diff)) !== r.fmt(0)
+              const worseSide = !both || !r.worse || r.fmt(va) === r.fmt(vb) ? null : (r.worse === 'max' ? vb > va : vb < va) ? 'b' : 'a'
+              const cell = (v, side) => (
+                <td className={`num ${v != null && r.bad ? r.bad(v) : ''} ${worseSide === side ? 'worst' : ''}`}>{v == null ? '-' : r.fmt(v)}</td>
+              )
+              return (
+                <tr key={r.key}>
+                  <td>
+                    {r.label} <span className="muted small">({r.unit})</span>
+                  </td>
+                  {cell(va, 'a')}
+                  {cell(vb, 'b')}
+                  <td className="num">{shown ? <small className={diff > 0 ? 'up' : 'down'}>{`${diff > 0 ? '▲' : '▼'} ${r.fmt(Math.abs(diff))}`}</small> : <span className="muted">-</span>}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+      <ul className="compare-summary">
+        {[
+          [a, A],
+          [b, B],
+        ].map(([h, d], i) => {
+          const ps = problemsAt(d)
+          return (
+            <li key={i}>
+              <b>{h}시</b>: {ps.length ? ps.join(' · ') : '기준 안 (문제 없음)'}
+            </li>
+          )
+        })}
+      </ul>
+      <p className="muted small">
+        같은 기록의 하루 곡선에서 두 시각을 꺼내 보여 줍니다 (새로 계산하지 않음) · 빨강 = 기준 넘음 · 주황 = 주의 · 굵은 글씨 = 두 시각 중 더 나쁜 쪽 ·
+        태양광·부하 합계는 계통의 설비용량·최대부하에 그 시각 배율을 곱한 값
+      </p>
+    </div>
+  )
+}
+
 export default function HistoryChart({ points, daily, onViewHour }) {
   const [picked, setPicked] = useState(null) // 표에서 고른 기록 번호 (없으면 마지막 기록)
   const [hour, setHour] = useState(null) // 하루 그래프에서 마우스가 가리키는 시각
@@ -427,6 +567,7 @@ export default function HistoryChart({ points, daily, onViewHour }) {
         </tbody>
       </table>
       {hasDaily && cur.daily && <HourlyTable cur={cur} prev={sel > 0 ? points[sel - 1] : null} sel={sel} hour={hour} setHour={setHour} date={cur.profile?.date ?? daily?.date} onViewHour={onViewHour} />}
+      {hasDaily && cur.daily && <CompareHours key={cur.id ?? sel} daily={cur.daily} date={cur.profile?.date ?? daily?.date} onViewHour={onViewHour} />}
       {hasDaily && (
         <p className="muted small">
           하루 곡선은 고른 날의 시간대별 배율(data/profile_2025.csv, 2025년 1년치 가상 패턴, 실측 아님)을 계통의 부하·태양광 값에 곱해 시간마다 다시 계산한 값입니다.

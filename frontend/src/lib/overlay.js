@@ -477,12 +477,28 @@ export function historyPoint(graph, result, label) {
   }
 }
 
+// 하루 계산에서 밤에도 남기는 태양광 배율 (simulation/daily.py의 PV_MIN_MULT). 태양광 출력 합계를 백엔드와 같게 계산하려고 씀
+const PV_MIN_MULT = 0.0001
+
 // 하루(24시간) 시뮬레이션 결과 → 시간별 지표 24개 (기록 탭의 하루 곡선용). hours는 runDaily 응답의 hours
-// 계산은 historyPoint와 같은 지표를 시간마다 뽑은 것이다
+// 계산은 historyPoint와 같은 지표를 시간마다 뽑은 것이다.
+// 낮·저녁 비교(HistoryChart.jsx의 CompareHours, 유스케이스 2 ⑤)용으로 태양광·부하 합계, 최고 전압, 역조류 선로 수도 같이 담는다
 export function dailyPoints(graph, hours) {
+  const sumKw = (type) => graph.nodes.filter((n) => n.type === type).reduce((s, n) => s + (n.p_kw ?? 0), 0)
+  const pvKw = sumKw('pv') // 계통 데이터의 태양광 = 설비용량 (daily.py와 같은 가정)
+  const loadKw = sumKw('load') // 계통 데이터의 부하 = 최대부하
+  const ids = new Set(graph.nodes.map((n) => n.id))
+  const lineIds = new Set(graph.lines.map((l) => l.id))
   return hours.map(({ hour, load_mult, pv_mult, result }) => {
     const hc = healthCheck(graph, result)
+    const volts = result.nodes.filter((r) => ids.has(r.node_id) && r.energized).map((r) => r.voltage_pu)
+    const rev = result.lines.filter((r) => r.reverse_flow && lineIds.has(r.line_id))
     return {
+      pvMw: (pvKw * Math.max(pv_mult, PV_MIN_MULT)) / 1000,
+      loadMw: (loadKw * load_mult) / 1000,
+      maxV: volts.length ? Math.max(...volts) : null,
+      revLines: rev.length,
+      revBad: rev.filter((r) => r.reverse_flow_ok === false).length,
       hour,
       loadMult: load_mult,
       pvMult: pv_mult,
