@@ -17,6 +17,8 @@ import {
   getSubstation,
   listSubstations,
   runDaily,
+  runDerComparison,
+  runHostingCapacity,
   runSimulation,
   saveSubstation,
 } from './api/client.js'
@@ -27,7 +29,17 @@ import PopupWindow, { openPopup } from './components/PopupWindow.jsx'
 import PropertyPanel from './components/PropertyPanel.jsx'
 import { AiReportView, Legend, ResultView, SummaryStrip } from './components/ResultPanel.jsx'
 import { NewSubstationDialog, RenameDialog } from './components/SubstationDialog.jsx'
-import { electricalKey, emptyGraph, findDangling, removeElements, starterGraph, toSnapshot, updateSubstation } from './lib/graphEdit.js'
+import {
+  addNode,
+  electricalKey,
+  emptyGraph,
+  findDangling,
+  removeElements,
+  starterGraph,
+  toSnapshot,
+  updateNode,
+  updateSubstation,
+} from './lib/graphEdit.js'
 import { MODES, dailyPoints, historyPoint, sameHistoryValues } from './lib/overlay.js'
 
 // ponytail: 되돌리기는 브라우저 메모리에 이전 계통을 최대 50개 통째로 보관한다 (새로고침하면 사라짐).
@@ -43,6 +55,7 @@ const localDate = (d = new Date()) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 // 편집 화면 계산 시각: 오늘 날짜 + 지금 시(0~23)
 const nowAt = (d = new Date()) => ({ date: localDate(d), hour: d.getHours() })
+const sameAt = (a, b) => (a ? !!b && a.date === b.date && a.hour === b.hour : !b)
 const HOUR_CHECK_MS = 30000 // 정각이 지났는지 확인하는 간격
 
 const describe = (e) => e.message.replace(/^HTTP \d+: /, '')
@@ -59,7 +72,14 @@ export default function App() {
   const [selectedIds, setSelectedIds] = useState([])
   const [mode, setMode] = useState('health') // 단선도 표시 모드: health | voltage | loading | reverse | fault (lib/overlay.js의 MODES)
   const [focus, setFocus] = useState(null) // 결과 창에서 누른 위치 { id, n }
-  const [simMode, setSimMode] = useState('now') // 편집 화면 계산 기준: 'now' = 지금 시각 | 'max' = 최대 조건
+  // 편집 화면 계산 기준: 'now' = 지금 시각 | 'max' = 최대 조건 | 'pick' = 기록 탭에서 고른 시각 (pickAt)
+  const [simMode, setSimMode] = useState('now')
+  const [pickAt, setPickAt] = useState(null) // 'pick'일 때 보는 시각 { date, hour }
+  // 태양광 연결 전후 비교 (simulation/der.py의 compare_der). 계산할 때마다 같은 시각으로 뒤따라 부른다. { at, data } | null
+  const [der, setDer] = useState(null)
+  // 연계 가능 최대치 (simulation/der.py의 hosting_capacity): 접속점 속성 칸에서 부른다
+  // { busId, targetKw, at, status: 'busy' | 'done' | 'error', data, error }. 선로로 이동했다 돌아와도 남도록 여기 둔다
+  const [hosting, setHosting] = useState(null)
   const [resultAt, setResultAt] = useState(null) // 지금 결과를 계산한 시각 { date, hour } (최대 조건이면 null)
   const [busy, setBusy] = useState('') // 진행 중인 계산 이름 (단선도 위 요약 줄에 표시)
   const [result, setResult] = useState(null)
@@ -93,7 +113,9 @@ export default function App() {
   const dailyDateRef = useRef(dailyDate) // 지금 고른 날 (늦게 온 다른 날짜 응답을 버릴 때 씀)
   const dailyRun = useRef(0) // 날짜를 바꿀 때마다 증가. 이전 날짜로 다시 계산하던 반복을 멈추는 데 씀
   const simModeRef = useRef(simMode)
+  const pickAtRef = useRef(null)
   const resultAtRef = useRef(null)
+  const derAvailable = useRef(true) // 백엔드에 전후 비교 주소가 있는지 (예전 백엔드면 404 → 다시 부르지 않음)
   const changeLabel = useRef('') // 기록에 남길 "바뀐 내용"
 
   const info = useCallback((text) => setMessage({ text, kind: 'info' }), [])
@@ -143,6 +165,8 @@ export default function App() {
     setHistoryNote('')
     ++dailyRun.current
     setDailyBusy(null)
+    setDer(null)
+    setHosting(null)
   }
 
   // 기록 점 하나에 고른 날의 하루(24시간) 곡선을 붙인다. 시간이 걸리므로 기록은 먼저 쌓고 결과는 나중에 채운다.
@@ -172,7 +196,7 @@ export default function App() {
   async function simulateNow(g, label, { record = true } = {}) {
     const id = ++runId.current
     setBusy('계산 중...')
-    const at = simModeRef.current === 'now' ? nowAt() : null
+    const at = simModeRef.current === 'now' ? nowAt() : simModeRef.current === 'pick' ? pickAtRef.current : null
     let res
     try {
       res = await runSimulation(g.substation.id, at)
@@ -196,6 +220,7 @@ export default function App() {
     setSimNote('')
     setReport(null)
     setReportMessage('')
+    loadDer(g, at, id)
     // 결과 기록(시점별)에는 계통이 다 이어진 상태의 계산만 남긴다. 노드를 놓기만 하고 아직 연결하지 않은 중간 단계,
     // 그리고 지표가 직전 기록과 똑같은 계산은 건너뛴다 (편집할 때마다 점이 쌓여 보기 불편하다는 팀 피드백)
     if (!record) return
@@ -214,6 +239,56 @@ export default function App() {
         if (dailyAvailable.current !== false) loadDaily(g, pid, dailyDateRef.current)
       }
     }
+  }
+
+  // 태양광 연결 전후 비교: 방금 계산한 것과 같은 시각으로 (계산 두 번 더 하지만 0.1초 정도). 요약 줄 "태양광 출력"과 결과 자세히 탭에 씀
+  function loadDer(g, at, id) {
+    if (!derAvailable.current || !g.nodes.some((n) => n.type === 'pv' || n.type === 'wind')) {
+      setDer(null)
+      return
+    }
+    runDerComparison(g.substation.id, at)
+      .then((data) => id === runId.current && setDer({ at, data }))
+      .catch((e) => {
+        if ([404, 405, 501].includes(e.status)) derAvailable.current = false
+        if (id === runId.current) setDer(null)
+      })
+  }
+
+  // 연계 가능 최대치 (접속점 속성 칸의 버튼): 지금 화면과 같은 시각 기준
+  async function checkHosting(busId, targetKw) {
+    const g = graphRef.current
+    if (!g) return
+    const at = resultAtRef.current
+    setHosting({ busId, targetKw, at, status: 'busy' })
+    try {
+      const data = await runHostingCapacity(g.substation.id, busId, targetKw, at)
+      // key: 계산한 계통 (계통을 고치면 결과가 옛것이 되어 다시 계산하라고 표시)
+      setHosting((h) => (h?.busId === busId ? { busId, targetKw, at, status: 'done', data, key: electricalKey(g) } : h))
+    } catch (e) {
+      setHosting((h) => (h?.busId === busId ? { busId, targetKw, at, status: 'error', error: describe(e) } : h))
+    }
+  }
+
+  // 연계 검토한 접속점에 태양광을 실제로 붙여 본다 (편집과 같음: 자동 저장 → 재계산 → 기록 탭에서 전후 비교, Ctrl+Z로 되돌리기)
+  function addPvAt(busId, kw) {
+    const g = graphRef.current
+    const bus = g?.nodes.find((n) => n.id === busId)
+    if (!bus) return
+    const { graph: g2, node } = addNode(g, 'pv', bus.x + 70, bus.y + 70)
+    onChange(updateNode(g2, node.id, { p_kw: kw, bus_id: busId, name: `연계 검토 태양광 ${kw} kW` }), `태양광 ${kw} kW 연계 검토`)
+    setHosting((h) => (h?.busId === busId ? { ...h, added: node.id } : h)) // 같은 결과로 또 붙이지 않게 (여러 번 누르면 태양광이 쌓이던 문제)
+    info(`${bus.name}에 태양광 ${kw} kW를 붙였습니다. 기록 탭에서 붙이기 전후를 비교할 수 있고, 되돌리려면 Ctrl+Z`)
+  }
+
+  // 기록 탭에서 고른 시각으로 단선도 보기 (유스케이스 2: 하루 중 위험한 시각의 단선도)
+  function viewHour(date, hour) {
+    pickAtRef.current = { date, hour }
+    setPickAt({ date, hour })
+    simModeRef.current = 'pick'
+    setSimMode('pick')
+    setResultOpen(null)
+    if (graphRef.current && !dirty) simulateNow(graphRef.current, '', { record: false })
   }
 
   // 기록 탭에서 날짜를 바꾸면: 모든 기록을 그 기록 시점 계통으로 새 날짜에 다시 계산한다 (서버 부담을 줄이려고 하나씩 차례로).
@@ -454,6 +529,9 @@ export default function App() {
       maxDate={localDate()}
       dailyBusy={dailyBusy}
       onDailyDate={changeDailyDate}
+      onViewHour={viewHour}
+      der={der}
+      resultAt={resultAt}
       onFocus={focusElement}
     />
   )
@@ -581,6 +659,8 @@ export default function App() {
                 busy={busy}
                 simMode={simMode}
                 simAt={resultAt}
+                pickAt={pickAt}
+                derKw={der && sameAt(der.at, resultAt) ? der.data.after.der_kw : null}
                 onSimMode={changeSimMode}
                 onRerun={() => simulateNow(graph, '다시 계산')}
               />
@@ -603,7 +683,18 @@ export default function App() {
           )}
         </Diagram>
         {/* 속성은 편집 메뉴를 열지 않아도 고칠 수 있다 (자동 저장) */}
-        <PropertyPanel graph={graph} selectedIds={selectedIds} result={result} editing={!!graph} onChange={onPropChange} />
+        <PropertyPanel
+          graph={graph}
+          selectedIds={selectedIds}
+          result={result}
+          editing={!!graph}
+          onChange={onPropChange}
+          hosting={hosting}
+          resultAt={resultAt}
+          onCheckHosting={checkHosting}
+          onAddPv={addPvAt}
+          onFocus={focusElement}
+        />
       </div>
 
       {resultOpen === 'ai' && (

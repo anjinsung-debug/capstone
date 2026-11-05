@@ -175,9 +175,12 @@ def check_findings(graph: SubstationGraph, result: SimulationResult) -> dict:
     outage = [names.get(r.node_id, r.node_id) for r in result.nodes if not r.energized]
     overload = [(line_names.get(r.line_id, r.line_id), r.loading_pct) for r in result.lines if r.loading_pct is not None and r.loading_pct > OVERLOAD_PCT]
     watch = [(line_names.get(r.line_id, r.line_id), r.loading_pct) for r in result.lines if r.loading_pct is not None and LOADING_WATCH_PCT <= r.loading_pct <= OVERLOAD_PCT]
-    # ponytail: 역조류는 크기와 상관없이 '주의'다 (제안서에 수치 없음). 기준이 필요함: 아주 작은 값 무시,
-    #   피더 송출 전력 < 0(변전소 뱅크 역송)은 '위험'. 정해지면 simulation/simulate.py의 reverse_flow, frontend/src/lib/overlay.js의 healthCheck와 같은 규칙으로 고친다
+    # 역조류 (10/26 회의 기준, 화면 frontend/src/lib/overlay.js의 healthCheck와 같은 규칙): 역조류 자체는 정상.
+    #   선로 부하율 ≤ 100%이고 출구 차단기가 끊을 수 있으면 정상(reverse_flow_ok=True, 등급에 영향 없음), 아니면 비정상(위험).
+    #   판정이 없는 결과(reverse_flow_ok=None, 예전 결과)는 예전처럼 '주의'. 1 kW 미만은 simulate.py가 이미 역조류로 보지 않음
     reverse = [(line_names.get(r.line_id, r.line_id), r.p_kw) for r in result.lines if r.reverse_flow]
+    reverse_bad = [(line_names.get(r.line_id, r.line_id), r.p_kw) for r in result.lines if r.reverse_flow and r.reverse_flow_ok is False]
+    reverse_unjudged = [r for r in result.lines if r.reverse_flow and r.reverse_flow_ok is None]
     # 3상 단락용량(MVA) = √3 × 선간전압(kV) × 단락전류(kA). 정전 지점은 단락전류가 없으니 뺀다
     fault = [
         (names.get(r.node_id, r.node_id), math.sqrt(3) * BASE_KV * r.fault_current_ka)
@@ -191,15 +194,16 @@ def check_findings(graph: SubstationGraph, result: SimulationResult) -> dict:
     watch.sort(key=lambda x: -x[1])
     # ponytail: 항목 개수와 상관없이 하나라도 있으면 같은 등급이다. 심각도 가중치가 필요해지면 그때 점수 계산을 넣는다
     # 등급 (화면 진단표와 같은 규칙): 항목마다 판정하고 가장 나쁜 것이 전체 등급
-    #   위험: 전압 0.9 pu 미만·1.1 pu 초과, 과부하, 정전 / 주의: 전압 정상 범위 밖, 부하율 80% 이상, 역조류, 단락용량 초과
+    #   위험: 전압 0.9 pu 미만·1.1 pu 초과, 과부하, 정전, 비정상 역조류 / 주의: 전압 정상 범위 밖, 부하율 80% 이상, 판정 없는 역조류, 단락용량 초과
     danger_v = any(v < VOLTAGE_DANGER_LOW_PU for _, v in low) or any(v > VOLTAGE_DANGER_HIGH_PU for _, v in high)
-    if danger_v or overload or outage:
+    if danger_v or overload or outage or reverse_bad:
         grade = GRADES[2]
-    elif low or high or watch or reverse or fault:
+    elif low or high or watch or reverse_unjudged or fault:
         grade = GRADES[1]
     else:
         grade = GRADES[0]
-    return {"grade": grade, "low": low, "high": high, "outage": outage, "overload": overload, "watch": watch, "reverse": reverse, "fault": fault}
+    return {"grade": grade, "low": low, "high": high, "outage": outage, "overload": overload, "watch": watch, "reverse": reverse,
+            "reverse_bad": reverse_bad, "fault": fault}
 
 
 def _assumptions(graph: SubstationGraph) -> list[str]:
@@ -245,6 +249,10 @@ def build_prompt(graph: SubstationGraph, result: SimulationResult) -> str:
     lines.append(f"- 과부하(>{OVERLOAD_PCT:.0f}%) 선로 {len(f['overload'])}개" + (": " + ", ".join(f"{n} {p:.0f}%" for n, p in f["overload"]) if f["overload"] else ""))
     lines.append(f"- 부하율 높음({LOADING_WATCH_PCT}~{OVERLOAD_PCT:.0f}%) 선로 {len(f['watch'])}개" + (": " + ", ".join(f"{n} {p:.0f}%" for n, p in f["watch"]) if f["watch"] else ""))
     lines.append(f"- 역조류 선로 {len(f['reverse'])}개" + (": " + ", ".join(f"{n} {p:.0f} kW" for n, p in f["reverse"]) if f["reverse"] else ""))
+    if f["reverse"]:  # 10/26 회의 기준: 역조류 자체는 정상, 선로 용량 안이고 출구 차단기가 끊을 수 있으면 정상
+        bad = f["reverse_bad"]
+        lines.append(f"  - 이 중 비정상(선로 용량 초과 또는 차단기가 못 끊음) {len(bad)}개" + (": " + ", ".join(n for n, _ in bad) if bad else "")
+                     + ". 나머지 역조류는 선로 용량·차단기 안이라 정상 운전 범위")
     shown = f["fault"][:MAX_FAULT_LISTED]
     more = f" 외 {len(f['fault']) - len(shown)}곳" if len(f["fault"]) > len(shown) else ""
     lines.append(f"- 단락용량(>{FAULT_HIGH_MVA} MVA) {len(f['fault'])}곳" + (": " + ", ".join(f"{n} {m:.0f} MVA" for n, m in shown) + more if f["fault"] else ""))
@@ -300,7 +308,7 @@ def build_prompt(graph: SubstationGraph, result: SimulationResult) -> str:
         if line.kind == "switch" and not r.reverse_flow:
             continue
         loading = f", 부하율 {r.loading_pct:.0f}%" if r.loading_pct is not None else ""
-        flag = " [역조류]" if r.reverse_flow else ""
+        flag = (" [역조류·정상]" if r.reverse_flow_ok else " [역조류·비정상]" if r.reverse_flow_ok is False else " [역조류]") if r.reverse_flow else ""
         line_rows.append(f"- {line.name}: {label(line.from_node_id)} → {label(line.to_node_id)}, {line.length_km:.2f} km, 유효 {r.p_kw:.0f} kW, 무효 {r.q_kvar:.0f} kvar{loading}{flag}")
     lines.append("## 선로별 (부하율 높은 순, 전원 쪽 → 말단 방향이 + 조류)")
     lines += _limit(line_rows, len(line_rows), "선로")
