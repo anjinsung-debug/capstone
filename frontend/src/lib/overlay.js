@@ -79,7 +79,8 @@ export const LEGENDS = {
   ],
   reverse: [
     ['정방향 (부하 방향)', COLORS.blue],
-    ['역조류 (발전 → 변전소)', COLORS.red],
+    ['역조류 정상 (용량·차단기 안)', COLORS.orange],
+    ['역조류 비정상', COLORS.red],
   ],
   fault: [
     [`> ${FAULT_HIGH_MVA} MVA 높음`, COLORS.red],
@@ -195,22 +196,27 @@ export function healthCheck(graph, result) {
   }
 
   // 3) 역조류: 거꾸로 흐르는 전력이 가장 큰 선로
-  // ponytail: 크기와 상관없이 역조류가 있으면 '주의'다 (제안서에 수치 없음). 기준이 필요함: 아주 작은 값 무시,
-  //   피더 송출 전력 < 0(변전소 뱅크 역송)은 '위험'. 정해지면 simulation/simulate.py의 reverse_flow, ai_report/report.py의 check_findings와 같은 규칙으로 고친다
+  // 10/26 회의 기준: 역조류 자체는 정상. 선로 부하율 ≤ 100%이고 그 피더 출구 차단기가 고장전류를 끊을 수 있으면 정상(reverse_flow_ok),
+  // 하나라도 안 되면 비정상(위험). 정상이어도 역조류 표시는 꼭 한다 (simulation/models.py의 LineResult.reverse_flow_ok, 백엔드가 판정)
+  // 예전 백엔드라 reverse_flow_ok가 없으면(undefined) 예전처럼 역조류가 있으면 '주의'
   const rev = result.lines.filter((r) => r.reverse_flow && lineById[r.line_id])
   const rWorst = rev.reduce((a, r) => (!a || Math.abs(r.p_kw) > Math.abs(a.p_kw) ? r : a), null)
+  const judged = rev.some((r) => r.reverse_flow_ok !== undefined && r.reverse_flow_ok !== null)
+  const revBad = rev.filter((r) => r.reverse_flow_ok === false)
+  const okText = (r) => (r.reverse_flow_ok === true ? ' · 정상' : r.reverse_flow_ok === false ? ' · 비정상' : '')
   const reverse = {
     key: 'reverse',
     label: '역조류',
-    standard: '없음 (제한 내)',
+    standard: judged ? '선로 용량·차단기 안이면 정상' : '없음 (제한 내)',
     worst: rWorst ? Math.abs(rWorst.p_kw) / 1000 : 0,
-    worstText: rWorst ? fmtMw(rWorst.p_kw) : '없음',
-    whereId: rWorst?.line_id ?? null,
-    whereName: rWorst ? lineName(lineById[rWorst.line_id]) : '',
-    problem: rev.length ? '역조류' : '',
+    worstText: rWorst ? `${fmtMw(rWorst.p_kw)}${judged ? (revBad.length ? ` · 비정상 ${revBad.length}곳` : ' · 정상') : ''}` : '없음',
+    whereId: (revBad[0] ?? rWorst)?.line_id ?? null,
+    whereName: revBad[0] ? lineName(lineById[revBad[0].line_id]) : rWorst ? lineName(lineById[rWorst.line_id]) : '',
+    problem: revBad.length ? '비정상 역조류' : rev.length && !judged ? '역조류' : '',
     count: rev.length,
-    items: rev.map((r) => ({ id: r.line_id, name: lineName(lineById[r.line_id]), value: fmtMw(r.p_kw) })),
-    level: rev.length ? 'warn' : 'ok',
+    badCount: revBad.length,
+    items: rev.map((r) => ({ id: r.line_id, name: lineName(lineById[r.line_id]), value: `${fmtMw(r.p_kw)}${okText(r)}`, ok: r.reverse_flow_ok })),
+    level: revBad.length ? 'danger' : rev.length && !judged ? 'warn' : 'ok',
   }
 
   // 4) 단락용량: 가장 큰 노드 (보통 변전소 모선)
@@ -340,10 +346,12 @@ export function buildOverlay(graph, result, mode) {
       o.width = width
       o.sub = r.loading_pct == null ? '' : `${r.loading_pct.toFixed(0)}%`
     } else if (mode === 'reverse') {
-      o.color = r.reverse_flow ? COLORS.red : COLORS.blue
+      // 역조류 정상(용량·차단기 안)은 주황, 비정상은 빨강, 판정이 없으면(예전 백엔드) 빨강
+      o.color = !r.reverse_flow ? COLORS.blue : r.reverse_flow_ok === true ? COLORS.orange : COLORS.red
       o.width = r.reverse_flow ? 5 : 2.5
       o.arrow = dir
-      if (l.kind === 'line') o.sub = `${Math.round(Math.abs(r.p_kw))} kW`
+      if (l.kind === 'line')
+        o.sub = `${Math.round(Math.abs(r.p_kw))} kW${r.reverse_flow_ok === true ? ' 정상' : r.reverse_flow_ok === false ? ' 비정상' : ''}`
     }
     lines[l.id] = o
   }
@@ -432,7 +440,16 @@ export function elementRows(graph, result) {
       loading: r?.loading_pct ?? null,
       loadingColor: loadingColor(r?.loading_pct),
       reverse: Boolean(r?.reverse_flow),
-      problem: overload ? '과부하' : r?.reverse_flow ? '역조류' : '',
+      problem: overload
+        ? '과부하'
+        : !r?.reverse_flow
+          ? ''
+          : r.reverse_flow_ok === true
+            ? '역조류 (정상)'
+            : r.reverse_flow_ok === false
+              ? '역조류 (비정상)'
+              : '역조류',
+      reverseOk: r?.reverse_flow_ok,
     }
   })
   return { nodes, lines }

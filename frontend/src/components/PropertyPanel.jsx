@@ -1,7 +1,7 @@
 // 선택한 설비·선로의 속성 보기·고치기 (FR-06). 아무것도 선택하지 않으면 변전소 속성과 빠진 항목을 보여 준다.
 // 시뮬레이션 결과가 있으면 그 설비의 계산값(전압, 고장전류, 조류, 부하율)도 함께 보여 준다.
 import { useState } from 'react'
-import { NODE_TYPES, findIssues, updateLine, updateNode, updateSubstation } from '../lib/graphEdit.js'
+import { NODE_TYPES, electricalKey, findIssues, updateLine, updateNode, updateSubstation } from '../lib/graphEdit.js'
 import { COLORS, OVERLOAD_PCT, loadingColor, mvaOf, voltageColor } from '../lib/overlay.js'
 
 // 숫자 입력: 입력 중에는 글자 그대로 두고, 포커스를 잃거나 Enter일 때 숫자로 반영 (빈칸 = 값 없음)
@@ -73,7 +73,124 @@ function Stat({ label, value, color }) {
   )
 }
 
-function NodeProps({ graph, node, result, editing, onChange }) {
+// ── 태양광 연계 검토 (접속점만): "이 접속점에 태양광을 몇 kW까지 더 붙일 수 있나, 무엇 때문에 막히나, 목표만큼 붙이려면 무엇을 늘려야 하나" ──
+// 백엔드 simulation/der.py의 hosting_capacity (유스케이스 1, 10/26 중간 발표 요청). 기준: 접속점 전압 ≤ 1.05 pu, 선로 부하율 ≤ 100%, 출구 차단기 차단 가능
+// 결과는 App.jsx의 hosting 상태에 있어서, 막는 선로로 이동했다가 이 접속점으로 돌아와도 남아 있다
+const VIOLATION_TEXT = { overvoltage: '전압 상승', overload: '선로 과부하', breaker: '차단기 차단 불가' }
+
+function violationLine(v, names) {
+  const what = names[v.element_id] ?? v.element_id
+  const val =
+    v.kind === 'overvoltage'
+      ? `${v.value.toFixed(3)} pu (기준 ${v.limit})`
+      : v.kind === 'overload'
+        ? `${v.value.toFixed(0)}% (기준 ${v.limit}%)`
+        : `${v.value.toFixed(1)} kA (정격 ${v.limit} kA)`
+  return { what, val, kind: VIOLATION_TEXT[v.kind] ?? v.kind }
+}
+
+function HostingSection({ graph, node, hosting, resultAt, onCheckHosting, onAddPv, onFocus }) {
+  const [target, setTarget] = useState('')
+  const mine = hosting?.busId === node.id ? hosting : null
+  const names = Object.fromEntries([...graph.nodes, ...graph.lines, ...graph.feeders].map((x) => [x.id, x.name]))
+  const targetKw = target.trim() === '' || Number.isNaN(Number(target)) ? null : Math.max(0, Number(target))
+  const basis = (at) => (at ? `${at.date} ${at.hour}시 기준` : '최대 조건 기준')
+  const d = mine?.status === 'done' ? mine.data : null
+  const atLimit = d && d.limited_by.length === 0
+  // 계산한 뒤 계통을 고쳤거나(허용전류·태양광 등) 화면 시각을 바꿨으면 결과가 옛것
+  const sameAt = (a, b) => (a ? !!b && a.date === b.date && a.hour === b.hour : !b)
+  const stale = d && (mine.key !== electricalKey(graph) || !sameAt(mine.at, resultAt))
+  const added = mine?.added && graph.nodes.some((n) => n.id === mine.added)
+  return (
+    <div className="hosting">
+      <h4>태양광 연계 검토</h4>
+      <p className="muted small">
+        이 접속점에 태양광을 더 붙일 때 몇 kW까지 되는지 찾습니다 (전압 ≤ 1.05 pu, 선로 부하율 ≤ 100%, 출구 차단기 차단 가능). 지금 화면과 같은 시각({basis(resultAt)})으로 계산합니다.
+      </p>
+      <div className="hosting-row">
+        <label className="field">
+          <span>목표 용량 (선택)</span>
+          <div className="field-input">
+            <input type="text" inputMode="decimal" value={target} placeholder="예: 3000" onChange={(e) => setTarget(e.target.value)} />
+            <i>kW</i>
+          </div>
+        </label>
+        <button type="button" className="primary-outline" disabled={mine?.status === 'busy'} onClick={() => onCheckHosting(node.id, targetKw)}>
+          {mine?.status === 'busy' ? '계산 중...' : '연계 가능량 계산'}
+        </button>
+      </div>
+      {mine?.status === 'error' && <p className="warn small">계산하지 못했습니다: {mine.error}</p>}
+      {d && (
+        <>
+          {stale && <p className="warn small">계산한 뒤 계통이나 화면 시각이 바뀌었습니다. 아래는 예전 결과이니 &ldquo;연계 가능량 계산&rdquo;을 다시 눌러 주세요.</p>}
+          <div className="hosting-max">
+            <span className="muted small">더 붙일 수 있는 최대 · {basis(mine.at)}</span>
+            <b>{d.max_kw >= 20000 && atLimit ? '20,000 kW 이상' : `${d.max_kw.toLocaleString()} kW`}</b>
+            {d.max_kw === 0 && d.limited_by.length > 0 && <span className="warn small">지금 계통이 이미 기준을 넘어서 더 붙일 수 없습니다</span>}
+          </div>
+          {d.limited_by.length > 0 && (
+            <>
+              <span className="small">이 이상 붙이면 막히는 곳</span>
+              <ul>
+                {d.limited_by.map((v) => {
+                  const t = violationLine(v, names)
+                  return (
+                    <li key={`${v.kind}-${v.element_id}`}>
+                      <span>
+                        <b className="bad">{t.kind}</b> {t.what}
+                      </span>
+                      <button type="button" className="chip" onClick={() => onFocus(v.element_id)} title="단선도에서 이 위치로 이동">
+                        ⌖ {t.val}
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            </>
+          )}
+          {d.target_kw != null && (
+            <>
+              <span className="small">목표 {d.target_kw.toLocaleString()} kW를 붙이면</span>
+              {d.target_violations.length === 0 ? (
+                <span className="ok-line">기준 안에 있음 · 그대로 연계 가능</span>
+              ) : (
+                <ul>
+                  {d.target_violations.map((v) => {
+                    const t = violationLine(v, names)
+                    return (
+                      <li key={`t-${v.kind}-${v.element_id}`}>
+                        <span>
+                          <b className="bad">{t.kind}</b> {t.what}
+                          {v.required_rated_current_a != null && <> → 허용전류 {Math.ceil(v.required_rated_current_a)} A 이상으로</>}
+                        </span>
+                        <button type="button" className="chip" onClick={() => onFocus(v.element_id)} title="단선도에서 이 위치로 이동">
+                          ⌖ {t.val}
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+              {added ? (
+                <span className="ok-line">붙였습니다 · 기록 탭에서 전후 비교, 되돌리려면 편집 모드에서 Ctrl+Z</span>
+              ) : (
+                <button type="button" className="mini" disabled={stale} onClick={() => onAddPv(node.id, d.target_kw)} title="실제로 태양광 노드를 붙입니다 (자동 저장, 편집 모드에서 Ctrl+Z로 되돌리기)">
+                  이 접속점에 {d.target_kw.toLocaleString()} kW 붙여 보기
+                </button>
+              )}
+              <span className="muted small">
+                붙인 태양광의 kW는 설비용량이라 &ldquo;지금 시각&rdquo; 화면에서는 그 시각 배율만큼만 나옵니다. 위 검토 값과 똑같이 보려면 &ldquo;최대 조건&rdquo;으로 바꿔 보세요.
+              </span>
+            </>
+          )}
+          <span className="muted small">선로 허용전류는 데이터가 없으면 400 A 가정값이라 최대치가 이 값에 크게 좌우됩니다.</span>
+        </>
+      )}
+    </div>
+  )
+}
+
+function NodeProps({ graph, node, result, editing, onChange, hosting, resultAt, onCheckHosting, onAddPv, onFocus }) {
   const set = (patch) => onChange(updateNode(graph, node.id, patch))
   const info = NODE_TYPES[node.type]
   const bus = graph.nodes.find((n) => n.id === node.bus_id)
@@ -124,6 +241,18 @@ function NodeProps({ graph, node, result, editing, onChange }) {
           )}
         </div>
       )}
+      {node.type === 'bus' && onCheckHosting && result && (
+        <HostingSection
+          key={node.id}
+          graph={graph}
+          node={node}
+          hosting={hosting}
+          resultAt={resultAt}
+          onCheckHosting={onCheckHosting}
+          onAddPv={onAddPv}
+          onFocus={onFocus}
+        />
+      )}
     </>
   )
 }
@@ -167,7 +296,11 @@ function LineProps({ graph, line, result, editing, onChange }) {
           <Stat label="유효전력" value={`${r.p_kw.toFixed(0)} kW`} />
           <Stat label="무효전력" value={`${r.q_kvar.toFixed(0)} kvar`} />
           <Stat label="② 부하율" value={r.loading_pct != null ? `${r.loading_pct.toFixed(1)} %` : '-'} color={r.loading_pct > OVERLOAD_PCT ? COLORS.red : r.loading_pct != null ? loadingColor(r.loading_pct) : undefined} />
-          <Stat label="③ 역조류" value={r.reverse_flow ? '있음' : '없음'} color={r.reverse_flow ? COLORS.red : undefined} />
+          <Stat
+            label="③ 역조류"
+            value={!r.reverse_flow ? '없음' : r.reverse_flow_ok === true ? '있음 · 정상' : r.reverse_flow_ok === false ? '있음 · 비정상' : '있음'}
+            color={!r.reverse_flow ? undefined : r.reverse_flow_ok === true ? COLORS.orange : COLORS.red}
+          />
         </div>
       )}
     </>
@@ -207,14 +340,28 @@ function SubstationProps({ graph, editing, onChange }) {
   )
 }
 
-export default function PropertyPanel({ graph, selectedIds, result, editing, onChange }) {
+export default function PropertyPanel({ graph, selectedIds, result, editing, onChange, hosting, resultAt, onCheckHosting, onAddPv, onFocus }) {
   if (!graph) return <aside className="props" />
   const id = selectedIds.length === 1 ? selectedIds[0] : null
   const node = id && graph.nodes.find((n) => n.id === id)
   const line = id && graph.lines.find((l) => l.id === id)
   let body
   if (selectedIds.length > 1) body = <p className="muted">{selectedIds.length}개 선택됨 (Delete로 삭제, 끌어서 함께 이동)</p>
-  else if (node) body = <NodeProps graph={graph} node={node} result={result} editing={editing} onChange={onChange} />
+  else if (node)
+    body = (
+      <NodeProps
+        graph={graph}
+        node={node}
+        result={result}
+        editing={editing}
+        onChange={onChange}
+        hosting={hosting}
+        resultAt={resultAt}
+        onCheckHosting={onCheckHosting}
+        onAddPv={onAddPv}
+        onFocus={onFocus}
+      />
+    )
   else if (line) body = <LineProps graph={graph} line={line} result={result} editing={editing} onChange={onChange} />
   else if (id?.startsWith('attach:')) body = <p className="muted">접속점 붙임 (bus_id). 지우면 설비가 접속점에서 떨어집니다</p>
   else body = <SubstationProps graph={graph} editing={editing} onChange={onChange} />
