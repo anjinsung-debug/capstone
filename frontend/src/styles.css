@@ -253,6 +253,7 @@ button.mini {
 
 /* 작업 영역: [편집 메뉴] 단선도 [속성]. 메뉴는 닫혀 있으면 폭 0 */
 .workspace {
+  position: relative; /* 변전소 전체 보기(.overview)가 이 위를 덮는다 */
   display: grid;
   grid-template-columns: 0 1fr 280px;
   gap: 0 12px;
@@ -1641,3 +1642,82 @@ body.popup {
   padding: 10px 12px;
   font-size: 13px;
 }
+
+/* 첫 화면: 변전소 전체 단선도 (components/SubstationOverview.jsx). 편집·단선도·속성 칸 위를 통째로 덮는다 */
+.overview {
+  position: absolute;
+  inset: 12px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.overview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.overview-head strong {
+  font-size: 17px;
+  margin-right: 10px;
+}
+.overview-head span {
+  color: var(--muted);
+  font-size: 13px;
+}
+.overview-head .overview-hint {
+  color: var(--accent);
+}
+.overview iframe {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  border: 0;
+  border-radius: 8px;
+  background: #070b10;
+}
+
+/* 두 시각 비교 (HistoryChart.jsx의 CompareHours, 유스케이스 2 ⑤) */
+.compare-hours {
+  margin-top: 16px;
+}
+.compare-quick {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 4px 0 8px;
+}
+.compare-table th select {
+  padding: 3px 6px;
+  margin-right: 6px;
+}
+.compare-table td,
+.compare-table th {
+  white-space: nowrap;
+}
+.compare-table td.worst {
+  font-weight: 700;
+}
+.compare-table td.bad {
+  color: var(--danger);
+}
+.compare-table td.warn {
+  color: var(--warn);
+}
+.compare-table small.up,
+.compare-table small.down {
+  color: var(--muted);
+  font-size: 13px;
+}
+.compare-summary {
+  margin: 8px 0 4px;
+  padding-left: 18px;
+  line-height: 1.7;
+}
+

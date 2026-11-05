@@ -27,6 +27,7 @@ import Modal from './components/Modal.jsx'
 import NavDrawer from './components/NavDrawer.jsx'
 import PopupWindow, { openPopup } from './components/PopupWindow.jsx'
 import PropertyPanel from './components/PropertyPanel.jsx'
+import SubstationOverview from './components/SubstationOverview.jsx'
 import { AiReportView, Legend, ResultView, SummaryStrip } from './components/ResultPanel.jsx'
 import { NewSubstationDialog, RenameDialog } from './components/SubstationDialog.jsx'
 import {
@@ -97,6 +98,8 @@ export default function App() {
   const [resultTab, setResultTab] = useState('health')
   const [popup, setPopup] = useState(null) // 브라우저 새 창 결과 { win, container }
   const [dialog, setDialog] = useState(null) // 'new' | 'rename' | null
+  const [overview, setOverview] = useState(false) // 변전소를 고른 뒤에도 변전소 전체 단선도를 열어 볼 때 true
+  const showOverview = !graph || overview // 변전소를 고르기 전(첫 화면)에는 늘 보인다
   const [message, setMessage] = useState({ text: '', kind: 'info' })
 
   // 마지막 요청의 결과만 표시하기 위한 번호 (변전소 선택·계산마다 증가)
@@ -407,6 +410,7 @@ export default function App() {
   async function selectSubstation(substationId) {
     if (dirty && save.status === 'error' && !window.confirm(`저장되지 않은 편집이 있습니다 (${save.text}). 버리고 넘어갈까요?`)) return
     if (dirty) await flush()
+    setOverview(false)
     loadSubstation(substationId)
   }
 
@@ -415,6 +419,7 @@ export default function App() {
   // 그 뒤로는 이름만 바뀐다. 전원(source) 노드가 정확히 1개가 될 때까지는 저장이 422로 실패한다 (빈 계통이면 전원부터 놓기)
   async function createSubstation({ name, template, short_circuit_mva }) {
     setDialog(null)
+    setOverview(false)
     if (dirty) await flush()
     resetResult()
     const patch = { short_circuit_mva }
@@ -547,6 +552,7 @@ export default function App() {
             onClick={() => {
               setNavOpen(!navOpen)
               setTool('select')
+              setOverview(false)
             }}
             aria-pressed={navOpen}
             title={graph ? (navOpen ? '편집을 마치고 메뉴 닫기' : '편집 메뉴 열기 (설비 추가·연결·삭제)') : '변전소를 먼저 고르세요'}
@@ -599,6 +605,23 @@ export default function App() {
           {graph && (
             <button
               type="button"
+              className={overview ? 'toggle on' : 'toggle'}
+              onClick={() => {
+                if (!overview) {
+                  setNavOpen(false) // 변전소 전체를 보는 동안 편집은 닫는다 (가려진 단선도를 실수로 고치지 않게)
+                  setTool('select')
+                }
+                setOverview(!overview)
+              }}
+              aria-pressed={overview}
+              title="154/22.9kV 변전소 전체 단선도 (주변압기 → 모선 → 배전선로 인출)"
+            >
+              변전소 전체
+            </button>
+          )}
+          {graph && (
+            <button
+              type="button"
               className={`save-state ${save.status}`}
               onClick={() => save.status === 'error' && flush()}
               title={save.status === 'error' ? `저장 실패: ${save.text}\n누르면 다시 시도` : '바꿀 때마다 자동으로 저장됩니다'}
@@ -620,6 +643,7 @@ export default function App() {
       )}
 
       <div className={navOpen ? 'workspace nav-open' : 'workspace'}>
+        {showOverview && <SubstationOverview hasGraph={!!graph} onClose={() => setOverview(false)} />}
         <NavDrawer
           open={navOpen}
           substationName={graph?.substation.name}
