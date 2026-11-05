@@ -1601,3 +1601,43 @@ body.popup {
 .hosting .warn {
   color: var(--warn);
 }
+
+/* AI 추천·권고 (components/UsecasePanels.jsx): 기록 탭 AI 운영 권고·보강 우선순위, 연계 검토 AI 추천 */
+.uc-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+}
+.uc-controls .field {
+  margin-bottom: 0;
+}
+.uc-result {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+}
+.uc-result h4 {
+  margin: 0;
+  font-size: 15px;
+}
+.uc-ai {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+/* 속성 칸(.hosting) 목록 모양이 AI 카드 목록에 섞이지 않게 되돌림 */
+.uc-ai .rp-list li {
+  display: block;
+  padding: 8px 10px 8px 38px;
+  border-bottom: 0;
+}
+.uc-ai .rp-card {
+  padding: 10px 12px;
+  font-size: 13px;
+}

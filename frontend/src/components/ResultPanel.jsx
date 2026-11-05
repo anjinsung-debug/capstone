@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from 'react'
 import NodeIcon from './NodeIcon.jsx'
 import HistoryChart from './HistoryChart.jsx'
 import ProfileCharts from './ProfileChart.jsx'
+import { DailyAiBox, ReinforceBox } from './UsecasePanels.jsx'
 import {
   CAUSE_QUESTIONS,
   COLORS,
@@ -523,6 +524,9 @@ export function ResultView({
               daily={!dailyNote && { date: dailyDate, max: maxDate, busy: dailyBusy, onChange: onDailyDate }}
               onViewHour={onViewHour}
             />
+            {/* 구현 참고 (최민준 추가): 유스케이스 2 ⑥ AI 운영 권고, 유스케이스 3 보강 우선순위 (components/UsecasePanels.jsx) */}
+            {graph && !dailyNote && dailyDate && <DailyAiBox graph={graph} date={dailyDate} />}
+            {graph && !dailyNote && <ReinforceBox graph={graph} onFocus={onFocus} />}
           </>
         )}
       </div>

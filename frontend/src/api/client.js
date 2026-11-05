@@ -81,3 +81,14 @@ export async function createPlot(simulationResult) {
 // at: 결과를 계산한 시각 (runSimulation에 준 값). 백엔드가 프롬프트의 부하·태양광 kW를 같은 시각 값으로 맞춘다
 export const createReport = (simulationResult, audience = 'expert', at = null) =>
   request('POST', `/reports?audience=${audience}${at ? `&${atQuery(at)}` : ''}`, simulationResult)
+
+// AI 추천·권고 화면 (frontend/src/components/UsecasePanels.jsx). at = { date, hour } | null (없으면 최대 조건)
+const withQuery = (path, params, at) => {
+  const q = [params, at ? atQuery(at) : ''].filter(Boolean).join('&')
+  return q ? `${path}?${q}` : path
+}
+// AI 추천·권고 (ai_report/report.py, 전문가용 설명: 한전 담당자용 화면). 응답은 Report (보강 우선순위는 { ranking, report })
+export const createHostingReport = (body, at) => request('POST', withQuery('/reports/hosting', 'audience=expert', at), body)
+export const createDailyReport = (substationId, body) => request('POST', `/reports/daily/${substationId}?audience=expert`, body)
+export const createReinforcementReport = (substationId, body) =>
+  request('POST', `/reports/reinforcement/${substationId}?audience=expert`, body)

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { NODE_TYPES, electricalKey, findIssues, updateLine, updateNode, updateSubstation } from '../lib/graphEdit.js'
 import { COLORS, OVERLOAD_PCT, loadingColor, mvaOf, voltageColor } from '../lib/overlay.js'
+import { HostingAi } from './UsecasePanels.jsx'
 
 // 숫자 입력: 입력 중에는 글자 그대로 두고, 포커스를 잃거나 Enter일 때 숫자로 반영 (빈칸 = 값 없음)
 // 빈칸(null)은 "데이터 없음"이라 시뮬레이션이 가정값을 쓴다 (단락용량 300 MVA, X/R 10, 허용전류 400 A — simulation/dss.py의 DEFAULT_*)
@@ -183,6 +184,8 @@ function HostingSection({ graph, node, hosting, resultAt, onCheckHosting, onAddP
               </span>
             </>
           )}
+          {/* 구현 참고 (최민준 추가, 고영민 확인 필요): 유스케이스 1 ⑤ AI 추천 (components/UsecasePanels.jsx) */}
+          <HostingAi graph={graph} hosting={mine} stale={stale} />
           <span className="muted small">선로 허용전류는 데이터가 없으면 400 A 가정값이라 최대치가 이 값에 크게 좌우됩니다.</span>
         </>
       )}
