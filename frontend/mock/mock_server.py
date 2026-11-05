@@ -10,6 +10,8 @@ ponytail: 아래 계산·리포트는 화면 확인용 근사다. 진짜 백엔�
 - 저장: 없는 변전소도 새로 만들고 전원 개수를 검사하지 않는다. 진짜 백엔드도 없는 변전소는 새로 만들지만,
   전원 1개 필수(아니면 422)이고 이미 있는 변전소는 이름만 바뀐다 — cim/graph.py의 save_substation
 - 하루(24시간) 시뮬레이션: 배율 규칙은 진짜와 같은 simulation/daily.py를 쓰고, 시간마다 계산만 근사로 한다
+- 태양광 연결 전후 비교·연계 가능 최대치: 진짜와 같은 simulation/der.py를 쓰고 계산만 근사로 한다 (지락 고장전류는 계산 안 함)
+- 역조류 정상 판정(reverse_flow_ok)·출구 차단기 차단 가능(breaker_interruptible)도 진짜와 같은 규칙 (차단기는 3상 단락만 봄)
 
     저장소 루트에서:  python frontend/mock/mock_server.py
     다른 터미널에서:  cd frontend && npm run dev   → http://localhost:5173
@@ -39,6 +41,7 @@ from cim.graph import classify_connection  # noqa: E402
 from cim.load import read_raw, to_substation_graphs  # noqa: E402
 from cim.models import BASE_KV, Node, SnapshotSaved, SubstationGraph, SubstationSnapshot  # noqa: E402
 from simulation.dss import (  # noqa: E402
+    DEFAULT_BREAKER_INTERRUPT_KA,
     DEFAULT_RATED_CURRENT_A,
     DEFAULT_SHORT_CIRCUIT_MVA,
     DEFAULT_X_R_RATIO,
@@ -47,7 +50,7 @@ from simulation.dss import (  # noqa: E402
     trace,
 )
 from simulation.daily import DailyRequest, graph_at, simulate_daily  # noqa: E402
-from simulation.models import FeederResult, LineResult, NodeResult, SimulationResult  # noqa: E402
+from simulation.models import OVERLOAD_PCT, REVERSE_FLOW_MIN_KW, FeederResult, LineResult, NodeResult, SimulationResult  # noqa: E402
 
 STORE: dict[str, SubstationGraph] = {}
 
@@ -119,8 +122,7 @@ def simulate(g: SubstationGraph) -> SimulationResult:
             rated = line.rated_current_a or DEFAULT_RATED_CURRENT_A
             forward = line.from_node_id == nid  # 저장된 방향이 실제 전원 쪽 → 반대쪽인지
             line_res[line.id] = LineResult(line_id=line.id, p_kw=p if forward else -p, q_kvar=q if forward else -q,
-                                           loading_pct=amps / rated * 100, reverse_flow=p < -1,
-                                           reverse_flow_ok=(amps / rated * 100 <= 100) if p < -1 else None)  # 차단기는 모의에서 항상 차단 가능으로 봄
+                                           loading_pct=amps / rated * 100, reverse_flow=p < -REVERSE_FLOW_MIN_KW)
     lines = [line_res.get(line.id) or LineResult(line_id=line.id, p_kw=0, q_kvar=0, loading_pct=0) for line in g.lines]
 
     def node_result(n: Node) -> NodeResult:
@@ -130,14 +132,38 @@ def simulate(g: SubstationGraph) -> SimulationResult:
         ka = BASE_KV / (math.sqrt(3) * abs(zpath[key]))
         return NodeResult(node_id=n.id, voltage_pu=volt[key], fault_current_ka=ka)
 
+    nodes = [node_result(n) for n in g.nodes]
+    node_by_id = {r.node_id: r for r in nodes}
     breakers = {n.id: n.feeder_id for n in g.nodes if n.type == "breaker"}
     feeders = []
     for f in g.feeders:
         out = [r for r in lines if breakers.get(next(l for l in g.lines if l.id == r.line_id).from_node_id) == f.id]
+        cb = next((node_by_id[nid] for nid, fid in breakers.items() if fid == f.id), None)
+        ka = cb.fault_current_ka if cb and cb.energized else None  # 근사: 3상 단락만 (지락은 계산 안 함)
         feeders.append(FeederResult(feeder_id=f.id, p_kw=sum(r.p_kw for r in out), q_kvar=sum(r.q_kvar for r in out),
-                                    breaker_interruptible=True))
+                                    breaker_interruptible=None if ka is None else ka <= DEFAULT_BREAKER_INTERRUPT_KA))
+    # 역조류 정상 판정 (진짜와 같은 규칙: 부하율 ≤ 100%이고 그 피더 출구 차단기가 끊을 수 있음)
+    ok_feeder = {f.feeder_id: f.breaker_interruptible is not False for f in feeders}
+    line_feeder = {line.id: line.feeder_id for line in g.lines}
+    for r in lines:
+        if r.reverse_flow:
+            r.reverse_flow_ok = (r.loading_pct or 0) <= OVERLOAD_PCT and ok_feeder.get(line_feeder.get(r.line_id), True)
     return SimulationResult(substation_id=g.substation.id, converged=True, loss_kw=loss, feeders=feeders,
-                            nodes=[node_result(n) for n in g.nodes], lines=lines)
+                            nodes=nodes, lines=lines)
+
+
+# 분산전원 전후 비교·연계 가능 최대치: 진짜와 같은 simulation/der.py를 쓰고 계산만 위의 근사로 바꾼다.
+# der.py는 simulation/simulate.py(OpenDSS)를 불러오므로, OpenDSS가 없으면 빈 모듈을 대신 넣는다
+try:
+    import simulation.der as der  # noqa: E402
+except ImportError:
+    import types
+
+    _fake = types.ModuleType("simulation.simulate")
+    _fake.simulate = simulate
+    sys.modules["simulation.simulate"] = _fake
+    import simulation.der as der  # noqa: E402
+der.simulate = simulate
 
 
 def mock_report(g: SubstationGraph, r: SimulationResult) -> dict:
@@ -146,7 +172,7 @@ def mock_report(g: SubstationGraph, r: SimulationResult) -> dict:
     lnames = {line.id: line.name for line in g.lines}
     low = [x for x in r.nodes if x.energized and x.voltage_pu < 0.95]
     off = [x for x in r.nodes if not x.energized]
-    rev = [x for x in r.lines if x.reverse_flow and x.reverse_flow_ok is not True]  # 정상 역조류는 문제가 아님 (10/26 회의)
+    rev = [x for x in r.lines if x.reverse_flow]
     over = [x for x in r.lines if (x.loading_pct or 0) > 100]
     problems = len(low) + len(off) + len(rev) + len(over)
     grade = "양호" if problems == 0 else "주의" if not (low or over) else "개선 필요"
@@ -239,6 +265,19 @@ class Handler(SimpleHTTPRequestHandler):
                     return self._send(200, simulate_daily(g, body.date, simulate_fn=simulate).model_dump(mode="json"))
                 except ValueError as e:
                     return self._send(422, {"detail": str(e)})
+            if m == "POST" and len(p) == 4 and p[0] == "substations" and p[2:] == ["simulations", "der-comparison"]:
+                g = self._graph(p[1])
+                if not g:
+                    return self._send(404, {"detail": "변전소가 없습니다"})
+                return self._send(200, der.compare_der(self._at(g)).model_dump())
+            if m == "POST" and len(p) == 4 and p[0] == "substations" and p[2:] == ["simulations", "hosting-capacity"]:
+                g = self._graph(p[1])
+                if not g:
+                    return self._send(404, {"detail": "변전소가 없습니다"})
+                q = parse_qs(urlsplit(self.path).query)
+                target = q.get("target_kw", [None])[0]
+                return self._send(200, der.hosting_capacity(self._at(g), q.get("bus_id", [""])[0],
+                                                             float(target) if target else None).model_dump())
             if m == "POST" and len(p) == 3 and p[0] == "substations" and p[2] == "simulations":
                 g = self._graph(p[1])
                 if not g:
@@ -251,9 +290,8 @@ class Handler(SimpleHTTPRequestHandler):
                 except ImportError:
                     return self._send(501, {"detail": "matplotlib이 없어 그래프를 그리지 않습니다"})
                 return self._send(200, plot_result(STORE[r.substation_id], r), "image/png")
-            # 유스케이스 화면(UsecasePanels.jsx)의 분산전원 분석·AI 추천은 OpenDSS·LLM이 필요해 모의 백엔드에는 없다
-            if m == "POST" and ((len(p) == 4 and p[0] == "substations" and p[2] == "simulations" and p[3] in ("der-comparison", "hosting-capacity", "pv-trial"))
-                                or (p[:1] == ["reports"] and len(p) >= 2 and p[1] in ("hosting", "daily", "reinforcement"))):
+            # AI 추천·권고(UsecasePanels.jsx)는 LLM과 OpenDSS 24시간 계산이 필요해 모의 백엔드에는 없다
+            if m == "POST" and p[:1] == ["reports"] and len(p) >= 2 and p[1] in ("hosting", "daily", "reinforcement"):
                 return self._send(501, {"detail": "모의 백엔드에는 없는 기능입니다. 진짜 백엔드(uvicorn + Docker Neo4j)로 확인하세요"})
             if m == "POST" and p == ["reports"]:
                 r = SimulationResult.model_validate(self._body())

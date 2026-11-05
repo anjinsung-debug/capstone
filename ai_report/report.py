@@ -90,7 +90,7 @@ _INTRO = "당신은 22.9kV 배전계통 해석 결과를 설명하는 전력계�
 _RULES = f"""사용자가 계통 정보와 시뮬레이션 수치, 그리고 코드가 이미 판정한 "확정된 점검 결과"를 줍니다. 아래 규칙을 지키세요.
 1. 제공된 수치와 설비 이름만 쓰세요. 없는 값을 추측하거나 만들어 내지 마세요. 모르는 것은 "데이터에 없음"이라고 쓰세요.
 2. 건강도 등급(정상·주의·위험)은 "확정된 점검 결과"에 적힌 등급을 그대로 쓰세요. 바꾸거나 다시 판정하지 마세요.
-3. 판정 기준: 전압 정상 범위 {VOLTAGE_MIN_PU}~{VOLTAGE_MAX_PU} pu({VOLTAGE_DANGER_LOW_PU} pu 미만·{VOLTAGE_DANGER_HIGH_PU} pu 초과는 위험), 선로 부하율 {OVERLOAD_PCT:.0f}% 초과면 과부하(위험), {LOADING_WATCH_PCT}% 이상이면 부하율 높음(주의), 분산전원 때문에 전력이 반대로 흐르면 역조류(선로 용량 이내이고 출구 차단기가 고장전류를 끊을 수 있으면 정상이라 문제로 다루지 말고 있다는 사실만 알림, 아니면 주의), 3상 단락용량이 {FAULT_HIGH_MVA} MVA를 넘으면 단락용량 증가(차단기 정격·보호계전기 검토 대상), 전원에서 끊기면 정전입니다. 정전은 저전압이 아닙니다.
+3. 판정 기준: 전압 정상 범위 {VOLTAGE_MIN_PU}~{VOLTAGE_MAX_PU} pu({VOLTAGE_DANGER_LOW_PU} pu 미만·{VOLTAGE_DANGER_HIGH_PU} pu 초과는 위험), 선로 부하율 {OVERLOAD_PCT:.0f}% 초과면 과부하(위험), {LOADING_WATCH_PCT}% 이상이면 부하율 높음(주의), 분산전원 때문에 전력이 반대로 흐르면 역조류(선로 용량 이내이고 출구 차단기가 고장전류를 끊을 수 있으면 정상이라 문제로 다루지 말고 있다는 사실만 알림, 비정상이면 위험), 3상 단락용량이 {FAULT_HIGH_MVA} MVA를 넘으면 단락용량 증가(차단기 정격·보호계전기 검토 대상), 전원에서 끊기면 정전입니다. 정전은 저전압이 아닙니다.
 4. 원인은 문제가 있는 설비 이름과 수치를 인용해서, 왜 그렇게 되는지 전기적 이유(선로 길이와 임피던스에 따른 전압강하, 분산전원 출력이 부하보다 큰 구간, 전류가 허용전류를 넘음 등)를 설명하세요. 입력에 없는 연결 구조를 가정하지 마세요.
 5. 솔루션은 원인과 하나씩 대응시키고 우선순위 순서로 쓰세요. 전선 굵기 교체, 전압조정기(SVR) 설치, 부하 절체, 역조류 보호계전 점검, 차단기 정격 검토, ESS 설치, 개폐기 조작처럼 엔지니어가 실제로 할 수 있는 조치로 쓰고, 효과를 수치로 약속하지 마세요.
 6. 문제가 없으면 원인에는 "기준 안에 있음"을 근거 수치와 함께 쓰고, 솔루션에는 유지·재점검 방법만 쓰세요. 문제를 지어내지 마세요.
@@ -185,12 +185,13 @@ def check_findings(graph: SubstationGraph, result: SimulationResult) -> dict:
     outage = [names.get(r.node_id, r.node_id) for r in result.nodes if not r.energized]
     overload = [(line_names.get(r.line_id, r.line_id), r.loading_pct) for r in result.lines if r.loading_pct is not None and r.loading_pct > OVERLOAD_PCT]
     watch = [(line_names.get(r.line_id, r.line_id), r.loading_pct) for r in result.lines if r.loading_pct is not None and LOADING_WATCH_PCT <= r.loading_pct <= OVERLOAD_PCT]
-    # 역조류 (10/26 회의 기준): 선로 용량 이내이고 출구 차단기가 끊을 수 있으면 정상(reverse_flow_ok=True, simulation/simulate.py가 판정).
-    #   정상은 표시만 하고 등급에 넣지 않는다. 기준 초과(False)나 판정 값이 없는 예전 결과(None)는 '주의'.
-    #   frontend/src/lib/overlay.js의 healthCheck와 같은 규칙이다. 바꾸면 두 곳을 함께 고친다
-    # ponytail: 피더 송출 전력 < 0(변전소 뱅크 역송)은 따로 판정하지 않는다 (회의 기준에 없음)
-    reverse = [(line_names.get(r.line_id, r.line_id), r.p_kw) for r in result.lines if r.reverse_flow and r.reverse_flow_ok is not True]
-    reverse_ok = [(line_names.get(r.line_id, r.line_id), r.p_kw) for r in result.lines if r.reverse_flow and r.reverse_flow_ok is True]
+    # 역조류 (10/26 회의 기준, 화면 frontend/src/lib/overlay.js의 healthCheck와 같은 규칙): 역조류 자체는 정상.
+    #   선로 부하율 ≤ 100%이고 출구 차단기가 끊을 수 있으면 정상(reverse_flow_ok=True, 등급에 영향 없음), 아니면 비정상(위험).
+    #   판정이 없는 결과(reverse_flow_ok=None, 예전 결과)는 예전처럼 '주의'. 1 kW 미만은 simulate.py가 이미 역조류로 보지 않음
+    reverse = [(line_names.get(r.line_id, r.line_id), r.p_kw) for r in result.lines if r.reverse_flow]
+    reverse_bad = [(line_names.get(r.line_id, r.line_id), r.p_kw) for r in result.lines if r.reverse_flow and r.reverse_flow_ok is False]
+    reverse_unjudged = [r for r in result.lines if r.reverse_flow and r.reverse_flow_ok is None]
+    reverse_ok = [(line_names.get(r.line_id, r.line_id), r.p_kw) for r in result.lines if r.reverse_flow and r.reverse_flow_ok is True]  # 하루 운영 권고용
     # 3상 단락용량(MVA) = √3 × 선간전압(kV) × 단락전류(kA). 정전 지점은 단락전류가 없으니 뺀다
     fault = [
         (names.get(r.node_id, r.node_id), math.sqrt(3) * BASE_KV * r.fault_current_ka)
@@ -204,15 +205,16 @@ def check_findings(graph: SubstationGraph, result: SimulationResult) -> dict:
     watch.sort(key=lambda x: -x[1])
     # ponytail: 항목 개수와 상관없이 하나라도 있으면 같은 등급이다. 심각도 가중치가 필요해지면 그때 점수 계산을 넣는다
     # 등급 (화면 진단표와 같은 규칙): 항목마다 판정하고 가장 나쁜 것이 전체 등급
-    #   위험: 전압 0.9 pu 미만·1.1 pu 초과, 과부하, 정전 / 주의: 전압 정상 범위 밖, 부하율 80% 이상, 기준 초과 역조류, 단락용량 초과
+    #   위험: 전압 0.9 pu 미만·1.1 pu 초과, 과부하, 정전, 비정상 역조류 / 주의: 전압 정상 범위 밖, 부하율 80% 이상, 판정 없는 역조류, 단락용량 초과
     danger_v = any(v < VOLTAGE_DANGER_LOW_PU for _, v in low) or any(v > VOLTAGE_DANGER_HIGH_PU for _, v in high)
-    if danger_v or overload or outage:
+    if danger_v or overload or outage or reverse_bad:
         grade = GRADES[2]
-    elif low or high or watch or reverse or fault:
+    elif low or high or watch or reverse_unjudged or fault:
         grade = GRADES[1]
     else:
         grade = GRADES[0]
-    return {"grade": grade, "low": low, "high": high, "outage": outage, "overload": overload, "watch": watch, "reverse": reverse, "reverse_ok": reverse_ok, "fault": fault}
+    return {"grade": grade, "low": low, "high": high, "outage": outage, "overload": overload, "watch": watch, "reverse": reverse,
+            "reverse_bad": reverse_bad, "reverse_ok": reverse_ok, "fault": fault}
 
 
 def _assumptions(graph: SubstationGraph) -> list[str]:
@@ -304,9 +306,11 @@ def build_prompt(graph: SubstationGraph, result: SimulationResult) -> str:
     lines.append(f"- 과전압(>{VOLTAGE_MAX_PU} pu) {len(f['high'])}곳" + (": " + ", ".join(f"{n} {v:.3f} pu" for n, v in f["high"]) if f["high"] else ""))
     lines.append(f"- 과부하(>{OVERLOAD_PCT:.0f}%) 선로 {len(f['overload'])}개" + (": " + ", ".join(f"{n} {p:.0f}%" for n, p in f["overload"]) if f["overload"] else ""))
     lines.append(f"- 부하율 높음({LOADING_WATCH_PCT}~{OVERLOAD_PCT:.0f}%) 선로 {len(f['watch'])}개" + (": " + ", ".join(f"{n} {p:.0f}%" for n, p in f["watch"]) if f["watch"] else ""))
-    lines.append(f"- 기준 초과 역조류 선로 {len(f['reverse'])}개 (선로 용량 초과 또는 차단기 차단 불가)" + (": " + ", ".join(f"{n} {p:.0f} kW" for n, p in f["reverse"]) if f["reverse"] else ""))
-    lines.append(f"- 정상 역조류 선로 {len(f['reverse_ok'])}개 (선로 용량 이내·차단기 차단 가능. 문제 아님, 있다는 사실만 알리세요)"
-                 + (": " + ", ".join(f"{n} {p:.0f} kW" for n, p in f["reverse_ok"]) if f["reverse_ok"] else ""))
+    lines.append(f"- 역조류 선로 {len(f['reverse'])}개" + (": " + ", ".join(f"{n} {p:.0f} kW" for n, p in f["reverse"]) if f["reverse"] else ""))
+    if f["reverse"]:  # 10/26 회의 기준: 역조류 자체는 정상, 선로 용량 안이고 출구 차단기가 끊을 수 있으면 정상
+        bad = f["reverse_bad"]
+        lines.append(f"  - 이 중 비정상(선로 용량 초과 또는 차단기가 못 끊음) {len(bad)}개" + (": " + ", ".join(n for n, _ in bad) if bad else "")
+                     + ". 나머지 역조류는 선로 용량·차단기 안이라 정상 운전 범위")
     shown = f["fault"][:MAX_FAULT_LISTED]
     more = f" 외 {len(f['fault']) - len(shown)}곳" if len(f["fault"]) > len(shown) else ""
     lines.append(f"- 단락용량(>{FAULT_HIGH_MVA} MVA) {len(f['fault'])}곳" + (": " + ", ".join(f"{n} {m:.0f} MVA" for n, m in shown) + more if f["fault"] else ""))
@@ -372,7 +376,7 @@ def build_prompt(graph: SubstationGraph, result: SimulationResult) -> str:
         if line.kind == "switch" and not r.reverse_flow:
             continue
         loading = f", 부하율 {r.loading_pct:.0f}%" if r.loading_pct is not None else ""
-        flag = " [역조류]" if r.reverse_flow else ""
+        flag = (" [역조류·정상]" if r.reverse_flow_ok else " [역조류·비정상]" if r.reverse_flow_ok is False else " [역조류]") if r.reverse_flow else ""
         line_rows.append(f"- {line.name}: {label(line.from_node_id)} → {label(line.to_node_id)}, {line.length_km:.2f} km, 유효 {r.p_kw:.0f} kW, 무효 {r.q_kvar:.0f} kvar{loading}{flag}")
     lines.append("## 선로별 (부하율 높은 순, 전원 쪽 → 말단 방향이 + 조류)")
     lines += _limit(line_rows, len(line_rows), "선로")
@@ -623,7 +627,7 @@ _DAILY_ITEMS = (  # (check_findings 키, 이름, 값 형식)
     ("high", "과전압(1.05 pu 초과)", "{:.3f} pu"),
     ("overload", "선로 과부하(100% 초과)", "{:.0f}%"),
     ("watch", "부하율 높음(80~100%)", "{:.0f}%"),
-    ("reverse", "기준 초과 역조류", "{:.0f} kW"),
+    ("reverse_bad", "비정상 역조류(선로 용량 초과 또는 차단기 차단 불가)", "{:.0f} kW"),
     ("reverse_ok", "정상 역조류(문제 아님)", "{:.0f} kW"),
     ("fault", "단락용량 300 MVA 초과", "{:.0f} MVA"),
 )
@@ -645,7 +649,7 @@ def daily_summary(graph: SubstationGraph, daily) -> list[str]:
     """simulation/daily.py의 DailyResult → AI 입력용 시간대별 표와 위험 시간대 (숫자는 모두 코드가 계산)"""
     from simulation.daily import scaled_graph  # 배율 곱한 계통 (시간마다 kW·이름)
 
-    rows = ["| 시각 | 태양광 kW | 부하 kW | 피더 송출 kW | 최저 전압 pu | 최고 전압 pu | 최대 부하율 | 역조류(기준 초과/정상) | 등급 |",
+    rows = ["| 시각 | 태양광 kW | 부하 kW | 피더 송출 kW | 최저 전압 pu | 최고 전압 pu | 최대 부하율 | 역조류(비정상/정상) | 등급 |",
             "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
     found: dict[str, list[tuple[int, str, float]]] = {k: [] for k, _, _ in _DAILY_ITEMS}
     outage_hours, peaks = [], {}
@@ -659,7 +663,7 @@ def daily_summary(graph: SubstationGraph, daily) -> list[str]:
         loads = [x.loading_pct for x in r.lines if x.loading_pct is not None]
         f = check_findings(g, r)
         rows.append(f"| {h.hour}시 | {pv:,.0f} | {load:,.0f} | {send:,.0f} | {min(volts, default=0):.3f} | {max(volts, default=0):.3f} | "
-                    f"{max(loads, default=0):.0f}% | {len(f['reverse'])}/{len(f['reverse_ok'])} | {f['grade']} |")
+                    f"{max(loads, default=0):.0f}% | {len(f['reverse_bad'])}/{len(f['reverse_ok'])} | {f['grade']} |")
         for key, _, _ in _DAILY_ITEMS:
             for name, value in f[key]:
                 found[key].append((h.hour, name, value))
@@ -674,7 +678,7 @@ def daily_summary(graph: SubstationGraph, daily) -> list[str]:
         if not items:
             out.append(f"- {label}: 없음")
             continue
-        worst = (min if key == "low" else max)(items, key=lambda x: x[2] if key != "reverse" and key != "reverse_ok" else -x[2])
+        worst = (min if key == "low" else max)(items, key=lambda x: -x[2] if key in ("reverse_bad", "reverse_ok") else x[2])
         hours = sorted({x[0] for x in items})
         places = sorted({x[1] for x in items})
         out.append(f"- {label}: {_hour_ranges(hours)} (최악 {fmt.format(worst[2])}, {worst[0]}시, {worst[1]}; 해당 위치 {', '.join(places[:5])}"

@@ -46,8 +46,6 @@ class HostingReportRequest(BaseModel):
 
     substation_id: str
     hosting: HostingCapacity  # POST .../simulations/hosting-capacity 응답
-    trial_before: DerSummary | None = None  # POST .../simulations/pv-trial 응답의 before·after (신청 용량 붙여 보기)
-    trial_after: DerSummary | None = None
     der_before: DerSummary | None = None  # POST .../simulations/der-comparison 응답의 before·after (분산전원 전체 연결 전후)
     der_after: DerSummary | None = None
 
@@ -58,9 +56,8 @@ def create_hosting_report(
 ) -> Report:
     """태양광 연계 검토 AI 추천: 연계 가능 여부, 막는 원인, 선로 보강(필요 허용전류) 추천 (ai_report/report.py의 generate_hosting_report)"""
     g = _graph_at(body.substation_id, date, hour)
-    trial = (body.trial_before, body.trial_after) if body.trial_before and body.trial_after else None
     der = (body.der_before, body.der_after) if body.der_before and body.der_after else None
-    return generate_hosting_report(g, body.hosting, trial, der, _at_text(date, hour), audience)
+    return generate_hosting_report(g, body.hosting, None, der, _at_text(date, hour), audience)
 
 
 def _graph_for(substation_id: str, g: SubstationGraph | None) -> SubstationGraph:

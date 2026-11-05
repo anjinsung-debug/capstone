@@ -51,6 +51,21 @@ export const runSimulation = (substationId, at) =>
 // 백엔드: backend/api/simulation.py → simulation/daily.py. 백엔드가 예전 버전이라 주소가 없으면(404) 기록 탭이 편집 시점 값만 보여 준다
 export const runDaily = (substationId, body) => request('POST', `/substations/${substationId}/simulations/daily`, body)
 
+// 분산전원(태양광·풍력) 연결 전후 비교 (backend/api/simulation.py → simulation/der.py의 compare_der)
+// 응답: { without_der, with_der: SimulationResult, before, after: { der_kw, feeder_kw, loss_kw, min_voltage_pu, max_voltage_pu,
+//        max_loading_pct, reverse_flow_lines, max_fault_ka } }. at은 runSimulation과 같다 (없으면 최대 조건)
+export const runDerComparison = (substationId, at) =>
+  request('POST', `/substations/${substationId}/simulations/der-comparison${at ? `?${atQuery(at)}` : ''}`)
+
+// 연계 가능 최대치: 접속점(bus)에 태양광을 몇 kW까지 더 붙일 수 있는지, 무엇 때문에 막히는지 (simulation/der.py의 hosting_capacity)
+// targetKw를 주면 그만큼 붙일 때의 위반과 늘려야 할 허용전류(required_rated_current_a)도 준다
+// 응답: { bus_id, max_kw, limited_by: [Violation], target_kw, target_violations: [Violation] }
+//   Violation = { kind: 'overvoltage' | 'overload' | 'breaker', element_id, value, limit, required_rated_current_a }
+export const runHostingCapacity = (substationId, busId, targetKw, at) => {
+  const q = [`bus_id=${encodeURIComponent(busId)}`, targetKw != null ? `target_kw=${targetKw}` : '', atQuery(at)].filter(Boolean).join('&')
+  return request('POST', `/substations/${substationId}/simulations/hosting-capacity?${q}`)
+}
+
 // 시뮬레이션 결과 그래프: runSimulation 결과를 그대로 넘기면 <img src>에 쓸 수 있는 PNG 주소를 돌려준다
 export async function createPlot(simulationResult) {
   const res = await fetch('/api/plots', {
@@ -67,23 +82,11 @@ export async function createPlot(simulationResult) {
 export const createReport = (simulationResult, audience = 'expert', at = null) =>
   request('POST', `/reports?audience=${audience}${at ? `&${atQuery(at)}` : ''}`, simulationResult)
 
-// 유스케이스 화면 (frontend/src/components/UsecasePanels.jsx). at = { date, hour } | null (없으면 최대 조건)
+// AI 추천·권고 화면 (frontend/src/components/UsecasePanels.jsx). at = { date, hour } | null (없으면 최대 조건)
 const withQuery = (path, params, at) => {
   const q = [params, at ? atQuery(at) : ''].filter(Boolean).join('&')
   return q ? `${path}?${q}` : path
 }
-// 분산전원 연결 전후 비교 (simulation/der.py의 compare_der): 태양광·풍력을 모두 뺀 계통 vs 지금 계통
-export const runDerComparison = (substationId, at) =>
-  request('POST', withQuery(`/substations/${substationId}/simulations/der-comparison`, '', at))
-// 연계 가능 최대치 (simulation/der.py의 hosting_capacity): 접속점에 태양광을 몇 kW까지 더 붙일 수 있는지, 막는 원인, 필요 허용전류
-export const runHostingCapacity = (substationId, busId, targetKw, at) =>
-  request(
-    'POST',
-    withQuery(`/substations/${substationId}/simulations/hosting-capacity`, `bus_id=${encodeURIComponent(busId)}${targetKw != null ? `&target_kw=${targetKw}` : ''}`, at),
-  )
-// 신청 용량 붙여 보기 (backend/api/simulation.py의 pv-trial): 지금 vs 접속점에 태양광 kw를 더 붙인 계통
-export const runPvTrial = (substationId, busId, kw, at) =>
-  request('POST', withQuery(`/substations/${substationId}/simulations/pv-trial`, `bus_id=${encodeURIComponent(busId)}&kw=${kw}`, at))
 // AI 추천·권고 (ai_report/report.py, 전문가용 설명: 한전 담당자용 화면). 응답은 Report (보강 우선순위는 { ranking, report })
 export const createHostingReport = (body, at) => request('POST', withQuery('/reports/hosting', 'audience=expert', at), body)
 export const createDailyReport = (substationId, body) => request('POST', `/reports/daily/${substationId}?audience=expert`, body)

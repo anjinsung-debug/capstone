@@ -1,22 +1,11 @@
-// 유스케이스 화면 (한승우 시나리오 문서, 11/4). 담당: 최민준 (frontend·ai_report)
-// - HostingPanel: 유스케이스 1 "신규 태양광 연계 검토" ②가능량 ③막히는 원인 ④신청 용량 붙여 보기(전후 비교) ⑤AI 추천
-//     + 차장님 요청 "태양광 들어오기 전과 후 비교" (분산전원 전체 연결 전후)
+// AI 추천·권고 화면 (한승우 유스케이스 시나리오, 11/4). 담당: 최민준 (frontend·ai_report)
+// - HostingAi: 유스케이스 1 ⑤ "AI 추천". 영민이형의 태양광 연계 검토(PropertyPanel.jsx의 HostingSection) 결과 아래에 붙는다
 // - DailyAiBox: 유스케이스 2 ⑥ "AI 운영 권고" (고른 날 24시간 결과 → 시간대별 위험과 대비 조치)
 // - ReinforceBox: 유스케이스 3 "설비 보강 우선순위" (여러 날 24시간 결과 → 선로 순위 → AI 정리)
-// 계산은 진짜 백엔드(simulation/der.py, simulation/daily.py)가 하고, 이 화면은 결과를 보여 주기만 한다.
-// AI 문장은 ai_report/report.py가 만든다 (전문가용 설명: 이 화면들은 한전 담당자용이라 용어를 그대로 씀, 11/4). 모의 백엔드에는 이 주소들이 없다 (진짜 백엔드로 확인)
+// 계산은 진짜 백엔드(simulation/der.py, simulation/daily.py)가 하고, AI 문장은 ai_report/report.py가 만든다
+// (전문가용 설명: 한전 담당자용 화면). 모의 백엔드에는 이 주소들이 없다 (진짜 백엔드로 확인)
 import { useCallback, useEffect, useState } from 'react'
-import {
-  createDailyReport,
-  createHostingReport,
-  createReinforcementReport,
-  runDerComparison,
-  runHostingCapacity,
-  runPvTrial,
-} from '../api/client.js'
-import { LEVELS } from '../lib/overlay.js'
-
-const SEARCH_MAX_KW = 20000 // simulation/der.py의 MAX_SEARCH_KW (검토 상한)
+import { createDailyReport, createHostingReport, createReinforcementReport } from '../api/client.js'
 
 // 화면을 닫거나 다른 탭에 갔다 와도 마지막 결과가 남도록 값을 컴포넌트 밖(모듈)에 둔다 (새로고침하면 지워짐).
 // 계산 중에 창을 닫아도 응답이 오면 여기에 저장되고, 다시 열면 그대로 보인다.
@@ -40,89 +29,6 @@ function usePersisted(key, initial) {
     [key],
   )
   return [value, set]
-}
-
-const fmtKw = (v) => `${Math.round(v).toLocaleString('ko-KR')} kW`
-
-// simulation/der.py의 DerSummary 항목 (ai_report/report.py의 _SUMMARY_ROWS와 같은 순서)
-const SUMMARY_ROWS = [
-  ['분산전원 출력 합', 'der_kw', (v) => fmtKw(v)],
-  ['피더 송출 합 (음수면 역송)', 'feeder_kw', (v) => fmtKw(v)],
-  ['선로 손실', 'loss_kw', (v) => `${v.toFixed(1)} kW`],
-  ['최저 전압', 'min_voltage_pu', (v) => `${v.toFixed(3)} pu`],
-  ['최고 전압', 'max_voltage_pu', (v) => `${v.toFixed(3)} pu`],
-  ['최대 선로 부하율', 'max_loading_pct', (v) => `${v.toFixed(0)}%`],
-  ['역조류 선로 수', 'reverse_flow_lines', (v) => `${v}개`],
-  ['최대 고장전류', 'max_fault_ka', (v) => `${v.toFixed(2)} kA`],
-]
-
-function CompareTable({ before, after, left, right }) {
-  return (
-    <table className="rtable">
-      <thead>
-        <tr>
-          <th>항목</th>
-          <th className="num">{left}</th>
-          <th className="num">{right}</th>
-        </tr>
-      </thead>
-      <tbody>
-        {SUMMARY_ROWS.map(([label, key, fmt]) => (
-          <tr key={key} className={before[key] !== after[key] ? 'hl' : ''}>
-            <td>{label}</td>
-            <td className="num">{fmt(before[key])}</td>
-            <td className="num">
-              <b>{fmt(after[key])}</b>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  )
-}
-
-// 이름 찾기 (노드·선로·피더)
-function namer(graph) {
-  const m = {}
-  for (const x of [...graph.nodes, ...graph.lines, ...graph.feeders]) m[x.id] = x.name
-  return (id) => m[id] ?? id
-}
-
-// simulation/der.py의 Violation 하나 → 문장 + 단선도에서 볼 요소 id (차단기는 그 피더의 차단기 노드)
-function describeViolation(graph, v) {
-  const name = namer(graph)(v.element_id)
-  if (v.kind === 'overload') {
-    const line = graph.lines.find((l) => l.id === v.element_id)
-    const now = line?.rated_current_a != null ? `${Math.round(line.rated_current_a)} A` : '400 A (가정값)'
-    const need = v.required_rated_current_a ? ` → 허용전류 ${Math.ceil(v.required_rated_current_a).toLocaleString('ko-KR')} A 이상 필요` : ''
-    const pct = v.value < v.limit + 1 ? v.value.toFixed(2) : v.value.toFixed(0) // 100.02%가 "100%"로 보여 기준 안처럼 읽히지 않게
-    return { id: v.element_id, text: `${name}: 선로 과부하 ${pct}% (기준 ${v.limit}% 초과), 지금 허용전류 ${now}${need}` }
-  }
-  if (v.kind === 'overvoltage') {
-    return { id: v.element_id, text: `${name}: 접속점 과전압 ${v.value.toFixed(3)} pu (기준 ${v.limit} pu 초과)` }
-  }
-  const cb = graph.nodes.find((n) => n.type === 'breaker' && n.feeder_id === v.element_id)
-  return { id: cb?.id ?? null, text: `${name}: 출구 차단기 차단 불가, 고장전류 ${v.value.toFixed(2)} kA > 정격 ${v.limit} kA (가정값)` }
-}
-
-function ViolationList({ graph, items, onFocus }) {
-  return (
-    <ul className="uc-list">
-      {items.map((v, i) => {
-        const d = describeViolation(graph, v)
-        return (
-          <li key={i}>
-            {d.text}{' '}
-            {d.id && onFocus && (
-              <button type="button" className="focus-btn" onClick={() => onFocus(d.id)} title="단선도에서 이 위치로 이동">
-                ⌖
-              </button>
-            )}
-          </li>
-        )
-      })}
-    </ul>
-  )
 }
 
 // AI 리포트(ai_report/models.py의 Report)를 AI 리포트 창과 같은 카드 모양으로
@@ -170,178 +76,35 @@ function Fail({ error }) {
   )
 }
 
-const atLabel = (at) => (at ? `${at.date} ${at.hour}시 기준` : '최대 조건 기준')
-
-// ── 유스케이스 1: 신규 태양광 연계 검토 ──
-// at = { date, hour } | null: 지금 결과를 계산한 시각 (App의 resultAt). 연계 검토도 같은 시각으로 계산한다
-export function HostingPanel({ graph, at, onFocus }) {
-  const buses = graph.nodes.filter((n) => n.type === 'bus')
+// ── 유스케이스 1 ⑤: 태양광 연계 검토 AI 추천 ──
+// hosting = App.jsx의 hosting 상태 { busId, targetKw, at, status, data } (영민이형 checkHosting). stale이면 계통·시각이 바뀐 옛 결과라 버튼을 막는다
+// 추천은 접속점·목표 용량·시각마다 따로 남긴다 (다른 접속점을 봤다 돌아와도 그대로)
+export function HostingAi({ graph, hosting, stale }) {
   const sid = graph.substation.id
-  const k = (name) => `hosting:${sid}:${name}`
-  const [busId, setBusId] = usePersisted(k('bus'), buses[buses.length - 1]?.id ?? '')
-  const [targetKw, setTargetKw] = usePersisted(k('kw'), '3000')
-  // 결과마다 계산한 조건(접속점·용량·시각)을 같이 둔다. 다른 접속점을 고르기만 해서는 안 바뀌고, 버튼을 눌러야 새 결과로 바뀐다
-  const [hosting, setHosting] = usePersisted(k('hosting'), null) // { data, bus, kw, at }
-  const [trial, setTrial] = usePersisted(k('trial'), null) // { data, at }
-  const [der, setDer] = usePersisted(k('der'), null) // { data, at }
-  const [report, setReport] = usePersisted(k('report'), null)
-  const [busy, setBusy] = usePersisted(k('busy'), '')
-  const [error, setError] = usePersisted(k('error'), '')
-  // 변전소를 바꾸거나 고른 접속점이 지워지면 마지막 접속점(보통 말단)으로
-  const busKey = buses.map((b) => b.id).join(',')
-  useEffect(() => {
-    if (!buses.some((b) => b.id === busId)) setBusId(buses[buses.length - 1]?.id ?? '')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [busKey])
+  const key = `hostingAi:${sid}:${hosting.busId}:${hosting.targetKw ?? ''}:${hosting.at ? `${hosting.at.date}|${hosting.at.hour}` : 'max'}`
+  const [report, setReport] = usePersisted(`${key}:report`, null)
+  const [busy, setBusy] = usePersisted(`${key}:busy`, false)
+  const [error, setError] = usePersisted(`${key}:error`, '')
 
-  const kw = Number(targetKw)
-  const validKw = Number.isFinite(kw) && kw > 0
-
-  async function run(label, fn) {
-    setBusy(label)
+  async function make() {
+    setBusy(true)
     setError('')
     try {
-      await fn()
+      setReport(await createHostingReport({ substation_id: sid, hosting: hosting.data }, hosting.at))
     } catch (e) {
       setError(e.message)
     } finally {
-      setBusy('')
+      setBusy(false)
     }
   }
 
-  // 새로 확인하면 그 접속점의 이전 붙여 보기·AI 추천은 다른 조건이라 지운다
-  const check = () =>
-    run('연계 가능량 계산 중... (수 초)', async () => {
-      const data = await runHostingCapacity(sid, busId, validKw ? kw : null, at)
-      setHosting({ data, bus: busId, kw: validKw ? kw : null, at })
-      setTrial(null)
-      setReport(null)
-    })
-  const tryPv = () => run('신청 용량을 붙여 계산 중...', async () => setTrial({ data: await runPvTrial(sid, busId, kw, at), at }))
-  const compareAll = () => run('분산전원 연결 전후 계산 중...', async () => setDer({ data: await runDerComparison(sid, at), at }))
-  const recommend = () =>
-    run('AI가 추천을 쓰고 있습니다... (수 초~수십 초)', async () =>
-      setReport(
-        await createHostingReport(
-          {
-            substation_id: sid,
-            hosting: hosting.data,
-            // 붙여 보기는 같은 접속점일 때만 같이 보낸다
-            trial_before: trial?.data.bus_id === hosting.bus ? trial.data.before : null,
-            trial_after: trial?.data.bus_id === hosting.bus ? trial.data.after : null,
-            der_before: der?.data.before ?? null,
-            der_after: der?.data.after ?? null,
-          },
-          hosting.at,
-        ),
-      ),
-    )
-
-  const h = hosting?.data
-  const targetOk = h && h.target_kw != null ? h.target_violations.length === 0 : null
-  const busName = namer(graph)
-
   return (
-    <div className="uc-panel">
-      <p className="lead">
-        고객이 접속점에 태양광을 붙이고 싶을 때 <b>얼마까지 되는지, 무엇 때문에 안 되는지, 무엇을 보강하면 되는지</b> 봅니다. ({atLabel(at)}, 기준: 접속점 전압 1.05 pu
-        이하·선로 부하율 100% 이하·출구 차단기 차단 가능. 역조류 자체는 문제 아님)
-      </p>
-
-      <div className="uc-controls">
-        <label className="field">
-          접속점
-          <select value={busId} onChange={(e) => setBusId(e.target.value)} disabled={!!busy}>
-            {buses.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="field">
-          신청 용량 (kW)
-          <span className="field-input">
-            <input type="number" min="0" step="100" value={targetKw} onChange={(e) => setTargetKw(e.target.value)} disabled={!!busy} />
-            <i>kW</i>
-          </span>
-        </label>
-        <button type="button" className="primary" disabled={!!busy || !busId} onClick={check}>
-          연계 가능량 확인
-        </button>
-        <button type="button" className="mini" disabled={!!busy || !busId || !validKw} onClick={tryPv}>
-          신청 용량 붙여 보기
-        </button>
-      </div>
-
-      {busy && <Busy text={busy} />}
+    <div className="uc-ai">
+      <button type="button" className="primary-outline mini" disabled={busy || stale} onClick={make}>
+        {busy ? 'AI가 쓰는 중...' : report ? 'AI 추천 다시 만들기' : 'AI 추천 (연계 가능 여부·보강 방법)'}
+      </button>
       <Fail error={error} />
-
-      {h && (
-        <section className="uc-result">
-          <p className="muted small">
-            마지막 확인: {busName(hosting.bus)} · {hosting.kw != null ? `신청 ${fmtKw(hosting.kw)}` : '신청 용량 없음'} · {atLabel(hosting.at)}
-          </p>
-          <h4>
-            {h.limited_by.length === 0 && h.max_kw >= SEARCH_MAX_KW
-              ? `${fmtKw(SEARCH_MAX_KW)} 이상 가능 (검토 상한까지 기준 안)`
-              : h.max_kw <= 0
-                ? '더 붙일 수 없음 (지금 계통이 이미 기준을 넘음)'
-                : `최대 ${fmtKw(h.max_kw)}까지 더 붙일 수 있음`}
-            {targetOk != null && (
-              <span className="badge" style={{ marginLeft: 8, color: LEVELS[targetOk ? 'ok' : 'danger'].color, borderColor: LEVELS[targetOk ? 'ok' : 'danger'].color }}>
-                신청 {fmtKw(h.target_kw)} {targetOk ? '연계 가능' : '연계 불가'}
-              </span>
-            )}
-          </h4>
-          {h.limited_by.length > 0 && (
-            <>
-              <p className="muted small">막히는 원인 (최대치를 넘기면 처음 생기는 위반, ⌖를 누르면 단선도에서 위치를 보여 줍니다)</p>
-              <ViolationList graph={graph} items={h.limited_by} onFocus={onFocus} />
-            </>
-          )}
-          {h.target_violations.length > 0 && (
-            <>
-              <p className="muted small">신청 용량을 붙이면 생기는 위반과 필요한 보강</p>
-              <ViolationList graph={graph} items={h.target_violations} onFocus={onFocus} />
-            </>
-          )}
-        </section>
-      )}
-
-      {trial && (
-        <section className="uc-result">
-          <h4>
-            {busName(trial.data.bus_id)}에 {fmtKw(trial.data.kw)} 붙였을 때 <small className="muted">({atLabel(trial.at)})</small>
-          </h4>
-          <CompareTable before={trial.data.before} after={trial.data.after} left="지금" right="붙인 뒤" />
-        </section>
-      )}
-
-      <section className="uc-result">
-        <h4>
-          지금 태양광·풍력 전체의 연결 전후{der && <small className="muted"> ({atLabel(der.at)})</small>}{' '}
-          <button type="button" className="mini" disabled={!!busy} onClick={compareAll}>
-            {der ? '다시 계산' : '계산'}
-          </button>
-        </h4>
-        {der ? (
-          <CompareTable before={der.data.before} after={der.data.after} left="분산전원 없음" right="지금" />
-        ) : (
-          <p className="muted small">태양광·풍력이 들어오기 전과 후에 전압·부하율·역조류·고장전류가 어떻게 달라지는지 봅니다.</p>
-        )}
-      </section>
-
-      <section className="uc-result">
-        <h4>
-          AI 추천{' '}
-          <button type="button" className="primary-outline mini" disabled={!!busy || !h} onClick={recommend}>
-            {report ? '다시 만들기' : 'AI 추천 만들기'}
-          </button>
-        </h4>
-        {!h && <p className="muted small">먼저 &ldquo;연계 가능량 확인&rdquo;을 누르세요. 신청 용량 붙여 보기와 전체 연결 전후를 계산해 두면 AI가 같이 참고합니다.</p>}
-        {report && <ReportCards report={report} titles={['연계 가능 여부', '막히는 원인', '보강 추천']} />}
-      </section>
+      {report && <ReportCards report={report} titles={['연계 가능 여부', '막히는 원인', '보강 추천']} />}
     </div>
   )
 }

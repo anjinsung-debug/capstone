@@ -23,7 +23,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font: 14px/1.5 Pretendard, 'Noto Sans KR', system-ui, sans-serif;
+  font: 15px/1.5 Pretendard, 'Noto Sans KR', system-ui, sans-serif;
 }
 
 button,
@@ -38,7 +38,7 @@ select {
   background: var(--panel-2);
   border: 1px solid var(--line);
   border-radius: 6px;
-  padding: 6px 12px;
+  padding: 7px 14px;
   cursor: pointer;
 }
 button:hover:not(:disabled),
@@ -93,7 +93,7 @@ button.toggle.on {
 }
 .brand h1 {
   margin: 0;
-  font-size: 16px;
+  font-size: 17px;
 }
 /* 연결 상태: 서버(백엔드)와 DB(Neo4j) 불빛. 누르면 다시 확인 */
 .conn {
@@ -104,7 +104,7 @@ button.toggle.on {
   border: 0;
   background: none;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
   cursor: pointer;
 }
 .conn-item {
@@ -132,7 +132,7 @@ button.toggle.on {
 }
 .history-note {
   margin: 0 0 8px;
-  font-size: 12px;
+  font-size: 13px;
 }
 /* 로고 자리의 메뉴 버튼 (☰): 왼쪽 편집 메뉴를 연다 */
 /* 편집 버튼 (로고 자리): 연필 아이콘 + "편집". 누르면 왼쪽 편집 메뉴가 열린다 */
@@ -160,12 +160,12 @@ button.toggle.on {
   color: var(--muted);
 }
 .icon-btn {
-  padding: 4px 9px;
+  padding: 5px 11px;
   line-height: 1.2;
 }
 button.mini {
-  padding: 3px 10px;
-  font-size: 12px;
+  padding: 4px 12px;
+  font-size: 13px;
 }
 .actions {
   display: flex;
@@ -219,7 +219,7 @@ button.mini {
   align-items: center;
   gap: 6px;
   min-width: 104px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
   cursor: default;
 }
@@ -297,7 +297,7 @@ button.mini {
 }
 .nav-title {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   margin-bottom: 2px;
 }
 .nav .tool {
@@ -312,7 +312,7 @@ button.mini {
 .nav-foot {
   margin: 2px 0 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.45;
 }
 .nav-foot {
@@ -331,7 +331,7 @@ button.mini {
   align-items: center;
   gap: 2px;
   padding: 8px 4px 6px;
-  font-size: 12px;
+  font-size: 13px;
   cursor: grab;
 }
 .tile:active {
@@ -439,17 +439,17 @@ button.mini {
   background: rgba(18, 26, 31, 0.92);
   border: 1px solid var(--line);
   border-radius: 8px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
   backdrop-filter: blur(4px);
 }
 .strip .sim-mode button {
-  padding: 2px 9px;
-  font-size: 12px;
+  padding: 3px 11px;
+  font-size: 13px;
 }
 .strip .kv b {
   color: var(--text);
-  font-size: 14px;
+  font-size: 15px;
   margin: 0 2px;
 }
 .strip .kv b.feeder {
@@ -489,7 +489,7 @@ button.mini {
   gap: 8px;
   text-align: left;
   padding: 6px 8px;
-  font-size: 13px;
+  font-size: 14px;
 }
 .tool.active {
   border-color: var(--accent);
@@ -521,14 +521,14 @@ button.mini {
 }
 .props h3 {
   margin: 0 0 10px;
-  font-size: 15px;
+  font-size: 16px;
   display: flex;
   align-items: center;
   gap: 6px;
 }
 .props h4 {
   margin: 14px 0 6px;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--muted);
 }
 .type-dot {
@@ -542,7 +542,7 @@ button.mini {
   flex-direction: column;
   gap: 2px;
   margin-bottom: 8px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
 }
 .field.checkbox {
@@ -568,7 +568,7 @@ button.mini {
   border: 0;
   outline: 0;
   padding: 5px 8px;
-  font-size: 13px;
+  font-size: 14px;
 }
 .field-input input:disabled {
   color: var(--muted);
@@ -586,7 +586,7 @@ button.mini {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 2px 10px;
-  font-size: 12px;
+  font-size: 13px;
   margin: 8px 0;
 }
 .meta dt {
@@ -602,12 +602,12 @@ button.mini {
 .issues {
   margin: 0;
   padding-left: 18px;
-  font-size: 12px;
+  font-size: 13px;
 }
 .ok {
   color: var(--accent);
   margin: 0;
-  font-size: 12px;
+  font-size: 13px;
 }
 .stats {
   display: grid;
@@ -621,11 +621,11 @@ button.mini {
   padding: 6px 8px;
   display: flex;
   flex-direction: column;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
 }
 .stat b {
-  font-size: 14px;
+  font-size: 15px;
   color: var(--text);
 }
 
@@ -636,7 +636,7 @@ button.mini {
   align-items: center;
   gap: 4px 12px;
   padding: 6px 10px;
-  font-size: 11px;
+  font-size: 12px;
   background: rgba(18, 26, 31, 0.92);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -671,8 +671,8 @@ button.mini {
 }
 .seg button {
   border-radius: 0;
-  padding: 3px 10px;
-  font-size: 12px;
+  padding: 4px 12px;
+  font-size: 13px;
 }
 .seg button:first-child {
   border-radius: 6px 0 0 6px;
@@ -720,7 +720,7 @@ button.mini {
 }
 .modal-head h2 {
   margin: 0;
-  font-size: 16px;
+  font-size: 17px;
 }
 .modal-actions {
   display: flex;
@@ -743,7 +743,7 @@ button.mini {
 }
 .dialog-form .field-input input {
   padding: 8px 10px;
-  font-size: 14px;
+  font-size: 15px;
 }
 .choice-row {
   display: grid;
@@ -768,7 +768,7 @@ button.mini {
 }
 .choice small {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.4;
 }
 .choice.on {
@@ -827,12 +827,12 @@ button.mini {
   gap: 12px;
 }
 .small {
-  font-size: 12px;
+  font-size: 13px;
   margin: 0;
 }
 h3.sub {
   margin: 4px 0 0;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--muted);
   font-weight: 500;
 }
@@ -854,13 +854,13 @@ h3.sub {
 }
 .chip {
   padding: 1px 8px;
-  font-size: 11px;
+  font-size: 12px;
   border-radius: 999px;
 }
 .rtable {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 13px;
 }
 .rtable th {
   position: sticky;
@@ -891,7 +891,7 @@ h3.sub {
 }
 .focus-btn {
   padding: 0 7px;
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.5;
 }
 img.plot {
@@ -904,20 +904,20 @@ img.plot {
 /* 건강도·원인·솔루션 탭 */
 .lead {
   margin: 0;
-  font-size: 13px;
+  font-size: 14px;
 }
 .badge {
   display: inline-block;
   padding: 0 8px;
   border: 1px solid;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   line-height: 18px;
 }
 .rtable.health td {
   padding: 7px 8px;
-  font-size: 13px;
+  font-size: 14px;
 }
 .rtable tr.warn td {
   background: rgba(255, 176, 32, 0.07);
@@ -947,7 +947,7 @@ img.plot {
 .cause small {
   display: block;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 .cause-obs {
   display: flex;
@@ -957,16 +957,16 @@ img.plot {
 }
 .cause .arrow {
   color: var(--muted);
-  font-size: 18px;
+  font-size: 20px;
 }
 .cause-q span {
-  font-size: 12px;
+  font-size: 13px;
 }
 .flow {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
 }
 .flow span {
@@ -999,7 +999,7 @@ img.plot {
 .hchart figcaption {
   display: flex;
   justify-content: space-between;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
 }
 .hchart figcaption b {
@@ -1039,7 +1039,7 @@ img.plot {
 }
 .htick {
   fill: var(--muted);
-  font-size: 9px;
+  font-size: 10px;
 }
 
 /* 브라우저 새 창으로 연 결과 */
@@ -1056,7 +1056,7 @@ body.popup {
 .popup-title {
   margin: 0;
   padding: 12px 18px 4px;
-  font-size: 16px;
+  font-size: 17px;
 }
 
 .cards {
@@ -1071,11 +1071,11 @@ body.popup {
   padding: 8px 14px;
   display: flex;
   flex-direction: column;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
 }
 .card b {
-  font-size: 18px;
+  font-size: 20px;
   color: var(--text);
 }
 .card.feeder {
@@ -1184,10 +1184,10 @@ body.popup {
 }
 .rp-overall small {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 .rp-overall b {
-  font-size: 24px;
+  font-size: 26px;
   line-height: 1.2;
 }
 .rp-chips {
@@ -1199,7 +1199,7 @@ body.popup {
   padding: 3px 10px;
   border: 1px solid var(--line);
   border-radius: 999px;
-  font-size: 13px;
+  font-size: 14px;
   background: var(--panel);
 }
 .rp-chip.warn {
@@ -1225,11 +1225,11 @@ body.popup {
 }
 .rp-label {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 14px;
 }
 .rp-controls .seg button {
   padding: 5px 12px;
-  font-size: 13px;
+  font-size: 14px;
 }
 .rp-make {
   margin-left: auto;
@@ -1245,7 +1245,7 @@ body.popup {
 }
 .rp-state small {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 14px;
 }
 .rp-state:has(.spinner) {
   flex-direction: row;
@@ -1297,7 +1297,7 @@ body.popup {
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--panel-2);
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1.75;
 }
 .rp-card-head {
@@ -1310,12 +1310,12 @@ body.popup {
 }
 .rp-card-head h4 {
   margin: 0;
-  font-size: 16px;
+  font-size: 17px;
   line-height: 1.3;
 }
 .rp-card-head small {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 .rp-no {
   display: grid;
@@ -1360,7 +1360,7 @@ body.popup {
   border-radius: 50%;
   border: 1px solid var(--muted);
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 18px;
   text-align: center;
 }
@@ -1398,7 +1398,7 @@ body.popup {
 .hlegend {
   display: flex;
   gap: 14px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
 }
 .hlegend span {
@@ -1458,12 +1458,12 @@ body.popup {
 }
 .date-step {
   padding: 4px 10px;
-  font-size: 16px;
+  font-size: 17px;
   line-height: 1;
 }
 .date-quick {
   padding: 4px 10px;
-  font-size: 12px;
+  font-size: 13px;
 }
 .date-quick.on {
   border-color: var(--accent);
@@ -1514,16 +1514,95 @@ body.popup {
 .hourly-table small.up,
 .hourly-table small.down {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 400;
 }
 
-/* 유스케이스 화면 (components/UsecasePanels.jsx): 태양광 연계 검토, AI 운영 권고, 보강 우선순위 */
-.uc-panel {
+/* 태양광 영향 탭·요약 줄 태양광 출력 (simulation/der.py) */
+.strip .kv b.der,
+.card.der b {
+  color: #7fd4ff;
+}
+.card.der {
+  border-color: #1f4a5f;
+}
+.card small {
+  margin-top: 2px;
+  font-size: 12px;
+}
+.der-table td.up,
+.der-table td.down {
+  color: var(--muted);
+}
+
+/* 접속점 속성 칸: 태양광 연계 검토 (연계 가능 최대치) */
+.hosting {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
+.hosting h4 {
+  margin: 0;
+}
+.hosting .hosting-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.hosting .hosting-row .field {
+  margin: 0;
+}
+.hosting-max {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+}
+.hosting-max b {
+  display: block;
+  font-size: 22px;
+  color: #7fd4ff;
+}
+.hosting ul {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+.hosting li {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+}
+.hosting li .chip {
+  font-size: 12px;
+}
+.hosting li .bad {
+  color: var(--danger);
+}
+.hosting .ok-line {
+  color: var(--accent);
+  font-size: 13px;
+}
+.hourly-table td.hour-cell button {
+  padding: 0 6px;
+  font-size: 12px;
+  margin-left: 4px;
+}
+.hosting .warn {
+  color: var(--warn);
+}
+
+/* AI 추천·권고 (components/UsecasePanels.jsx): 기록 탭 AI 운영 권고·보강 우선순위, 연계 검토 AI 추천 */
 .uc-controls {
   display: flex;
   flex-wrap: wrap;
@@ -1546,9 +1625,19 @@ body.popup {
   margin: 0;
   font-size: 15px;
 }
-.uc-list {
-  margin: 0;
-  padding-left: 18px;
+.uc-ai {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+/* 속성 칸(.hosting) 목록 모양이 AI 카드 목록에 섞이지 않게 되돌림 */
+.uc-ai .rp-list li {
+  display: block;
+  padding: 8px 10px 8px 38px;
+  border-bottom: 0;
+}
+.uc-ai .rp-card {
+  padding: 10px 12px;
   font-size: 13px;
-  line-height: 1.7;
 }
