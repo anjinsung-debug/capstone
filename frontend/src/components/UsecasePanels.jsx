@@ -1,11 +1,12 @@
 // AI 추천·권고 화면 (한승우 유스케이스 시나리오, 11/4). 담당: 최민준 (frontend·ai_report)
+// - CapacityPanel: 결과 자세히 "추가 가능량" 탭. 접속점마다 신재생·부하를 얼마나 더 붙일 수 있는지 + AI 설명 (진성이 피드백 11/5)
 // - HostingAi: 유스케이스 1 ⑤ "AI 추천". 영민이형의 태양광 연계 검토(PropertyPanel.jsx의 HostingSection) 결과 아래에 붙는다
 // - DailyAiBox: 유스케이스 2 ⑥ "AI 운영 권고" (고른 날 24시간 결과 → 시간대별 위험과 대비 조치)
 // - ReinforceBox: 유스케이스 3 "설비 보강 우선순위" (여러 날 24시간 결과 → 선로 순위 → AI 정리)
 // 계산은 진짜 백엔드(simulation/der.py, simulation/daily.py)가 하고, AI 문장은 ai_report/report.py가 만든다
 // (전문가용 설명: 한전 담당자용 화면). 모의 백엔드에는 이 주소들이 없다 (진짜 백엔드로 확인)
 import { useCallback, useEffect, useState } from 'react'
-import { createDailyReport, createHostingReport, createReinforcementReport } from '../api/client.js'
+import { createCapacityReport, createDailyReport, createHostingReport, createReinforcementReport, runCapacity } from '../api/client.js'
 
 // 화면을 닫거나 다른 탭에 갔다 와도 마지막 결과가 남도록 값을 컴포넌트 밖(모듈)에 둔다 (새로고침하면 지워짐).
 // 계산 중에 창을 닫아도 응답이 오면 여기에 저장되고, 다시 열면 그대로 보인다.
@@ -241,5 +242,165 @@ export function ReinforceBox({ graph, onFocus }) {
         </>
       )}
     </section>
+  )
+}
+
+// ── 추가 가능량 (진성이 피드백 11/5, 10/26 차장님 요청): 지금 계통에서 신재생·부하를 얼마나 더 붙일 수 있나 ──
+// 계산은 ai_report/capacity.py (신재생은 simulation/der.py의 hosting_capacity, 부하는 같은 방식으로 새로 계산)
+const KIND_KO = { overload: '선로 과부하', overvoltage: '과전압', undervoltage: '저전압', breaker: '차단기 차단 불가' }
+const kwText = (v, top) => (v >= top ? `${Math.round(top).toLocaleString('ko-KR')}+` : Math.round(v).toLocaleString('ko-KR'))
+const atText = (at) => (at ? `${at.date} ${at.hour}시 기준` : '최대 조건 기준 (부하 최대 + 태양광 설비용량)')
+
+// 막는 것 한 줄: 이름 + 종류 + 값, 단선도로 갈 요소 id (차단기는 그 피더의 차단기 노드)
+function limitInfo(graph, v) {
+  const name = [...graph.nodes, ...graph.lines, ...graph.feeders].find((x) => x.id === v.element_id)?.name ?? v.element_id
+  const near = Math.abs(v.value - v.limit) < (v.kind === 'overload' ? 1 : 0.001)
+  const val =
+    v.kind === 'overload'
+      ? `${near ? v.value.toFixed(2) : v.value.toFixed(0)}%`
+      : v.kind === 'breaker'
+        ? `${v.value.toFixed(1)} kA`
+        : `${near ? v.value.toFixed(4) : v.value.toFixed(3)} pu`
+  const need = v.required_rated_current_a ? ` → ${Math.ceil(v.required_rated_current_a)} A 이상` : ''
+  const id = v.kind === 'breaker' ? graph.nodes.find((n) => n.type === 'breaker' && n.feeder_id === v.element_id)?.id : v.element_id
+  return { id, text: `${name} ${KIND_KO[v.kind] ?? v.kind} ${val}${need}` }
+}
+
+function LimitCell({ graph, items, onFocus }) {
+  if (!items.length) return <span className="muted">상한까지 기준 안</span>
+  return items.map((v, i) => {
+    const d = limitInfo(graph, v)
+    return (
+      <div key={i} className="cap-limit">
+        {d.text}{' '}
+        {d.id && onFocus && (
+          <button type="button" className="focus-btn" onClick={() => onFocus(d.id)} title="단선도에서 이 위치로 이동">
+            ⌖
+          </button>
+        )}
+      </div>
+    )
+  })
+}
+
+export function CapacityPanel({ graph, at, onFocus }) {
+  const sid = graph.substation.id
+  const atKey = at ? `${at.date}|${at.hour}` : 'max'
+  const [table, setTable] = usePersisted(`cap:${sid}:table`, null) // { data, at, atKey }
+  const [report, setReport] = usePersisted(`cap:${sid}:report`, null)
+  const [busy, setBusy] = usePersisted(`cap:${sid}:busy`, '')
+  const [error, setError] = usePersisted(`cap:${sid}:error`, '')
+
+  async function run(label, fn) {
+    setBusy(label)
+    setError('')
+    try {
+      await fn()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setBusy('')
+    }
+  }
+  const calc = () =>
+    run('접속점마다 신재생·부하 추가 가능량을 계산하는 중... (수 초~수십 초)', async () => {
+      setTable({ data: await runCapacity(sid, at), at, atKey })
+      setReport(null)
+    })
+  const explain = () => run('AI가 설명을 쓰고 있습니다... (수 초~수십 초)', async () => setReport(await createCapacityReport(sid, table.data, table.at)))
+
+  const rows = table?.data.rows ?? []
+  const top = table?.data.max_search_kw ?? 20000
+  const best = (key) => rows.reduce((a, r) => (!a || r[key] > a[key] ? r : a), null)
+  const worst = (key) => rows.reduce((a, r) => (!a || r[key] < a[key] ? r : a), null)
+  const stale = table && table.atKey !== atKey
+
+  return (
+    <div className="uc-panel">
+      <p className="lead">
+        지금 계통에서 접속점마다 <b>신재생(태양광)을 얼마나 더 설치할 수 있는지</b>, <b>부하를 얼마나 더 늘릴 수 있는지</b>, 무엇이 막는지 봅니다.
+      </p>
+      <p className="muted small">
+        신재생: 전압 1.05 pu 이하·선로 부하율 100% 이하·출구 차단기 차단 가능 / 부하: 전압 0.95 pu 이상·선로 부하율 100% 이하·차단 가능. 접속점마다
+        따로 계산한 값이라 여러 곳에 동시에 붙인 합은 아닙니다.
+      </p>
+      <div className="uc-controls">
+        <button type="button" className="primary" disabled={!!busy} onClick={calc}>
+          {table ? '다시 계산' : '추가 가능량 계산'} ({atText(at)})
+        </button>
+        {table && (
+          <button type="button" className="primary-outline" disabled={!!busy || stale} onClick={explain}>
+            {report ? 'AI 설명 다시 만들기' : 'AI 설명 (어디에 얼마나, 늘리려면)'}
+          </button>
+        )}
+      </div>
+      {busy && <Busy text={busy} />}
+      <Fail error={error} />
+      {stale && <p className="warn small">화면 시각이 바뀌었습니다. 아래는 {atText(table.at)} 결과이니 &ldquo;다시 계산&rdquo;을 눌러 주세요.</p>}
+
+      {rows.length > 0 && (
+        <>
+          <div className="cap-cards">
+            {[
+              ['신재생 추가 설치 가능', 'pv_max_kw', 'pv'],
+              ['부하 추가 가능', 'load_max_kw', 'load'],
+            ].map(([title, key, cls]) => {
+              const b = best(key)
+              const w = worst(key)
+              return (
+                <div key={key} className={`cap-card ${cls}`}>
+                  <span className="cap-title">{title}</span>
+                  <div className="cap-pair">
+                    <div>
+                      <small>가장 여유 있는 곳 · {b.name}</small>
+                      <b>{kwText(b[key], top)} kW</b>
+                    </div>
+                    <div>
+                      <small>가장 빡빡한 곳 · {w.name}</small>
+                      <b className="tight">{kwText(w[key], top)} kW</b>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          <p className="muted small">{atText(table.at)} · ⌖를 누르면 단선도에서 막는 곳을 보여 줍니다</p>
+          <table className="rtable cap-table">
+            <thead>
+              <tr>
+                <th>접속점</th>
+                <th className="num">신재생 추가 가능</th>
+                <th>신재생을 막는 것</th>
+                <th className="num">부하 추가 가능</th>
+                <th>부하를 막는 것</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.bus_id}>
+                  <td>
+                    {r.name}{' '}
+                    {onFocus && (
+                      <button type="button" className="focus-btn" onClick={() => onFocus(r.bus_id)} title="단선도에서 이 위치로 이동">
+                        ⌖
+                      </button>
+                    )}
+                  </td>
+                  <td className="num cap-num pv">{kwText(r.pv_max_kw, top)} kW</td>
+                  <td>
+                    <LimitCell graph={graph} items={r.pv_limited_by} onFocus={onFocus} />
+                  </td>
+                  <td className="num cap-num load">{kwText(r.load_max_kw, top)} kW</td>
+                  <td>
+                    <LimitCell graph={graph} items={r.load_limited_by} onFocus={onFocus} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+      {report && <ReportCards report={report} titles={['계통 전체 요약', '막는 요인', '늘리는 방법']} />}
+    </div>
   )
 }

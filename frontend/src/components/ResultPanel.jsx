@@ -11,7 +11,7 @@ import { useEffect, useRef, useState } from 'react'
 import NodeIcon from './NodeIcon.jsx'
 import HistoryChart from './HistoryChart.jsx'
 import ProfileCharts from './ProfileChart.jsx'
-import { DailyAiBox, ReinforceBox } from './UsecasePanels.jsx'
+import { CapacityPanel, DailyAiBox, ReinforceBox } from './UsecasePanels.jsx'
 import {
   CAUSE_QUESTIONS,
   COLORS,
@@ -470,6 +470,7 @@ export const RESULT_TABS = [
   ['cause', '② 원인 분석'],
   ['solution', '③ 솔루션 제안'],
   ['der', '태양광 영향'],
+  ['capacity', '추가 가능량'], // 구현 참고 (최민준 추가): 신재생·부하 추가 가능량 (components/UsecasePanels.jsx)
   ['elements', '요소별 결과'],
   ['history', '기록 (시점별)'],
 ]
@@ -513,6 +514,8 @@ export function ResultView({
           <SolutionTab graph={graph} result={result} />
         ) : tab === 'der' ? (
           <DerTab graph={graph} der={der} resultAt={resultAt} />
+        ) : tab === 'capacity' ? (
+          <CapacityPanel graph={graph} at={resultAt} onFocus={onFocus} />
         ) : tab === 'elements' ? (
           <ElementsTab graph={graph} result={result} onFocus={onFocus} />
         ) : (
