@@ -1603,6 +1603,81 @@ body.popup {
   color: var(--warn);
 }
 
+/* 추가 가능량 탭 (components/UsecasePanels.jsx의 CapacityPanel): 큰 숫자 카드 + 접속점 표 */
+.uc-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cap-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 10px;
+}
+.cap-card {
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+}
+.cap-card.pv {
+  border-color: #4fd18b;
+}
+.cap-card.load {
+  border-color: #ffb020;
+}
+.cap-title {
+  font-weight: 700;
+  font-size: 14px;
+}
+.cap-pair {
+  display: flex;
+  gap: 18px;
+  margin-top: 6px;
+}
+.cap-pair div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cap-pair small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.cap-pair b {
+  font-size: 24px;
+}
+.cap-card.pv .cap-pair b {
+  color: #4fd18b;
+}
+.cap-card.load .cap-pair b {
+  color: #ffb020;
+}
+.cap-pair b.tight {
+  color: #ff5d5d !important;
+}
+.cap-table td {
+  vertical-align: top;
+}
+.cap-num {
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.cap-num.pv {
+  color: #4fd18b;
+}
+.cap-num.load {
+  color: #ffb020;
+}
+.cap-limit {
+  font-size: 12px;
+  line-height: 1.6;
+}
+.cap-table th {
+  white-space: nowrap;
+}
+
 /* AI 추천·권고 (components/UsecasePanels.jsx): 기록 탭 AI 운영 권고·보강 우선순위, 연계 검토 AI 추천 */
 .uc-controls {
   display: flex;

@@ -542,8 +542,11 @@ def _violation_text(graph: SubstationGraph, v) -> str:
         need = f", 필요 허용전류 {math.ceil(v.required_rated_current_a):,} A 이상" if v.required_rated_current_a else ""
         pct = f"{v.value:.2f}" if v.value < v.limit + 1 else f"{v.value:.0f}"  # 100.02%가 "100%"로 보여 기준 안처럼 읽히지 않게
         return f"{name}: 선로 과부하, 부하율 {pct}% (기준 {v.limit:.0f}% 초과), 지금 허용전류 {now}{need}"
+    pu = f"{v.value:.4f}" if abs(v.value - v.limit) < 0.001 else f"{v.value:.3f}"  # 0.9499가 "0.950"으로 보여 기준 안처럼 읽히지 않게
     if v.kind == "overvoltage":
-        return f"{name}: 접속점 과전압, {v.value:.3f} pu (기준 {v.limit} pu 초과)"
+        return f"{name}: 접속점 과전압, {pu} pu (기준 {v.limit} pu 초과)"
+    if v.kind == "undervoltage":
+        return f"{name}: 접속점 저전압, {pu} pu (기준 {v.limit} pu 미만)"
     return f"{name}: 출구 차단기 차단 불가, 고장전류 {v.value:.2f} kA > 정격 {v.limit:.0f} kA (가정값)"
 
 
@@ -609,6 +612,57 @@ def generate_hosting_report(graph: SubstationGraph, hosting, trial: tuple | None
                             at: str = "최대 조건", audience: str = "expert", client=None) -> Report:
     """유스케이스 1 ⑤ "AI 추천": 연계 가능량·막는 원인·필요 허용전류를 받아 연계 가능 여부와 보강 추천을 쓴다"""
     return _ask(hosting_system_prompt(audience), build_hosting_prompt(graph, hosting, trial, der, at), graph.substation.id, client)
+
+
+# ── 추가 가능량 (진성이 피드백 11/5): 접속점마다 신재생·부하를 얼마나 더 붙일 수 있는지 → AI 설명 ──
+# 가능량과 막는 곳은 ai_report/capacity.py(부하)와 simulation/der.py(신재생)가 계산한다. AI는 계통 전체를 요약하고 늘리는 방법을 쓴다
+_CAPACITY_TASK = """[이번 작업: 추가 가능량 설명. 이 지침이 위 지침보다 우선합니다]
+사용자가 지금 계통에서 접속점마다 신재생(태양광)과 부하를 얼마나 더 붙일 수 있는지 코드가 계산한 표를 줍니다. 리포트 형식(진단·원인·솔루션)은 같고 내용은 아래처럼 쓰세요.
+- 진단(계통 전체 요약, 3~5문장): 신재생을 가장 많이/가장 적게 더 붙일 수 있는 접속점과 kW, 부하를 가장 많이/가장 적게 더 늘릴 수 있는 접속점과 kW, 전체적으로 어느 쪽(말단·변전소 가까운 쪽)이 여유가 없는지.
+- 원인: 막는 요인별로 항목 하나. "신재생은 ○○ 선로 과부하(남는 전기가 변전소 쪽으로 거꾸로 몰림)·○○ 접속점 과전압 때문에", "부하는 말단 ○○ 접속점 저전압·○○ 선로 과부하 때문에"처럼 어느 설비가 몇 개 접속점을 막는지 쓰세요.
+- 솔루션: 우선순위 순서. 가장 많이 막는 선로부터 "허용전류를 지금 ○○ A에서 ○○ A 이상으로 증강하면 그 선로 때문에 막히던 곳이 풀림"처럼 입력의 필요 허용전류를 인용하세요. 저전압·과전압은 전압조정기(SVR)·탭 조정·연계 지점 분산을 "검토"로 쓰세요. 신재생과 부하를 같은 곳에 함께 붙이면 서로 상쇄될 수 있다는 점도 한 줄로 알려도 됩니다.
+- 접속점마다 따로 계산한 값이라 여러 곳에 동시에 붙일 때의 합이 아님을 진단 끝에 한 번 밝히세요.
+- 입력의 kW·A·pu 숫자는 그대로 써도 됩니다. 새로 계산하거나 합하지 마세요. 허용전류·차단기 정격이 가정값이면 "가정값 기준"이라고 밝히세요."""
+
+
+def build_capacity_prompt(graph: SubstationGraph, table, at: str = "최대 조건") -> str:
+    """ai_report/capacity.py의 CapacityTable → AI 입력 글 (접속점 표 + 막는 요인별 묶음 + 가정값)"""
+    names = _names(graph)
+    top = table.max_search_kw
+
+    def kw(v):
+        return f"{v:,.0f} 이상(검토 상한)" if v >= top else f"{v:,.0f}"
+
+    def lim(items):
+        return "; ".join(_violation_text(graph, v) for v in items) or "없음 (검토 상한까지 기준 안)"
+
+    lines = [f"# 추가 가능량 ({graph.substation.name})", f"- 검토 시각: {at}",
+             f"- 신재생 기준: 접속점 전압 {VOLTAGE_MAX_PU} pu 이하, 선로 부하율 {OVERLOAD_PCT:.0f}% 이하, 출구 차단기 차단 가능 (역조류 자체는 문제 아님)",
+             f"- 부하 기준: 접속점 전압 {VOLTAGE_MIN_PU} pu 이상, 선로 부하율 {OVERLOAD_PCT:.0f}% 이하, 출구 차단기 차단 가능 (추가 부하 역률 0.95 가정)",
+             "- 접속점마다 따로 계산한 값 (여러 곳에 동시에 붙인 합이 아님)", "",
+             "## 접속점별 추가 가능량 (코드가 계산한 사실. 그대로 쓰세요)",
+             "| 접속점 | 신재생 추가 가능 kW | 신재생을 막는 것 | 부하 추가 가능 kW | 부하를 막는 것 |", "| --- | --- | --- | --- | --- |"]
+    for x in table.rows:
+        lines.append(f"| {x.name} | {kw(x.pv_max_kw)} | {lim(x.pv_limited_by)} | {kw(x.load_max_kw)} | {lim(x.load_limited_by)} |")
+    # 막는 설비별로 몇 개 접속점을 막는지 (AI가 세다 틀리지 않게 코드가 셈)
+    kind_ko = {"overload": "선로 과부하", "overvoltage": "과전압", "undervoltage": "저전압", "breaker": "차단기 차단 불가"}
+    for what, attr in (("신재생을", "pv_limited_by"), ("부하를", "load_limited_by")):
+        count: dict[str, list[str]] = {}
+        for x in table.rows:
+            for v in getattr(x, attr):
+                count.setdefault(f"{names.get(v.element_id, v.element_id)} ({kind_ko.get(v.kind, v.kind)})", []).append(x.name)
+        if count:
+            lines.append(f"- {what} 막는 설비: " + "; ".join(f"{k} → 접속점 {len(b)}곳" for k, b in sorted(count.items(), key=lambda kv: -len(kv[1]))))
+    assumptions = _assumptions(graph)
+    if assumptions:
+        lines += ["", "## 가정값", *[f"- {a}" for a in assumptions]]
+    lines += ["", "위 정보로 계통 전체 요약(진단), 막는 요인(원인), 늘리는 방법(솔루션)을 제출하세요."]
+    return "\n".join(lines)
+
+
+def generate_capacity_report(graph: SubstationGraph, table, at: str = "최대 조건", audience: str = "expert", client=None) -> Report:
+    """추가 가능량 표(신재생·부하)를 받아 계통 전체 요약, 막는 요인, 늘리는 방법을 쓴다"""
+    return _ask(f"{system_prompt(audience)}\n\n{_CAPACITY_TASK}", build_capacity_prompt(graph, table, at), graph.substation.id, client)
 
 
 # ── 유스케이스 2: 고른 날 24시간 결과 → 시간대별 위험과 대비 조치 (AI 운영 권고) ──

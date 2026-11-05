@@ -92,3 +92,8 @@ export const createHostingReport = (body, at) => request('POST', withQuery('/rep
 export const createDailyReport = (substationId, body) => request('POST', `/reports/daily/${substationId}?audience=expert`, body)
 export const createReinforcementReport = (substationId, body) =>
   request('POST', `/reports/reinforcement/${substationId}?audience=expert`, body)
+// 추가 가능량 (ai_report/capacity.py): 접속점마다 신재생·부하를 몇 kW까지 더 붙일 수 있는지, 무엇이 막는지. 계산만 (수 초~수십 초)
+export const runCapacity = (substationId, at) => request('POST', withQuery(`/reports/capacity/${substationId}`, '', at))
+// 추가 가능량 표를 AI가 설명 (계통 전체 요약, 막는 요인, 늘리는 방법)
+export const createCapacityReport = (substationId, table, at) =>
+  request('POST', withQuery(`/reports/capacity-ai/${substationId}`, 'audience=expert', at), table)
