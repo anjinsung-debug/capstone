@@ -64,6 +64,11 @@
    - **형식 고정**: Claude tool use(`submit_report`)로 진단 1개, 원인 목록, 솔루션 목록을 받음. 형식이 어긋나면 `ReportError`
    - **가정값 표시**: 허용전류·단락용량이 데이터에 없어 `simulation/dss.py`의 `DEFAULT_*`로 계산된 경우 그 사실을 프롬프트에 넣어 리포트에 "가정값 기준"이라고 밝히게 함
    - 모델은 `.env`의 `ANTHROPIC_MODEL`, 없으면 `DEFAULT_MODEL`. 회의록의 "사용할 Claude 모델"이 정해지면 바꿈
+   - **추가 가능량·AI 추천·권고** (`ai_report/capacity.py`, `backend/api/report.py`, 화면 `UsecasePanels.jsx`): 계산은 코드가 하고 AI는 그 결과를 설명만 함. 모두 `audience`(expert·plain)를 받음. 모의 백엔드에는 이 주소들이 없음
+     - 추가 가능량 (`POST /api/reports/capacity/{id}?date=&hour=`): 접속점마다 신재생(`der.hosting_capacity`와 같은 기준)과 부하를 이분 탐색. 부하 기준은 접속점 전압 ≥ 0.95 pu, 선로 부하율 ≤ 100%, 차단기 차단 가능. 추가 부하 역률 0.95 가정. 접속점마다 따로 계산한 값이라 동시에 붙일 때의 합은 아님. AI는 부르지 않고(수 초), `POST /api/reports/capacity-ai/{id}`에 받은 표를 보내면 AI가 계통 요약·막는 요인·늘리는 방법을 씀 (결과 자세히 "추가 가능량" 탭)
+     - 연계 추천 (`POST /api/reports/hosting`, 유스케이스 1): 화면이 이미 받은 연계 가능 최대치 결과를 그대로 보내 연계 여부·막는 원인·선로 보강을 추천받음 (속성 칸 "태양광 연계 검토" 아래 `HostingAi`)
+     - 24시간 운영 권고 (`POST /api/reports/daily/{id}`, 유스케이스 2): 본문은 `/simulations/daily`와 같고, 0~23시를 계산해 시간대별 위험과 대비 조치를 씀 (기록 탭 `DailyAiBox`)
+     - 설비 보강 우선순위 (`POST /api/reports/reinforcement/{id}`, 유스케이스 3): 날짜 1~4개(`dates`)의 24시간 결과로 선로 순위를 코드가 매기고, 올해 증강 가능 선로 수(`budget_lines`, 기본 2) 안에서 AI가 증강 순서를 권고 (기록 탭 `ReinforceBox`)
 
 ## 편집 → 시뮬레이션 → 리포트 설계 이유
 
