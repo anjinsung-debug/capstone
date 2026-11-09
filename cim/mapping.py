@@ -12,6 +12,7 @@ load.py는 이 표를 따라 변환한다. 매핑 규칙을 바꿀 때는 이 �
     Breaker (컨테이너가 Substation) → Node(type=breaker) = 피더 하나의 시작점
     Breaker (그 외) / LoadBreakSwitch / Recloser / Disconnector / Fuse → Node(type=switch)
     ACLineSegment                  → Line(kind=line)
+    CurrentLimit (OperationalLimitSet.Equipment = ACLineSegment) → Line.rated_current_a
     EnergyConsumer                 → Node(type=load), bus_id
     SolarGeneratingUnit / PhotoVoltaicUnit → Node(type=pv), bus_id
     WindGeneratingUnit             → Node(type=wind), bus_id
@@ -84,7 +85,7 @@ class FieldMap:
 
 @dataclass(frozen=True)
 class ClassMap:
-    target: Literal["substation", "node", "line", "check", "terminal"]
+    target: Literal["substation", "node", "line", "check", "terminal", "limit"]
     node_type: str | None = None  # target=node일 때 Node.type. Breaker는 load.py가 컨테이너를 보고 정함
     terminals: int = 0  # 이 설비가 가져야 하는 Terminal 수 (검사용)
     fields: tuple[FieldMap, ...] = ()
@@ -150,6 +151,18 @@ CLASS_MAP: dict[str, ClassMap] = {
             FieldMap("Terminal.ConductingEquipment", "equipment", to_str),  # rdf:about 참조
             FieldMap("Terminal.ConnectivityNode", "bus", to_str),  # rdf:about 참조
             FieldMap("ACDCTerminal.sequenceNumber", "sequence", lambda v, a: int(v), required=False),
+        ),
+    ),
+    # 선로 허용전류 (Line.rated_current_a). 한전 원본에는 없고, cim/export.py가 편집한 값을 내보낼 때 쓴다
+    #   CurrentLimit.value → OperationalLimitSet → OperationalLimitSet.Equipment(ACLineSegment)
+    "OperationalLimitSet": ClassMap(
+        "limit", fields=(FieldMap("OperationalLimitSet.Equipment", "equipment", to_str),)  # rdf:about 참조
+    ),
+    "CurrentLimit": ClassMap(
+        "limit",
+        fields=(
+            FieldMap("CurrentLimit.value", "value"),
+            FieldMap("OperationalLimit.OperationalLimitSet", "limit_set", to_str),  # rdf:about 참조
         ),
     ),
 }

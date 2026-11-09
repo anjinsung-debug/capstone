@@ -19,6 +19,7 @@ import {
   runDaily,
   runHostingCapacity,
   runSimulation,
+  exportCim,
   saveSubstation,
 } from './api/client.js'
 import Diagram from './components/Diagram.jsx'
@@ -395,6 +396,25 @@ export default function App() {
     loadSubstation(substationId)
   }
 
+  // CIM 내보내기 (편집 메뉴): 아직 저장 안 된 편집이 있으면 먼저 저장해서, 화면에 보이는 계통이 파일에 들어가게 한다
+  async function downloadCim() {
+    if (!graph) return
+    if (dirty && save.status === 'error' && !window.confirm(`저장되지 않은 편집이 있습니다 (${save.text}). 마지막으로 저장된 계통을 내보낼까요?`)) return
+    if (dirty) await flush()
+    try {
+      const url = await exportCim(graph.substation.id)
+      const filename = `${graph.substation.name}_cim.xml` // 백엔드 Content-Disposition과 같은 이름 (모의 백엔드는 안 보냄)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
+      info(`CIM 파일을 내려받았습니다 (${filename})`)
+    } catch (e) {
+      fail(`CIM으로 내보내지 못했습니다 (${e.message})`)
+    }
+  }
+
   // 새 변전소 (프론트가 UUID 발급).
   // 진짜 백엔드(cim/graph.py의 save_substation)는 없는 변전소 id면 새로 만든다. 이때만 이름·단락용량 등 변전소 속성을 받고,
   // 그 뒤로는 이름만 바뀐다. 전원(source) 노드가 정확히 1개가 될 때까지는 저장이 422로 실패한다 (빈 계통이면 전원부터 놓기)
@@ -627,6 +647,7 @@ export default function App() {
           open={navOpen}
           substationName={graph?.substation.name}
           onRename={() => setDialog('rename')}
+          onExportCim={downloadCim}
           tool={tool}
           onTool={(t) => {
             setTool(t)

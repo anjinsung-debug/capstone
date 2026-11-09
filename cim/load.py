@@ -110,6 +110,13 @@ class _Builder:
                 self.terminals[f["equipment"]].append((f.get("sequence", 0), f["bus"]))
         for lst in self.terminals.values():
             lst.sort()
+        self.limits: dict[str, float] = {}  # 설비 ref → 허용전류 (CurrentLimit → OperationalLimitSet → Equipment)
+        for o in objs.values():
+            if o.cls == "CurrentLimit":
+                f = mapping.map_fields("CurrentLimit", o.attrs)
+                limit_set = objs.get(f["limit_set"])
+                if limit_set is not None and limit_set.cls == "OperationalLimitSet":
+                    self.limits[mapping.map_fields("OperationalLimitSet", limit_set.attrs)["equipment"]] = f["value"]
 
     def substation_of(self, o: CimObject) -> CimObject | None:
         """컨테이너를 따라 올라가 소속 변전소를 찾는다 (설비 → VoltageLevel → Substation)."""
@@ -176,6 +183,8 @@ class _Builder:
             if cm.target == "line":  # ACLineSegment
                 f.update(substation_id=sub_id, kind="line",
                          from_node_id=mrid(terms[0][1]), to_node_id=mrid(terms[1][1]))
+                if o.ref in self.limits:
+                    f["rated_current_a"] = self.limits[o.ref]
                 lines[f["id"]] = f
                 continue
 

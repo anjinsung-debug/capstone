@@ -48,6 +48,7 @@ Claude Code가 코드를 읽고 맥락을 파악하거나 우리에게 되물을
 | 프론트엔드 → 백엔드 API 호출 | `frontend/src/api/client.js` | 동작 |
 | 한전 데이터 적재 | `cim/load.py`, `cim/mapping.py` | 동작 (`--dry-run`이면 Neo4j 없이 변환 결과만 출력) |
 | 변전소 계통 조회 | `cim/graph.py`의 `list_substations`, `get_substation` | 동작 (없는 변전소는 404) |
+| CIM 내보내기 | `cim/export.py`, `GET /api/substations/{id}/cim`, 편집 메뉴 버튼 | 동작 (원본·편집한 계통 왕복 확인: `python -m cim.export`) |
 | 편집 스냅샷 저장 (4단계) | `cim/graph.py`의 `save_substation` | 동작 (없는 변전소는 새로 만듦, 전원 노드 1개 필요. 이미 있는 변전소는 이름만 바뀜) |
 | 연결 특성 자동 구분 (위상 형성 논리) | `cim/graph.py`의 `classify_connection` | 동작 (차단기·개폐기에 닿으면 `switch`, 그 외 `line`) |
 | OpenDSS 스크립트 변환 (2단계) | `simulation/dss.py` | 동작 |

@@ -20,13 +20,14 @@
 capstone/
 ├── backend/
 │   ├── main.py              앱 생성, Neo4j 연결, 오류 → HTTP 상태
-│   └── api/                 health.py, grid.py(계통 조회·저장), simulation.py(시뮬레이션·그래프), report.py(리포트)
+│   └── api/                 health.py, grid.py(계통 조회·저장·CIM 내보내기), simulation.py(시뮬레이션·그래프), report.py(리포트)
 ├── cim/
 │   ├── models.py            계통 데이터 형식
 │   ├── graph.py             Neo4j 계통 조회·스냅샷 저장
 │   ├── topology.py          선로 방향·피더 소속 계산
 │   ├── mapping.py           CIM XML → 공통 모델 매핑 가이드
 │   ├── load.py              한전 CIM XML → Neo4j 적재 (python -m cim.load)
+│   ├── export.py            편집한 계통 → CIM XML 내보내기 (자체 점검: python -m cim.export)
 │   ├── db.py                Neo4j 연결
 │   └── schema.cypher        Neo4j 제약조건
 ├── simulation/
@@ -92,6 +93,7 @@ frontend ──HTTP──▶ backend ────────┤ cim/graph.py (�
    - 연계 추천 `POST /api/reports/hosting`: 연계 가능 최대치 결과로 연계 여부·막는 원인·선로 보강 추천 (속성 칸 "태양광 연계 검토" 아래)
    - 24시간 운영 권고 `POST /api/reports/daily/{id}`: 고른 날의 시간대별 위험과 대비 조치 (기록 탭)
    - 설비 보강 우선순위 `POST /api/reports/reinforcement/{id}`: 1~4개 날짜의 24시간 결과로 선로 순위를 매기고 증강 순서 권고 (기록 탭)
+8. **CIM 내보내기**: 편집 메뉴 "CIM으로 내보내기" → `GET /api/substations/{id}/cim`이 마지막으로 저장된 계통을 한전 원본과 같은 CIM16 RDF/XML 파일로 돌려줌 (`cim/export.py`, `cim/mapping.py`를 거꾸로 적용). 다시 `python -m cim.load --file`로 적재할 수 있음. 좌표·피더 이름·변전소 단락용량 등 CIM에 넣지 않는 값은 파일 맨 위 주석에 적음
 
 24시간 분석의 날짜·데이터 기준:
 

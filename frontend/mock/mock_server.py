@@ -38,6 +38,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+from cim.export import to_cim_xml  # noqa: E402
 from cim.graph import classify_connection  # noqa: E402
 from cim.load import read_raw, to_substation_graphs  # noqa: E402
 from cim.models import BASE_KV, Node, SnapshotSaved, SubstationGraph, SubstationSnapshot  # noqa: E402
@@ -267,6 +268,11 @@ class Handler(SimpleHTTPRequestHandler):
             if m == "GET" and len(p) == 2 and p[0] == "substations":
                 g = self._graph(p[1])
                 return self._send(200, g.model_dump()) if g else self._send(404, {"detail": "변전소가 없습니다"})
+            if m == "GET" and len(p) == 3 and p[0] == "substations" and p[2] == "cim":
+                g = self._graph(p[1])
+                if not g:
+                    return self._send(404, {"detail": "변전소가 없습니다"})
+                return self._send(200, to_cim_xml(g), "application/rdf+xml")  # 진짜와 같은 cim/export.py
             if m == "PUT" and len(p) == 2 and p[0] == "substations":
                 snap = SubstationSnapshot.model_validate(self._body())
                 if snap.substation.id != p[1]:
