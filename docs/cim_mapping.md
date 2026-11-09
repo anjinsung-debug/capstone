@@ -45,6 +45,18 @@
 - `id`는 `IdentifiedObject.mRID`
 - XML에 없어 만들어 내는 값: 피더(차단기마다 하나, 열린 개폐기 전까지 소속), 단선도 좌표(전원을 뿌리로 한 트리 배치), 태양광 한 시점 출력(정격 `nominalP` 사용)
 - XML에 없어 비워 두는 값: 변전소 3상 단락용량·X/R, 선로 허용전류. 시뮬레이션은 이 값이 없으면 가정값(300 MVA, X/R 10, 400 A)으로 계산
+- 선로 허용전류: 원본에는 없지만 `CurrentLimit`(→ `OperationalLimitSet.Equipment` = 선로)가 있으면 `rated_current_a`로 읽음 (내보낸 파일을 다시 적재할 때 쓰임)
+
+## 내보내기 (`cim/export.py`, 위 매핑의 반대)
+
+- 편집한 계통을 `GET /api/substations/{id}/cim` 또는 편집 메뉴 "CIM으로 내보내기"로 CIM16 XML 파일로 받음
+- `id`는 그대로 `mRID`로, 단위는 반대로 환산 (kW → W, Ω/km × 길이 → 구간 전체 Ω, 길이는 원본처럼 km)
+- 개폐기 노드와 양쪽 `switch` 선로 2개는 단자 2개짜리 `Breaker`(변전소 안)·`LoadBreakSwitch`(그 외) 하나로 다시 합침. 개폐기끼리 바로 이은 연결은 사이에 `ConnectivityNode`를 새로 만듦
+- 태양광은 원본처럼 `SolarGeneratingUnit`, 선로 허용전류는 `OperationalLimitSet` + `CurrentLimit`
+- CIM에 넣지 않는 값 (파일 맨 위 주석에 적음): 단선도 좌표, 피더 이름, 변전소 모선 전압·단락용량·X/R, 분산전원 무효전력. 다시 적재하면 좌표는 자동 배치, 피더는 차단기에서 다시 만듦
+- 원래 세부 개폐기 종류(`Recloser`·`Disconnector`·`Fuse`)는 적재할 때 `switch`로 합쳐져 `LoadBreakSwitch`로 나감 (지금 원본 데이터에는 없음)
+- 내보낼 수 없는 계통은 이유를 모아 422: 접속점에 안 붙은 부하·분산전원, 출력이 빈 부하·분산전원, 한쪽만 연결된 개폐기, 길이 0 이하 선로
+- 확인: `python -m cim.export` (원본 왕복·편집한 계통 왕복이 같은지, Neo4j 없이)
 
 시뮬레이션 담당과 프론트엔드 담당은 필요한 항목이 빠지지 않았는지 확인합니다.
 

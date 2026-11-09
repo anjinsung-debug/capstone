@@ -38,6 +38,14 @@ export const getSubstation = (substationId) => request('GET', `/substations/${su
 export const saveSubstation = (substationId, snapshot) =>
   request('PUT', `/substations/${substationId}`, snapshot)
 
+// CIM 내보내기: 마지막으로 저장된 계통을 CIM16 RDF/XML 파일로 받는다 (backend/api/grid.py → cim/export.py).
+// 내보낼 수 없는 계통(접속점에 안 붙은 부하 등)이면 422와 이유. 돌려주는 값: <a href>에 쓸 내려받기용 주소
+export async function exportCim(substationId) {
+  const res = await fetch(`/api/substations/${substationId}/cim`)
+  if (!res.ok) throw await toError(res)
+  return URL.createObjectURL(await res.blob())
+}
+
 // 시뮬레이션 (FR-03, FR-04)
 // at = { date: 'YYYY-MM-DD', hour: 0~23 }: 그 시각 배율로 계산 (편집 화면의 "지금 시각"). 없으면 저장된 값 그대로 = 최대 조건
 const atQuery = (at) => (at ? `date=${at.date}&hour=${at.hour}` : '')
