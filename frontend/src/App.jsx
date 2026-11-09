@@ -6,7 +6,7 @@
 //   자동 저장 → 편집이 멈추고 AUTOSAVE_DELAY_MS 뒤 toSnapshot(graph) → PUT /api/substations/{id} → 서버가 돌려준 graph로 교체
 //            → 계산에 영향을 주는 값이 바뀌었으면(electricalKey) POST …/simulations?date=오늘&hour=지금 → result
 //   편집 화면 결과는 기본으로 "지금 시각" 기준 (오늘 날짜·현재 시각 배율을 부하·태양광에 곱함, 정각이 지나면 다시 계산).
-//   요약 줄의 "최대 조건"을 누르면 저장된 값 그대로(부하 = 최대부하, 태양광 = 설비용량) 계산한다 (simulation/daily.py의 graph_at)
+//   ("최대 조건" 전환은 11/9 팀 피드백으로 뺐다. 백엔드는 date·hour 없이 부르면 여전히 최대 조건으로 계산한다)
 //   결과 그래프는 화면이 직접 그린다 (components/ProfileChart.jsx). 서버 PNG(POST /api/plots)는 쓰지 않는다
 //   AI 리포트 → 결과 창의 버튼을 누를 때만 POST /api/reports (LLM 비용·시간 때문에 자동으로 부르지 않음)
 // 서버 쪽 규칙은 cim/graph.py(조회·저장), simulation/dss.py(완성 검사), backend/main.py(오류 → 404·422·501)에 있다.
@@ -17,7 +17,6 @@ import {
   getSubstation,
   listSubstations,
   runDaily,
-  runDerComparison,
   runHostingCapacity,
   runSimulation,
   saveSubstation,
@@ -29,6 +28,7 @@ import PopupWindow, { openPopup } from './components/PopupWindow.jsx'
 import PropertyPanel from './components/PropertyPanel.jsx'
 import SubstationOverview from './components/SubstationOverview.jsx'
 import { AiReportView, Legend, ResultView, SummaryStrip } from './components/ResultPanel.jsx'
+import { CapacityPanel } from './components/UsecasePanels.jsx'
 import { NewSubstationDialog, RenameDialog } from './components/SubstationDialog.jsx'
 import {
   addNode,
@@ -56,7 +56,6 @@ const localDate = (d = new Date()) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 // 편집 화면 계산 시각: 오늘 날짜 + 지금 시(0~23)
 const nowAt = (d = new Date()) => ({ date: localDate(d), hour: d.getHours() })
-const sameAt = (a, b) => (a ? !!b && a.date === b.date && a.hour === b.hour : !b)
 const HOUR_CHECK_MS = 30000 // 정각이 지났는지 확인하는 간격
 
 const describe = (e) => e.message.replace(/^HTTP \d+: /, '')
@@ -73,15 +72,13 @@ export default function App() {
   const [selectedIds, setSelectedIds] = useState([])
   const [mode, setMode] = useState('health') // 단선도 표시 모드: health | voltage | loading | reverse | fault (lib/overlay.js의 MODES)
   const [focus, setFocus] = useState(null) // 결과 창에서 누른 위치 { id, n }
-  // 편집 화면 계산 기준: 'now' = 지금 시각 | 'max' = 최대 조건 | 'pick' = 기록 탭에서 고른 시각 (pickAt)
+  // 편집 화면 계산 기준: 'now' = 지금 시각 | 'pick' = 기록 탭에서 고른 시각 (pickAt)
   const [simMode, setSimMode] = useState('now')
   const [pickAt, setPickAt] = useState(null) // 'pick'일 때 보는 시각 { date, hour }
-  // 태양광 연결 전후 비교 (simulation/der.py의 compare_der). 계산할 때마다 같은 시각으로 뒤따라 부른다. { at, data } | null
-  const [der, setDer] = useState(null)
   // 연계 가능 최대치 (simulation/der.py의 hosting_capacity): 접속점 속성 칸에서 부른다
   // { busId, targetKw, at, status: 'busy' | 'done' | 'error', data, error }. 선로로 이동했다 돌아와도 남도록 여기 둔다
   const [hosting, setHosting] = useState(null)
-  const [resultAt, setResultAt] = useState(null) // 지금 결과를 계산한 시각 { date, hour } (최대 조건이면 null)
+  const [resultAt, setResultAt] = useState(null) // 지금 결과를 계산한 시각 { date, hour }
   const [busy, setBusy] = useState('') // 진행 중인 계산 이름 (단선도 위 요약 줄에 표시)
   const [result, setResult] = useState(null)
   const [simNote, setSimNote] = useState('') // 결과가 없거나 옛 결과인 이유 (계통 미완성 등)
@@ -96,6 +93,7 @@ export default function App() {
   // 가운데 창: 'ai' = AI 리포트 (위 오른쪽 버튼) | 'detail' = 결과 자세히 (AI 리포트 창 오른쪽 위 버튼) | null = 닫힘
   const [resultOpen, setResultOpen] = useState(null)
   const [resultTab, setResultTab] = useState('health')
+  const [aiTab, setAiTab] = useState('report') // AI 리포트 창 안의 탭: 'report' = AI 리포트 | 'capacity' = 추가 가능량 (11/9 팀 피드백: 같은 위치에)
   const [popup, setPopup] = useState(null) // 브라우저 새 창 결과 { win, container }
   const [dialog, setDialog] = useState(null) // 'new' | 'rename' | null
   const [overview, setOverview] = useState(false) // 변전소를 고른 뒤에도 변전소 전체 단선도를 열어 볼 때 true
@@ -118,7 +116,6 @@ export default function App() {
   const simModeRef = useRef(simMode)
   const pickAtRef = useRef(null)
   const resultAtRef = useRef(null)
-  const derAvailable = useRef(true) // 백엔드에 전후 비교 주소가 있는지 (예전 백엔드면 404 → 다시 부르지 않음)
   const changeLabel = useRef('') // 기록에 남길 "바뀐 내용"
 
   const info = useCallback((text) => setMessage({ text, kind: 'info' }), [])
@@ -168,7 +165,6 @@ export default function App() {
     setHistoryNote('')
     ++dailyRun.current
     setDailyBusy(null)
-    setDer(null)
     setHosting(null)
   }
 
@@ -199,7 +195,7 @@ export default function App() {
   async function simulateNow(g, label, { record = true } = {}) {
     const id = ++runId.current
     setBusy('계산 중...')
-    const at = simModeRef.current === 'now' ? nowAt() : simModeRef.current === 'pick' ? pickAtRef.current : null
+    const at = simModeRef.current === 'pick' ? pickAtRef.current : nowAt()
     let res
     try {
       res = await runSimulation(g.substation.id, at)
@@ -223,7 +219,6 @@ export default function App() {
     setSimNote('')
     setReport(null)
     setReportMessage('')
-    loadDer(g, at, id)
     // 결과 기록(시점별)에는 계통이 다 이어진 상태의 계산만 남긴다. 노드를 놓기만 하고 아직 연결하지 않은 중간 단계,
     // 그리고 지표가 직전 기록과 똑같은 계산은 건너뛴다 (편집할 때마다 점이 쌓여 보기 불편하다는 팀 피드백)
     if (!record) return
@@ -242,20 +237,6 @@ export default function App() {
         if (dailyAvailable.current !== false) loadDaily(g, pid, dailyDateRef.current)
       }
     }
-  }
-
-  // 태양광 연결 전후 비교: 방금 계산한 것과 같은 시각으로 (계산 두 번 더 하지만 0.1초 정도). 요약 줄 "태양광 출력"과 결과 자세히 탭에 씀
-  function loadDer(g, at, id) {
-    if (!derAvailable.current || !g.nodes.some((n) => n.type === 'pv' || n.type === 'wind')) {
-      setDer(null)
-      return
-    }
-    runDerComparison(g.substation.id, at)
-      .then((data) => id === runId.current && setDer({ at, data }))
-      .catch((e) => {
-        if ([404, 405, 501].includes(e.status)) derAvailable.current = false
-        if (id === runId.current) setDer(null)
-      })
   }
 
   // 연계 가능 최대치 (접속점 속성 칸의 버튼): 지금 화면과 같은 시각 기준
@@ -312,7 +293,7 @@ export default function App() {
     setDailyBusy(null)
   }
 
-  // 편집 화면 계산 기준 바꾸기 (요약 줄의 "지금 N시 | 최대 조건")
+  // 편집 화면 계산 기준 바꾸기 (요약 줄의 "지금 N시 | M/D H시")
   function changeSimMode(m) {
     if (m === simModeRef.current) return
     simModeRef.current = m
@@ -535,8 +516,6 @@ export default function App() {
       dailyBusy={dailyBusy}
       onDailyDate={changeDailyDate}
       onViewHour={viewHour}
-      der={der}
-      resultAt={resultAt}
       onFocus={focusElement}
     />
   )
@@ -684,7 +663,6 @@ export default function App() {
                 simMode={simMode}
                 simAt={resultAt}
                 pickAt={pickAt}
-                derKw={der && sameAt(der.at, resultAt) ? der.data.after.der_kw : null}
                 onSimMode={changeSimMode}
                 onRerun={() => simulateNow(graph, '다시 계산')}
               />
@@ -732,7 +710,24 @@ export default function App() {
             </button>
           }
         >
-          <AiReportView graph={graph} result={result} resultAt={resultAt} report={report} reportMessage={reportMessage} reportBusy={reportBusy} onMakeReport={makeReport} />
+          <div className="ai-window">
+            <nav className="tabs ai-tabs">
+              <button type="button" className={aiTab === 'report' ? 'on' : ''} onClick={() => setAiTab('report')}>
+                AI 리포트
+              </button>
+              <button type="button" className={aiTab === 'capacity' ? 'on' : ''} onClick={() => setAiTab('capacity')}>
+                추가 가능량
+              </button>
+            </nav>
+            {aiTab === 'report' ? (
+              <AiReportView graph={graph} result={result} resultAt={resultAt} report={report} reportMessage={reportMessage} reportBusy={reportBusy} onMakeReport={makeReport} />
+            ) : (
+              // 구현 참고 (최민준): 신재생·부하 추가 가능량 + AI 설명 (components/UsecasePanels.jsx). 11/9에 결과 자세히 탭에서 이 창으로 옮김
+              <div className="ai-capacity">
+                <CapacityPanel graph={graph} at={resultAt} onFocus={focusElement} />
+              </div>
+            )}
+          </div>
         </Modal>
       )}
       {resultOpen === 'detail' && (

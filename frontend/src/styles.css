@@ -1796,3 +1796,24 @@ body.popup {
   line-height: 1.7;
 }
 
+/* AI 리포트 창 안의 탭 (AI 리포트 | 추가 가능량, 11/9) */
+.ai-window {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+.ai-capacity {
+  flex: 1;
+  overflow: auto;
+  padding: 16px 18px 24px;
+}
+/* 고장 계산 결과 (ResultPanel.jsx의 FaultSection) */
+.fault-sec {
+  margin: 16px 0;
+}
+.fault-sec .cards {
+  margin-top: 10px;
+}
+

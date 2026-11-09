@@ -85,10 +85,10 @@ frontend ──HTTP──▶ backend ────────┤ cim/graph.py (�
    - 연결 전후 비교 `POST /api/substations/{id}/simulations/der-comparison`: 태양광·풍력을 모두 뺀 계통과 지금 계통을 계산해 출력 합, 송출 전력, 전압 범위, 최대 부하율, 역조류 선로 수, 최대 고장전류를 나란히 돌려줌
    - 연계 가능 최대치 `POST /api/substations/{id}/simulations/hosting-capacity?bus_id=&target_kw=`: 접속점에 태양광을 몇 kW까지 더 붙일 수 있는지 이분 탐색(10 kW 단위, 최대 20 MW)으로 찾고, 막는 원인(과전압 1.05 pu, 선로 과부하 100%, 차단기 차단 불가)과 목표 용량을 붙일 때 늘려야 할 선로 허용전류를 돌려줌. 역조류 자체는 회의 기준대로 막는 원인으로 보지 않음
    - 둘 다 `date`·`hour`를 주면 그 시각 배율로 계산 (없으면 최대 조건)
-   - 화면: 요약 줄 "태양광 N MW", 결과 자세히 "태양광 영향" 탭, 접속점 속성 칸 "태양광 연계 검토"
+   - 화면: 접속점 속성 칸 "태양광 연계 검토" (전후 비교 화면은 11/9 팀 피드백으로 뺐고 API만 남김)
 6. **AI 리포트**: 버튼을 누르면 시뮬레이션 결과를 AI(Claude, 선택 시 Gemini)에 넘겨 진단·원인·솔루션 리포트 생성
 7. **추가 가능량·AI 추천·권고** (유스케이스 시나리오, 모의 백엔드에는 없음):
-   - 추가 가능량 `POST /api/reports/capacity/{id}`: 접속점마다 신재생·부하를 몇 kW까지 더 붙일 수 있는지와 막는 요인 (부하는 전압 0.95 pu 이상, 역률 0.95 가정). `POST /api/reports/capacity-ai/{id}`로 AI 설명. 결과 자세히 "추가 가능량" 탭
+   - 추가 가능량 `POST /api/reports/capacity/{id}`: 접속점마다 신재생·부하를 몇 kW까지 더 붙일 수 있는지와 막는 요인 (부하는 전압 0.95 pu 이상, 역률 0.95 가정). `POST /api/reports/capacity-ai/{id}`로 AI 설명. 화면은 AI 리포트 창의 "추가 가능량" 탭 (11/9에 결과 자세히에서 옮김)
    - 연계 추천 `POST /api/reports/hosting`: 연계 가능 최대치 결과로 연계 여부·막는 원인·선로 보강 추천 (속성 칸 "태양광 연계 검토" 아래)
    - 24시간 운영 권고 `POST /api/reports/daily/{id}`: 고른 날의 시간대별 위험과 대비 조치 (기록 탭)
    - 설비 보강 우선순위 `POST /api/reports/reinforcement/{id}`: 1~4개 날짜의 24시간 결과로 선로 순위를 매기고 증강 순서 권고 (기록 탭)

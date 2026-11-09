@@ -10,8 +10,9 @@ ponytail: 아래 계산·리포트는 화면 확인용 근사다. 진짜 백엔�
 - 저장: 없는 변전소도 새로 만들고 전원 개수를 검사하지 않는다. 진짜 백엔드도 없는 변전소는 새로 만들지만,
   전원 1개 필수(아니면 422)이고 이미 있는 변전소는 이름만 바뀐다 — cim/graph.py의 save_substation
 - 하루(24시간) 시뮬레이션: 배율 규칙은 진짜와 같은 simulation/daily.py를 쓰고, 시간마다 계산만 근사로 한다
-- 태양광 연결 전후 비교·연계 가능 최대치: 진짜와 같은 simulation/der.py를 쓰고 계산만 근사로 한다 (지락 고장전류는 계산 안 함)
-- 역조류 정상 판정(reverse_flow_ok)·출구 차단기 차단 가능(breaker_interruptible)도 진짜와 같은 규칙 (차단기는 3상 단락만 봄)
+- 태양광 연결 전후 비교·연계 가능 최대치: 진짜와 같은 simulation/der.py를 쓰고 계산만 근사로 한다
+- 고장전류: 3상 단락·1선 지락·2선 지락을 대칭좌표법으로 근사 계산 (전원 영상분 = 정상분, 선로 영상분 없으면 정상분 × 3, 진짜와 같은 가정)
+- 역조류 정상 판정(reverse_flow_ok)·출구 차단기 차단 가능(breaker_interruptible)도 진짜와 같은 규칙 (차단기는 3상 단락·1선 지락·2선 지락 중 큰 값)
 
     저장소 루트에서:  python frontend/mock/mock_server.py
     다른 터미널에서:  cd frontend && npm run dev   → http://localhost:5173
@@ -54,6 +55,22 @@ from simulation.models import OVERLOAD_PCT, REVERSE_FLOW_MIN_KW, FeederResult, L
 
 STORE: dict[str, SubstationGraph] = {}
 
+
+
+ZERO_SEQ_RATIO = 3.0  # simulation/dss.py의 DEFAULT_ZERO_SEQ_RATIO와 같게
+
+
+def fault_currents(z1: complex, z0: complex) -> tuple[float, float, float]:
+    """대칭좌표법으로 3상 단락·1선 지락·2선 지락 전류 (kA, 고장 저항 0, 역상 = 정상분). 2선 지락은 고장 난 두 상 중 큰 상전류"""
+    e = BASE_KV / math.sqrt(3)  # 상전압 kV
+    three = e / abs(z1)
+    slg = 3 * e / abs(2 * z1 + z0)
+    i1 = e / (z1 + z1 * z0 / (z1 + z0))
+    i2 = -i1 * z0 / (z1 + z0)
+    i0 = -i1 * z1 / (z1 + z0)
+    a = complex(-0.5, math.sqrt(3) / 2)
+    dlg = max(abs(i0 + a * a * i1 + a * i2), abs(i0 + a * i1 + a * a * i2))
+    return three, slg, dlg
 
 
 def simulate(g: SubstationGraph) -> SimulationResult:
@@ -107,6 +124,8 @@ def simulate(g: SubstationGraph) -> SimulationResult:
     zs = BASE_KV**2 / mva
     volt = {source.bus_id: v0}
     zpath = {source.bus_id: complex(zs / math.sqrt(1 + xr**2), zs * xr / math.sqrt(1 + xr**2))}
+    # 영상분 누적 임피던스 (지락 계산용). 전원은 진짜와 같이 MVAsc1 = MVAsc3 → 영상분 = 정상분, 선로는 r0·x0 (없으면 정상분 × 3)
+    z0path = {source.bus_id: zpath[source.bus_id]}
     loss = 0.0
     line_res = {}
     for nid in order:
@@ -116,6 +135,9 @@ def simulate(g: SubstationGraph) -> SimulationResult:
             x = line.x_ohm_per_km * line.length_km
             volt[child] = volt[nid] - (r * p + x * q) / (1000 * BASE_KV**2)
             zpath[child] = zpath[nid] + complex(r, x)
+            r0 = line.r0_ohm_per_km if line.r0_ohm_per_km is not None else line.r_ohm_per_km * ZERO_SEQ_RATIO
+            x0 = line.x0_ohm_per_km if line.x0_ohm_per_km is not None else line.x_ohm_per_km * ZERO_SEQ_RATIO
+            z0path[child] = z0path[nid] + complex(r0 * line.length_km, x0 * line.length_km)
             s = math.hypot(p, q)
             amps = s / (math.sqrt(3) * BASE_KV * volt[nid])
             loss += r * s**2 / (1000 * BASE_KV**2)
@@ -129,8 +151,9 @@ def simulate(g: SubstationGraph) -> SimulationResult:
         key = n.bus_id or n.id
         if key not in reached:
             return NodeResult(node_id=n.id, energized=False, voltage_pu=0.0)
-        ka = BASE_KV / (math.sqrt(3) * abs(zpath[key]))
-        return NodeResult(node_id=n.id, voltage_pu=volt[key], fault_current_ka=ka)
+        ka, slg, dlg = fault_currents(zpath[key], z0path[key])
+        return NodeResult(node_id=n.id, voltage_pu=volt[key], fault_current_ka=ka,
+                          ground_fault_current_ka=slg, double_ground_fault_current_ka=dlg)
 
     nodes = [node_result(n) for n in g.nodes]
     node_by_id = {r.node_id: r for r in nodes}
@@ -139,7 +162,8 @@ def simulate(g: SubstationGraph) -> SimulationResult:
     for f in g.feeders:
         out = [r for r in lines if breakers.get(next(l for l in g.lines if l.id == r.line_id).from_node_id) == f.id]
         cb = next((node_by_id[nid] for nid, fid in breakers.items() if fid == f.id), None)
-        ka = cb.fault_current_ka if cb and cb.energized else None  # 근사: 3상 단락만 (지락은 계산 안 함)
+        ka = (max(cb.fault_current_ka, cb.ground_fault_current_ka, cb.double_ground_fault_current_ka)
+              if cb and cb.energized else None)  # 진짜와 같이 3상 단락·1선 지락·2선 지락 중 큰 값
         feeders.append(FeederResult(feeder_id=f.id, p_kw=sum(r.p_kw for r in out), q_kvar=sum(r.q_kvar for r in out),
                                     breaker_interruptible=None if ka is None else ka <= DEFAULT_BREAKER_INTERRUPT_KA))
     # 역조류 정상 판정 (진짜와 같은 규칙: 부하율 ≤ 100%이고 그 피더 출구 차단기가 끊을 수 있음)

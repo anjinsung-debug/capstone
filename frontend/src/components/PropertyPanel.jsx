@@ -235,9 +235,12 @@ function NodeProps({ graph, node, result, editing, onChange, hosting, resultAt, 
             <>
               <Stat label="① 전압" value={`${r.voltage_pu.toFixed(4)} pu`} color={voltageColor(r)} />
               <Stat
-                label="④ 단락전류·용량"
+                label="④ 3상 단락전류·용량"
                 value={r.fault_current_ka != null ? `${r.fault_current_ka.toFixed(2)} kA · ${mvaOf(r.fault_current_ka).toFixed(0)} MVA` : '-'}
               />
+              {/* 1선·2선 지락 전류 (11/9 팀 피드백). 백엔드가 지락을 계산하지 않는 버전이면 줄을 숨긴다 */}
+              {r.ground_fault_current_ka != null && <Stat label="1선 지락전류" value={`${r.ground_fault_current_ka.toFixed(2)} kA`} />}
+              {r.double_ground_fault_current_ka != null && <Stat label="2선 지락전류" value={`${r.double_ground_fault_current_ka.toFixed(2)} kA`} />}
             </>
           ) : (
             <Stat label="상태" value="정전 (전원에서 끊김)" color={COLORS.outage} />
