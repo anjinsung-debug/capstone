@@ -3,8 +3,14 @@
 // 앱이 계산하는 건 그중 배전선로 하나(변전소 선택 → 편집·시뮬레이션)라서, 여기서는 그림만 보여 주고 계산과는 연결하지 않는다.
 // - 변전소를 고르기 전: 이 화면이 처음 보인다
 // - 고른 뒤: 위쪽 "변전소 전체" 버튼으로 다시 열고 닫는다
+// - "3D 내부" 버튼: 같은 변전소를 건물 단면 3D로 (components/SubstationInterior3D.jsx)
 // ponytail: 정적 그림이라 숫자(전류·이용률)는 저장 시점 값이다. 배전선로(D/L)를 누르면 그 선로 단선도로 넘어가게 하려면
 // D/L 이름과 우리 계통(CIM) 변전소를 짝지은 표가 있어야 한다 (지금 CIM 데이터에는 D/L 이름이 없음)
+import { Suspense, lazy, useState } from 'react'
+
+// 내부 3D는 three.js가 커서 버튼을 누를 때 따로 불러온다
+const SubstationInterior3D = lazy(() => import('./SubstationInterior3D.jsx'))
+
 const SRC = `${import.meta.env.BASE_URL}overview/wangsan_22kv.html`
 
 // 그림 파일은 OS 다크 모드를 따르는데, 앱은 늘 어두운 화면이라 그림도 어둡게 맞춘다 (같은 출처라 문서에 바로 접근 가능)
@@ -17,12 +23,21 @@ function darken(e) {
 }
 
 export default function SubstationOverview({ hasGraph, onClose }) {
+  const [inside, setInside] = useState(false) // false: 단선도 그림, true: 내부 3D
   return (
     <section className="overview" aria-label="변전소 전체 단선도">
       <div className="overview-head">
         <div>
           <strong>변전소 전체 보기</strong>
           <span>왕산변전소 154/22.9kV · 주변압기 4대 · 22.9kV 상·하단 모선 · 배전선로(D/L) 인출 (저장 시점 운전 상태)</span>
+        </div>
+        <div className="seg overview-seg">
+          <button type="button" className={inside ? '' : 'on'} onClick={() => setInside(false)}>
+            단선도
+          </button>
+          <button type="button" className={inside ? 'on' : ''} onClick={() => setInside(true)}>
+            3D 내부
+          </button>
         </div>
         {hasGraph ? (
           <button type="button" onClick={onClose}>
@@ -33,7 +48,15 @@ export default function SubstationOverview({ hasGraph, onClose }) {
         )}
       </div>
       {/* sandbox: 그림 파일에는 스크립트가 없다. 같은 출처만 허용해서 색 맞추기(darken)만 가능하게 */}
-      <iframe title="왕산변전소 22.9kV 단선도" src={SRC} sandbox="allow-same-origin" onLoad={darken} />
+      {inside ? (
+        <div className="overview-3d">
+          <Suspense fallback={<div className="d3-wrap d3-loading">3D 화면 불러오는 중…</div>}>
+            <SubstationInterior3D />
+          </Suspense>
+        </div>
+      ) : (
+        <iframe title="왕산변전소 22.9kV 단선도" src={SRC} sandbox="allow-same-origin" onLoad={darken} />
+      )}
     </section>
   )
 }
