@@ -203,10 +203,29 @@ button.mini {
   border-color: #5a2a2e;
   color: #ffb3b3;
 }
+.toast.warn {
+  background: #2a2312;
+  border-color: #5c4a1f;
+  color: var(--warn);
+}
 .toast button {
   padding: 2px 8px;
   background: transparent;
   border: 0;
+}
+/* 알림 안의 바로가기 버튼 (예: CIM 내보내기 실패 → "부하 9 보기") */
+.toast button.toast-action {
+  padding: 4px 10px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  white-space: nowrap;
+  font-weight: 600;
+}
+/* 아이콘 + 글자 버튼 (위 오른쪽 "CIM 내보내기") */
+button.icon-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .sub-picker {
