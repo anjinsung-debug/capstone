@@ -1817,3 +1817,60 @@ body.popup {
   margin-top: 10px;
 }
 
+/* 3D 보기 (components/Diagram3D.jsx). 단선도 자리를 덮고, 요약 줄(.ov-top)은 그 위에 남는다 */
+.d3-wrap {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: #0b0f12;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.d3-wrap canvas {
+  display: block;
+}
+.d3-loading {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+.ov-top,
+.ov-bottom {
+  z-index: 2;
+}
+.d3-tip {
+  position: absolute;
+  z-index: 3;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  background: rgba(16, 22, 27, 0.94);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 13px;
+}
+.d3-legend {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 12px;
+  background: rgba(16, 22, 27, 0.85);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 12px;
+}
+.d3-legend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin: 0 3px 0 6px;
+  vertical-align: -1px;
+}
+

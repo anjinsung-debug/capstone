@@ -10,7 +10,7 @@
 //   결과 그래프는 화면이 직접 그린다 (components/ProfileChart.jsx). 서버 PNG(POST /api/plots)는 쓰지 않는다
 //   AI 리포트 → 결과 창의 버튼을 누를 때만 POST /api/reports (LLM 비용·시간 때문에 자동으로 부르지 않음)
 // 서버 쪽 규칙은 cim/graph.py(조회·저장), simulation/dss.py(완성 검사), backend/main.py(오류 → 404·422·501)에 있다.
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import {
   createReport,
   getHealth,
@@ -30,6 +30,8 @@ import PropertyPanel from './components/PropertyPanel.jsx'
 import SubstationOverview from './components/SubstationOverview.jsx'
 import { AiReportView, Legend, ResultView, SummaryStrip } from './components/ResultPanel.jsx'
 import { CapacityPanel } from './components/UsecasePanels.jsx'
+// 3D 보기는 three.js가 커서 버튼을 처음 누를 때 불러온다
+const Diagram3D = lazy(() => import('./components/Diagram3D.jsx'))
 import { NewSubstationDialog, RenameDialog } from './components/SubstationDialog.jsx'
 import {
   addNode,
@@ -94,6 +96,7 @@ export default function App() {
   // 가운데 창: 'ai' = AI 리포트 (위 오른쪽 버튼) | 'detail' = 결과 자세히 (AI 리포트 창 오른쪽 위 버튼) | null = 닫힘
   const [resultOpen, setResultOpen] = useState(null)
   const [resultTab, setResultTab] = useState('health')
+  const [view3d, setView3d] = useState(false) // 단선도 자리에 3D 보기 (발표용, 편집은 2D)
   const [aiTab, setAiTab] = useState('report') // AI 리포트 창 안의 탭: 'report' = AI 리포트 | 'capacity' = 추가 가능량 (11/9 팀 피드백: 같은 위치에)
   const [popup, setPopup] = useState(null) // 브라우저 새 창 결과 { win, container }
   const [dialog, setDialog] = useState(null) // 'new' | 'rename' | null
@@ -673,6 +676,11 @@ export default function App() {
           onSelect={setSelectedIds}
           onMessage={info}
         >
+          {view3d && graph && (
+            <Suspense fallback={<div className="d3-wrap d3-loading">3D 화면 불러오는 중...</div>}>
+              <Diagram3D graph={graph} result={result} onSelect={setSelectedIds} />
+            </Suspense>
+          )}
           {/* 단선도 위에 겹쳐 띄우는 것들 (위: 결과 요약 줄, 오른쪽 위: 표시 모드, 왼쪽 아래: 범례) */}
           {graph && (
             <div className="ov-top">
@@ -690,16 +698,28 @@ export default function App() {
               {result && (
                 <div className="seg">
                   {/* 4대 시뮬레이션 모드 (제안서 슬라이드 8) + 건강도 (슬라이드 10) */}
-                  {MODES.map(([k, label]) => (
-                    <button key={k} type="button" className={mode === k ? 'on' : ''} onClick={() => setMode(k)}>
-                      {label}
-                    </button>
-                  ))}
+                  {!view3d &&
+                    MODES.map(([k, label]) => (
+                      <button key={k} type="button" className={mode === k ? 'on' : ''} onClick={() => setMode(k)}>
+                        {label}
+                      </button>
+                    ))}
+                  <button
+                    type="button"
+                    className={view3d ? 'on' : ''}
+                    onClick={() => {
+                      if (!view3d) setNavOpen(false) // 3D에서는 편집하지 않는다
+                      setView3d(!view3d)
+                    }}
+                    title="계통을 3D로 세워서 보기 (기둥 높이 = 전압, 선로 색 = 부하율). 편집은 2D 단선도에서"
+                  >
+                    {view3d ? '2D 단선도' : '3D 보기'}
+                  </button>
                 </div>
               )}
             </div>
           )}
-          {result && (
+          {result && !view3d && (
             <div className="ov-bottom">
               <Legend mode={mode} />
             </div>
