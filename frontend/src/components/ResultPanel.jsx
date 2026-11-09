@@ -11,14 +11,16 @@ import { useEffect, useRef, useState } from 'react'
 import NodeIcon from './NodeIcon.jsx'
 import HistoryChart from './HistoryChart.jsx'
 import ProfileCharts from './ProfileChart.jsx'
-import { CapacityPanel, DailyAiBox, ReinforceBox } from './UsecasePanels.jsx'
+import { DailyAiBox, ReinforceBox } from './UsecasePanels.jsx'
 import {
   CAUSE_QUESTIONS,
   COLORS,
   LEGENDS,
   LEVELS,
+  BREAKER_INTERRUPT_KA,
   SOLUTION_CANDIDATES,
   elementRows,
+  faultSummary,
   healthCheck,
   lineWidth,
 } from '../lib/overlay.js'
@@ -64,17 +66,14 @@ function LevelBadge({ level }) {
 // 값은 모두 변전소 계통 전체(모든 피더)에서 가장 나쁜 지점이다. 위치는 마우스를 올리면 보인다
 const STRIP_LABELS = { voltage: '전압', loading: '부하율', reverse: '역조류', fault: '단락용량', outage: '정전' }
 
-// 편집 화면 계산 기준 전환: 지금 시각(오늘·현재 시 배율) | 최대 조건(저장된 부하·태양광 값 그대로)
-// 기록 탭에서 시각을 고르면 세 번째 칸("5/26 12시")이 생긴다 (그 시각의 단선도를 보는 중)
+// 편집 화면 계산 기준: 지금 시각(오늘·현재 시 배율). 기록 탭에서 시각을 고르면 두 번째 칸("5/26 12시")이 생긴다 (그 시각의 단선도를 보는 중)
+// "최대 조건" 버튼은 11/9 팀 피드백으로 뺐다 (편집 화면은 늘 실제 시각 기준)
 function SimModeSwitch({ simMode, simAt, pickAt, onSimMode }) {
   const hour = simMode === 'now' && simAt ? simAt.hour : new Date().getHours()
   return (
-    <span className="seg sim-mode" title="지금 시각: 오늘 날짜·현재 시각의 부하·태양광 배율로 계산 (가상 패턴, 정각마다 다시 계산)&#10;최대 조건: 부하는 최대부하, 태양광은 설비용량 그대로&#10;기록 탭 시간대별 표에서 시각을 누르면 그 시각으로 볼 수 있습니다">
+    <span className="seg sim-mode" title="지금 시각: 오늘 날짜·현재 시각의 부하·태양광 배율로 계산 (가상 패턴, 정각마다 다시 계산)&#10;기록 탭 시간대별 표에서 시각을 누르면 그 시각으로 볼 수 있습니다">
       <button type="button" className={simMode === 'now' ? 'on' : ''} onClick={() => onSimMode('now')}>
         지금 {hour}시
-      </button>
-      <button type="button" className={simMode === 'max' ? 'on' : ''} onClick={() => onSimMode('max')}>
-        최대 조건
       </button>
       {pickAt && (
         <button type="button" className={simMode === 'pick' ? 'on' : ''} onClick={() => onSimMode('pick')} title="기록 탭에서 고른 시각">
@@ -85,7 +84,7 @@ function SimModeSwitch({ simMode, simAt, pickAt, onSimMode }) {
   )
 }
 
-export function SummaryStrip({ graph, result, note, busy, simMode, simAt, pickAt, derKw, onSimMode, onRerun }) {
+export function SummaryStrip({ graph, result, note, busy, simMode, simAt, pickAt, onSimMode, onRerun }) {
   if (!result) {
     return (
       <div className="strip">
@@ -112,11 +111,6 @@ export function SummaryStrip({ graph, result, note, busy, simMode, simAt, pickAt
           {STRIP_LABELS[r.key]} <b style={{ color: r.level === 'ok' ? undefined : LEVELS[r.level].color }}>{r.key === 'fault' && r.worst != null ? `${r.worst.toFixed(0)} MVA` : r.worstText}</b>
         </span>
       ))}
-      {derKw != null && (
-        <span className="kv" title="지금 들어오고 있는 태양광·풍력 출력 합 (이 시각 배율 기준). 결과 자세히 → 태양광 영향 탭에서 연결 전후 비교">
-          태양광 <b className="der">{(derKw / 1000).toFixed(2)}</b> MW
-        </span>
-      )}
       <span className="kv" title={`피더 ${result.feeders.length}개의 송출 전력 합계`}>
         총 송출 <b className="feeder">{hc.totalMw.toFixed(2)}</b> MW
       </span>
@@ -174,6 +168,7 @@ function HealthTab({ graph, result, onFocus }) {
       <p className="muted small">
         판정 기준은 제안서 예시값입니다 (전압 0.90 미만·1.10 초과는 &lsquo;위험&rsquo;으로 팀이 가정). 한전 자문 후 lib/overlay.js에서 고칩니다.
       </p>
+      <FaultSection graph={graph} result={result} onFocus={onFocus} />
       <div className="cards">
         {result.feeders.map((f) => (
           <div className="card feeder" key={f.feeder_id}>
@@ -194,6 +189,58 @@ function HealthTab({ graph, result, onFocus }) {
         </div>
       </div>
     </>
+  )
+}
+
+// 고장 계산 결과 (11/9 팀 피드백: 1선·2선 지락도 화면에). 3상 단락·1선 지락·2선 지락마다 가장 큰 지점 + 피더별 출구 차단기 판정.
+// 단락용량(MVA) 판정은 위 진단표 ④에 있고, 여기는 kA 값 자체와 차단기가 끊을 수 있는지를 본다 (등급에는 넣지 않는 참고 정보)
+function FaultSection({ graph, result, onFocus }) {
+  const kinds = faultSummary(graph, result)
+  const feederName = (id) => graph.feeders.find((f) => f.id === id)?.name ?? id
+  const hasGround = kinds.slice(1).some((k) => k.ka != null)
+  return (
+    <section className="fault-sec">
+      <h3 className="sub">
+        고장 계산 결과 <span className="muted">· 고장이 났을 때 흐르는 전류 (고장 저항 0, 대칭 실효값)</span>
+      </h3>
+      <table className="rtable">
+        <thead>
+          <tr>
+            <th>고장 종류</th>
+            <th className="num">최대 전류</th>
+            <th>위치</th>
+            <th className="num">차단기 정격 대비</th>
+          </tr>
+        </thead>
+        <tbody>
+          {kinds.map((k) => (
+            <tr key={k.attr} className={k.ka != null && k.ka > BREAKER_INTERRUPT_KA ? 'danger' : ''}>
+              <td>{k.label}</td>
+              <td className="num">{k.ka == null ? '-' : <b>{k.ka.toFixed(2)} kA</b>}</td>
+              <td>{k.id ? <FocusBtn id={k.id} onFocus={onFocus} label={k.name} /> : '-'}</td>
+              <td className="num">{k.ka == null ? '-' : `${((k.ka / BREAKER_INTERRUPT_KA) * 100).toFixed(0)}%`}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="cards">
+        {result.feeders.map((f) => (
+          <div className="card" key={f.feeder_id}>
+            <span>{feederName(f.feeder_id)} 출구 차단기</span>
+            <b style={{ color: f.breaker_interruptible == null ? undefined : f.breaker_interruptible ? COLORS.green : COLORS.red }}>
+              {f.breaker_interruptible == null ? '판정 없음 (정전 구간)' : f.breaker_interruptible ? '차단 가능' : '차단 불가 (정격 초과)'}
+            </b>
+            <small>차단기 위치 고장전류(3상·1선·2선 중 최대) ≤ 정격 {BREAKER_INTERRUPT_KA} kA(가정값)면 차단 가능</small>
+          </div>
+        ))}
+      </div>
+      <p className="muted small">
+        {hasGround
+          ? '접속점·설비마다의 3상 단락·1선 지락·2선 지락 전류는 "요소별 결과" 탭과 단선도에서 설비를 눌렀을 때 오른쪽 칸에서 볼 수 있습니다.'
+          : '지락 전류가 비어 있으면 백엔드가 지락을 계산하지 않는 버전입니다 (최신 코드를 받아 uvicorn을 다시 켜 주세요).'}{' '}
+        선로 영상분 임피던스(R0·X0)가 비어 있으면 정상분의 3배로 가정해 계산합니다.
+      </p>
+    </section>
   )
 }
 
@@ -319,7 +366,9 @@ function ElementsTab({ graph, result, onFocus }) {
               <th>종류</th>
               <th>이름</th>
               <th className="num">① 전압 (pu)</th>
-              <th className="num">④ 단락전류 (kA)</th>
+              <th className="num">④ 3상 단락 (kA)</th>
+              <th className="num">1선 지락 (kA)</th>
+              <th className="num">2선 지락 (kA)</th>
               <th className="num">④ 단락용량 (MVA)</th>
               <th className="num">출력</th>
               <th>판정</th>
@@ -339,6 +388,8 @@ function ElementsTab({ graph, result, onFocus }) {
                   {r.voltage == null ? '-' : r.voltage.toFixed(4)}
                 </td>
                 <td className="num">{r.fault == null ? '-' : r.fault.toFixed(2)}</td>
+                <td className="num">{r.groundFault == null ? '-' : r.groundFault.toFixed(2)}</td>
+                <td className="num">{r.doubleGroundFault == null ? '-' : r.doubleGroundFault.toFixed(2)}</td>
                 <td className="num">{r.mva == null ? '-' : r.mva.toFixed(0)}</td>
                 <td className="num">{r.power || '-'}</td>
                 <td>
@@ -392,85 +443,10 @@ function ElementsTab({ graph, result, onFocus }) {
   )
 }
 
-// 태양광 영향 (10/26 중간 발표 요청): 분산전원을 모두 뺀 계통(연결 전)과 지금 계통(연결 후)을 같은 시각으로 계산해 나란히 (simulation/der.py의 compare_der)
-// 접속점별 "더 붙일 수 있는 최대치"는 단선도에서 접속점을 누르면 오른쪽 속성 칸에서 본다
-const DER_ROWS = [
-  ['der_kw', '태양광·풍력 출력', (v) => `${(v / 1000).toFixed(2)} MW`],
-  ['feeder_kw', '피더 송출 (변전소에서 나가는 전력)', (v) => `${(v / 1000).toFixed(2)} MW`],
-  ['loss_kw', '선로 손실', (v) => `${v.toFixed(1)} kW`],
-  ['min_voltage_pu', '최저 전압', (v) => `${v.toFixed(3)} pu`],
-  ['max_voltage_pu', '최고 전압', (v) => `${v.toFixed(3)} pu`],
-  ['max_loading_pct', '최대 부하율', (v) => `${v.toFixed(0)}%`],
-  ['reverse_flow_lines', '역조류 선로 수', (v) => `${v}개`],
-  ['max_fault_ka', '최대 고장전류 (단락·지락 중 최대)', (v) => `${v.toFixed(2)} kA`],
-]
-
-function DerTab({ graph, der, resultAt }) {
-  const hasDer = graph.nodes.some((n) => n.type === 'pv' || n.type === 'wind')
-  if (!hasDer) return <p className="muted">이 계통에는 태양광·풍력이 없습니다.</p>
-  if (!der) return <p className="muted">연결 전후를 계산하는 중이거나, 백엔드에 이 기능이 없습니다 (최신 코드를 받아 uvicorn을 다시 켜 주세요).</p>
-  const { before, after } = der.data
-  const basis = der.at ? `${der.at.date} ${der.at.hour}시 기준` : '최대 조건 기준 (부하 최대 + 태양광 설비용량)'
-  const stale = !(der.at ? resultAt && der.at.date === resultAt.date && der.at.hour === resultAt.hour : !resultAt)
-  return (
-    <>
-      <p className="lead">
-        같은 계통에서 <b>태양광·풍력을 모두 뺀 경우</b>와 <b>지금</b>을 나란히 봅니다. <span className="muted">{basis}</span>
-        {stale && <span className="muted"> · 화면 기준이 바뀌어 다시 계산 중</span>}
-      </p>
-      <div className="cards">
-        <div className="card der">
-          <span>지금 들어오는 태양광·풍력</span>
-          <b>{(after.der_kw / 1000).toFixed(2)} MW</b>
-        </div>
-        <div className="card feeder">
-          <span>피더 송출 (연결 전 → 후)</span>
-          <b>
-            {(before.feeder_kw / 1000).toFixed(2)} → {(after.feeder_kw / 1000).toFixed(2)} MW
-          </b>
-        </div>
-      </div>
-      <table className="rtable der-table">
-        <thead>
-          <tr>
-            <th>항목</th>
-            <th className="num">연결 전 (태양광·풍력 없음)</th>
-            <th className="num">연결 후 (지금)</th>
-            <th className="num">차이</th>
-          </tr>
-        </thead>
-        <tbody>
-          {DER_ROWS.map(([k, label, fmt]) => {
-            const d = after[k] - before[k]
-            return (
-              <tr key={k}>
-                <td>{label}</td>
-                <td className="num">{fmt(before[k])}</td>
-                <td className="num">
-                  <b>{fmt(after[k])}</b>
-                </td>
-                <td className={`num ${d > 0 ? 'up' : d < 0 ? 'down' : ''}`}>
-                  {fmt(Math.abs(d)) === fmt(0) ? '-' : `${d > 0 ? '▲' : '▼'} ${fmt(Math.abs(d))}`}
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-      <p className="muted small">
-        연결 전은 태양광·풍력 설비를 계통에서 뺀 계산입니다 (출력 0이 아니라 설비를 빼서 고장전류 기여도 빠짐). 역조류는 선로 용량·출구 차단기 안이면 정상으로 봅니다.
-        접속점마다 더 붙일 수 있는 태양광 최대치는 단선도에서 접속점을 누르면 오른쪽 칸에서 볼 수 있습니다.
-      </p>
-    </>
-  )
-}
-
 export const RESULT_TABS = [
   ['health', '① 건강도 진단'],
   ['cause', '② 원인 분석'],
   ['solution', '③ 솔루션 제안'],
-  ['der', '태양광 영향'],
-  ['capacity', '추가 가능량'], // 구현 참고 (최민준 추가): 신재생·부하 추가 가능량 (components/UsecasePanels.jsx)
   ['elements', '요소별 결과'],
   ['history', '기록 (시점별)'],
 ]
@@ -489,8 +465,6 @@ export function ResultView({
   dailyBusy,
   onDailyDate,
   onViewHour,
-  der,
-  resultAt,
   onFocus,
 }) {
   return (
@@ -512,10 +486,6 @@ export function ResultView({
           <CauseTab graph={graph} result={result} onFocus={onFocus} />
         ) : tab === 'solution' ? (
           <SolutionTab graph={graph} result={result} />
-        ) : tab === 'der' ? (
-          <DerTab graph={graph} der={der} resultAt={resultAt} />
-        ) : tab === 'capacity' ? (
-          <CapacityPanel graph={graph} at={resultAt} onFocus={onFocus} />
         ) : tab === 'elements' ? (
           <ElementsTab graph={graph} result={result} onFocus={onFocus} />
         ) : (

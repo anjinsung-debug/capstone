@@ -401,6 +401,24 @@ export function buildOverlay(graph, result, mode) {
   return { nodes, lines, labels }
 }
 
+// 고장 계산 결과 요약 (simulation/models.py의 NodeResult: 3상 단락·1선 지락·2선 지락 전류, 11/9 팀 피드백 "지락 결과도 화면에").
+// 종류마다 가장 큰 지점과 값. 백엔드가 지락을 계산하지 않으면(예전 백엔드·모의 백엔드 일부) ka가 null
+export const FAULT_KINDS = [
+  ['fault_current_ka', '3상 단락'],
+  ['ground_fault_current_ka', '1선 지락'],
+  ['double_ground_fault_current_ka', '2선 지락'],
+]
+export const BREAKER_INTERRUPT_KA = 25 // 출구 차단기 정격 차단전류 가정값 (simulation/dss.py의 DEFAULT_BREAKER_INTERRUPT_KA와 같게)
+export function faultSummary(graph, result) {
+  const names = Object.fromEntries(graph.nodes.map((n) => [n.id, n.name]))
+  const ids = new Set(graph.nodes.map((n) => n.id))
+  const live = result.nodes.filter((r) => r.energized && ids.has(r.node_id))
+  return FAULT_KINDS.map(([attr, label]) => {
+    const worst = live.filter((r) => r[attr] != null).reduce((a, r) => (!a || r[attr] > a[attr] ? r : a), null)
+    return { attr, label, ka: worst ? worst[attr] : null, id: worst?.node_id ?? null, name: worst ? names[worst.node_id] : null }
+  })
+}
+
 // 결과 창 "요소별 결과" 표: 모든 설비·선로를 한 줄씩. problem이 있으면 문제 줄
 const TYPE_LABEL = { source: '전원', breaker: '차단기', switch: '개폐기', bus: '접속점', load: '부하', pv: '태양광', wind: '풍력' }
 export function elementRows(graph, result) {
@@ -420,6 +438,8 @@ export function elementRows(graph, result) {
       voltageColor: r ? voltageColor(r) : null,
       fault: r?.energized ? r.fault_current_ka : null,
       mva: r?.energized ? mvaOf(r.fault_current_ka) : null,
+      groundFault: r?.energized ? (r.ground_fault_current_ka ?? null) : null, // 1선 지락 (kA)
+      doubleGroundFault: r?.energized ? (r.double_ground_fault_current_ka ?? null) : null, // 2선 지락 (kA)
       power,
       state: state ?? 'none',
       problem: state === 'low' ? '전압 저하' : state === 'high' ? '전압 상승' : state === 'outage' ? '정전' : '',
