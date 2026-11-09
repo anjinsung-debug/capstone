@@ -36,6 +36,7 @@ import {
   electricalKey,
   emptyGraph,
   findDangling,
+  NODE_TYPES,
   removeElements,
   starterGraph,
   toSnapshot,
@@ -99,7 +100,8 @@ export default function App() {
   const [dialog, setDialog] = useState(null) // 'new' | 'rename' | null
   const [overview, setOverview] = useState(false) // 변전소를 고른 뒤에도 변전소 전체 단선도를 열어 볼 때 true
   const showOverview = !graph || overview // 변전소를 고르기 전(첫 화면)에는 늘 보인다
-  const [message, setMessage] = useState({ text: '', kind: 'info' })
+  const [message, setMessage] = useState({ text: '', kind: 'info' }) // action: { label, run } 이면 알림 안에 버튼 하나
+  const [exporting, setExporting] = useState(false) // CIM 내보내는 중 (위 버튼 잠금)
 
   // 마지막 요청의 결과만 표시하기 위한 번호 (변전소 선택·계산마다 증가)
   const runId = useRef(0)
@@ -396,10 +398,25 @@ export default function App() {
     loadSubstation(substationId)
   }
 
-  // CIM 내보내기 (편집 메뉴): 아직 저장 안 된 편집이 있으면 먼저 저장해서, 화면에 보이는 계통이 파일에 들어가게 한다
+  // CIM 내보내기 (위 오른쪽 "CIM 내보내기" 버튼): 아직 저장 안 된 편집이 있으면 먼저 저장해서, 화면에 보이는 계통이 파일에 들어가게 한다
+  // 접속점에 안 붙은 설비(부하·태양광·풍력·전원)가 있으면 백엔드(cim/export.py)가 422로 거절하므로, 보내기 전에 화면에서 먼저 찾아
+  // "무엇이 문제인지 + 그 설비로 이동" 알림을 띄운다 (HTTP 코드 같은 개발자용 문구는 보이지 않게)
   async function downloadCim() {
-    if (!graph) return
+    if (!graph || exporting) return
+    const ids = new Set(graph.nodes.map((n) => n.id))
+    const loose = graph.nodes.filter((n) => NODE_TYPES[n.type]?.oneTerminal && !ids.has(n.bus_id))
+    if (loose.length) {
+      const first = loose[0]
+      const more = loose.length > 1 ? ` 외 ${loose.length - 1}개` : ''
+      setMessage({
+        kind: 'warn', // 고장이 아니라 고칠 수 있는 상태 → 단선도 위 "결과 없음" 안내와 같은 주황
+        text: `CIM으로 내보낼 수 없습니다 · ${first.name}${more}: 접속점에 연결되지 않았습니다. 연결 도구로 접속점에 붙인 뒤 다시 내보내세요.`,
+        action: { label: `${first.name} 보기`, run: () => focusElement(first.id) },
+      })
+      return
+    }
     if (dirty && save.status === 'error' && !window.confirm(`저장되지 않은 편집이 있습니다 (${save.text}). 마지막으로 저장된 계통을 내보낼까요?`)) return
+    setExporting(true)
     if (dirty) await flush()
     try {
       const url = await exportCim(graph.substation.id)
@@ -411,7 +428,11 @@ export default function App() {
       URL.revokeObjectURL(url)
       info(`CIM 파일을 내려받았습니다 (${filename})`)
     } catch (e) {
-      fail(`CIM으로 내보내지 못했습니다 (${e.message})`)
+      // 백엔드가 준 이유만 남긴다 ("HTTP 422: CIM으로 내보낼 수 없습니다: ..." → "...")
+      const why = e.message.replace(/^HTTP \d+:?\s*/, '').replace(/^CIM으로 내보낼 수 없습니다:\s*/, '')
+      fail(`CIM으로 내보낼 수 없습니다 · ${why || '서버 응답이 없습니다. 서버 연결을 확인하세요.'}`)
+    } finally {
+      setExporting(false)
     }
   }
 
@@ -621,6 +642,20 @@ export default function App() {
           {graph && (
             <button
               type="button"
+              className="icon-label"
+              disabled={exporting || isNew}
+              onClick={downloadCim}
+              title={isNew ? '저장된 뒤에 내보낼 수 있습니다' : '마지막으로 저장된 계통을 CIM16 XML 파일로 내려받기 (cim/export.py)'}
+            >
+              <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
+                <path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 19h14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              {exporting ? '내보내는 중…' : 'CIM 내보내기'}
+            </button>
+          )}
+          {graph && (
+            <button
+              type="button"
               className={`save-state ${save.status}`}
               onClick={() => save.status === 'error' && flush()}
               title={save.status === 'error' ? `저장 실패: ${save.text}\n누르면 다시 시도` : '바꿀 때마다 자동으로 저장됩니다'}
@@ -635,6 +670,18 @@ export default function App() {
       {message.text && (
         <div className={`toast ${message.kind}`} role="status">
           <span>{message.text}</span>
+          {message.action && (
+            <button
+              type="button"
+              className="toast-action"
+              onClick={() => {
+                message.action.run()
+                info('')
+              }}
+            >
+              {message.action.label}
+            </button>
+          )}
           <button type="button" onClick={() => info('')} aria-label="닫기">
             ✕
           </button>
@@ -647,7 +694,6 @@ export default function App() {
           open={navOpen}
           substationName={graph?.substation.name}
           onRename={() => setDialog('rename')}
-          onExportCim={downloadCim}
           tool={tool}
           onTool={(t) => {
             setTool(t)
