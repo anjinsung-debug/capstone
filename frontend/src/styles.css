@@ -1873,4 +1873,10 @@ body.popup {
   margin: 0 3px 0 6px;
   vertical-align: -1px;
 }
+.d3-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
 
