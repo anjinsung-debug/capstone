@@ -120,7 +120,7 @@ def run_capacity(substation_id: str, date: dt.date | None = None, hour: int | No
 
 
 @router.post("/reports/capacity-ai/{substation_id}")
-def create_capacity_report(substation_id: str, table: CapacityTable, audience: Literal["expert", "plain"] = "expert",
+def create_capacity_report(substation_id: str, table: CapacityTable, audience: Literal["expert", "plain"] = "plain",
                            date: dt.date | None = None, hour: int | None = None) -> Report:
     """추가 가능량 표를 AI가 설명: 계통 전체 요약, 막는 요인, 늘리는 방법 (화면이 받아 둔 표를 그대로 보낸다)"""
     if table.substation_id != substation_id:

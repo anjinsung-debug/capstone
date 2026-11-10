@@ -64,6 +64,8 @@ const HOUR_CHECK_MS = 30000 // 정각이 지났는지 확인하는 간격
 
 const describe = (e) => e.message.replace(/^HTTP \d+: /, '')
 
+const NEW_SUB = '__new__' // 변전소 목록의 '+ 새 변전소' 항목 값
+
 export default function App() {
   // 연결 상태 (위 왼쪽 표시): server·db = true(연결) | false(끊김) | null(확인 중). db는 모의 서버면 'mock'
   const [health, setHealth] = useState({ server: null, db: null, detail: '확인 중' })
@@ -268,7 +270,7 @@ export default function App() {
     const { graph: g2, node } = addNode(g, 'pv', bus.x + 70, bus.y + 70)
     onChange(updateNode(g2, node.id, { p_kw: kw, bus_id: busId, name: `연계 검토 태양광 ${kw} kW` }), `태양광 ${kw} kW 연계 검토`)
     setHosting((h) => (h?.busId === busId ? { ...h, added: node.id } : h)) // 같은 결과로 또 붙이지 않게 (여러 번 누르면 태양광이 쌓이던 문제)
-    info(`${bus.name}에 태양광 ${kw} kW를 붙였습니다. 기록 탭에서 붙이기 전후를 비교할 수 있고, 되돌리려면 Ctrl+Z`)
+    info(`${bus.name}에 태양광 ${kw} kW를 붙였습니다. 시간대별 시뮬레이션 탭에서 붙이기 전후를 비교할 수 있고, 되돌리려면 Ctrl+Z`)
   }
 
   // 기록 탭에서 고른 시각으로 단선도 보기 (유스케이스 2: 하루 중 위험한 시각의 단선도)
@@ -587,7 +589,21 @@ export default function App() {
             {navOpen ? '편집 중' : '편집'}
           </button>
           <div>
-            <h1>배전계통 통합 분석 플랫폼</h1>
+            {/* 제목을 누르면 첫 화면(변전소 전체 단선도)으로 (11/10 피드백: 따로 있던 '변전소 전체'·'돌아가기' 버튼 대신) */}
+            <h1>
+              <button
+                type="button"
+                className="title-btn"
+                onClick={() => {
+                  setNavOpen(false)
+                  setTool('select')
+                  setOverview(true)
+                }}
+                title="변전소 전체 단선도로"
+              >
+                배전계통 통합 분석 플랫폼
+              </button>
+            </h1>
             <button type="button" className="conn" onClick={checkHealth} title={`${health.detail}\n누르면 다시 확인 (${HEALTH_POLL_MS / 1000}초마다 자동 확인)`}>
               <span className={`conn-item ${health.server === null ? 'wait' : health.server ? 'on' : 'off'}`}>
                 <i />
@@ -611,7 +627,10 @@ export default function App() {
             AI 리포트
           </button>
           <div className="sub-picker">
-            <select value={isNew ? '' : (graph?.substation.id ?? '')} onChange={(e) => selectSubstation(e.target.value)}>
+            <select
+              value={isNew ? '' : (graph?.substation.id ?? '')}
+              onChange={(e) => (e.target.value === NEW_SUB ? setDialog('new') : selectSubstation(e.target.value))}
+            >
               <option value="" disabled>
                 {isNew ? `${graph.substation.name} (저장 전)` : '변전소 선택'}
               </option>
@@ -620,42 +639,10 @@ export default function App() {
                   {s.name}
                 </option>
               ))}
+              {/* 새 변전소는 내 변전소 목록 맨 아래 (11/10 피드백) */}
+              <option value={NEW_SUB}>+ 새 변전소</option>
             </select>
           </div>
-          <button type="button" onClick={() => setDialog('new')}>
-            + 새 변전소
-          </button>
-          {graph && (
-            <button
-              type="button"
-              className={overview ? 'toggle on' : 'toggle'}
-              onClick={() => {
-                if (!overview) {
-                  setNavOpen(false) // 변전소 전체를 보는 동안 편집은 닫는다 (가려진 단선도를 실수로 고치지 않게)
-                  setTool('select')
-                }
-                setOverview(!overview)
-              }}
-              aria-pressed={overview}
-              title="154/22.9kV 변전소 전체 단선도 (주변압기 → 모선 → 배전선로 인출)"
-            >
-              변전소 전체
-            </button>
-          )}
-          {graph && (
-            <button
-              type="button"
-              className="icon-label"
-              disabled={exporting || isNew}
-              onClick={downloadCim}
-              title={isNew ? '저장된 뒤에 내보낼 수 있습니다' : '마지막으로 저장된 계통을 CIM16 XML 파일로 내려받기 (cim/export.py)'}
-            >
-              <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
-                <path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 19h14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              {exporting ? '내보내는 중…' : 'CIM 내보내기'}
-            </button>
-          )}
           {graph && (
             <button
               type="button"
@@ -692,11 +679,21 @@ export default function App() {
       )}
 
       <div className={navOpen ? 'workspace nav-open' : 'workspace'}>
-        {showOverview && <SubstationOverview hasGraph={!!graph} onClose={() => setOverview(false)} />}
+        {showOverview && (
+          <SubstationOverview
+            substations={substations}
+            currentId={isNew ? null : graph?.substation.id}
+            onSelect={(id) => (id === graph?.substation.id ? setOverview(false) : selectSubstation(id))}
+            onNew={() => setDialog('new')}
+          />
+        )}
         <NavDrawer
           open={navOpen}
           substationName={graph?.substation.name}
           onRename={() => setDialog('rename')}
+          onExportCim={downloadCim}
+          exporting={exporting}
+          canExport={!isNew}
           tool={tool}
           onTool={(t) => {
             setTool(t)

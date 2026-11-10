@@ -25,7 +25,6 @@ const METRICS = [
 ]
 
 const FIRST_DATE = '2025-01-01' // 배율 데이터가 시작하는 날 (simulation/daily.py의 FIRST_DATE)
-const PEAK_DATE = '2025-05-26' // 2025년 평일 중 역조류가 가장 큰 날 (태양광이 많고 부하가 적은 봄)
 
 const shiftDate = (date, days) => {
   const d = new Date(`${date}T00:00:00`)
@@ -51,9 +50,6 @@ function DateBar({ daily, profile }) {
       </button>
       <button type="button" className={`date-quick ${date === max ? 'on' : ''}`} onClick={() => pick(max)}>
         오늘
-      </button>
-      <button type="button" className={`date-quick ${date === PEAK_DATE ? 'on' : ''}`} onClick={() => pick(PEAK_DATE)} title="2025년 평일 중 역조류가 가장 큰 날">
-        역조류 최대일
       </button>
       <span className="date-info muted small">
         {busy
@@ -455,6 +451,21 @@ function CompareHours({ daily, date, onViewHour }) {
   )
 }
 
+// "두 시각 비교" 탭 (11/10 피드백: 시간대별 시뮬레이션에서 따로 뺌). 가장 최근 기록의 하루 결과로 두 시각을 나란히 본다
+export function CompareTab({ points, daily, onViewHour }) {
+  const cur = [...points].reverse().find((p) => p.daily)
+  return (
+    <div className="history">
+      {daily && <DateBar daily={daily} profile={cur?.profile} />}
+      {cur ? (
+        <CompareHours key={cur.id ?? cur.at} daily={cur.daily} date={cur.profile?.date ?? daily?.date} onViewHour={onViewHour} />
+      ) : (
+        <p className="muted">하루 계산 결과가 아직 없습니다. 계통이 완성되면 고른 날 0~23시를 계산해서 여기서 두 시각을 비교할 수 있습니다.</p>
+      )}
+    </div>
+  )
+}
+
 export default function HistoryChart({ points, daily, onViewHour }) {
   const [picked, setPicked] = useState(null) // 표에서 고른 기록 번호 (없으면 마지막 기록)
   const [hour, setHour] = useState(null) // 하루 그래프에서 마우스가 가리키는 시각
@@ -567,7 +578,6 @@ export default function HistoryChart({ points, daily, onViewHour }) {
         </tbody>
       </table>
       {hasDaily && cur.daily && <HourlyTable cur={cur} prev={sel > 0 ? points[sel - 1] : null} sel={sel} hour={hour} setHour={setHour} date={cur.profile?.date ?? daily?.date} onViewHour={onViewHour} />}
-      {hasDaily && cur.daily && <CompareHours key={cur.id ?? sel} daily={cur.daily} date={cur.profile?.date ?? daily?.date} onViewHour={onViewHour} />}
       {hasDaily && (
         <p className="muted small">
           하루 곡선은 고른 날의 시간대별 배율(data/profile_2025.csv, 2025년 1년치 가상 패턴, 실측 아님)을 계통의 부하·태양광 값에 곱해 시간마다 다시 계산한 값입니다.

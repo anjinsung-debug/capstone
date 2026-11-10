@@ -7,7 +7,7 @@ import { DEFAULT_LINE, NODE_TYPES } from '../lib/graphEdit.js'
 
 export const DRAG_TYPE = 'application/x-capstone-node' // 끌어다 놓기로 넘기는 값의 종류 (Diagram.jsx가 받음)
 
-export default function NavDrawer({ open, substationName, onRename, tool, onTool, onUndo, canUndo, onDelete, canDelete, onClose }) {
+export default function NavDrawer({ open, substationName, onRename, onExportCim, exporting, canExport, tool, onTool, onUndo, canUndo, onDelete, canDelete, onClose }) {
   return (
     <aside className={open ? 'nav open' : 'nav'} aria-hidden={!open}>
       <div className="nav-head">
@@ -26,6 +26,17 @@ export default function NavDrawer({ open, substationName, onRename, tool, onTool
           </span>
           <button type="button" className="tool" disabled={!substationName} onClick={onRename} title="변전소 이름 바꾸기">
             <span className="tool-icon">✎</span>이름 바꾸기
+          </button>
+          {/* CIM 내보내기 (11/10 피드백: 위 오른쪽 버튼 → 편집 메뉴). App.jsx의 downloadCim */}
+          <button
+            type="button"
+            className="tool"
+            disabled={!substationName || exporting || !canExport}
+            onClick={onExportCim}
+            title={canExport ? '마지막으로 저장된 계통을 CIM16 XML 파일로 내려받기 (cim/export.py)' : '저장된 뒤에 내보낼 수 있습니다'}
+          >
+            <span className="tool-icon">⤓</span>
+            {exporting ? '내보내는 중…' : 'CIM 내보내기'}
           </button>
         </div>
       </div>

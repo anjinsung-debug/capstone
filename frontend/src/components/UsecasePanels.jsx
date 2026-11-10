@@ -1,5 +1,5 @@
 // AI 추천·권고 화면 (한승우 유스케이스 시나리오, 11/4). 담당: 최민준 (frontend·ai_report)
-// - CapacityPanel: 결과 자세히 "추가 가능량" 탭. 접속점마다 신재생·부하를 얼마나 더 붙일 수 있는지 + AI 설명 (진성이 피드백 11/5)
+// - CapacityPanel: AI 리포트 창 "추가 가능량" 탭. 접속점마다 신재생·부하를 얼마나 더 붙일 수 있는지 + AI 설명(쉬운 설명) (진성이 피드백 11/5, 11/10 정리)
 // - HostingAi: 유스케이스 1 ⑤ "AI 추천". 영민이형의 태양광 연계 검토(PropertyPanel.jsx의 HostingSection) 결과 아래에 붙는다
 // - DailyAiBox: 유스케이스 2 ⑥ "AI 운영 권고" (고른 날 24시간 결과 → 시간대별 위험과 대비 조치)
 // - ReinforceBox: 유스케이스 3 "설비 보강 우선순위" (여러 날 24시간 결과 → 선로 순위 → AI 정리)
@@ -315,14 +315,11 @@ export function CapacityPanel({ graph, at, onFocus }) {
   const worst = (key) => rows.reduce((a, r) => (!a || r[key] < a[key] ? r : a), null)
   const stale = table && table.atKey !== atKey
 
+  // 순서 (11/10 피드백): AI 설명 → 큰 숫자 요약 → 접속점별 세부 표(접었다 펴기)
   return (
     <div className="uc-panel">
       <p className="lead">
-        지금 계통에서 접속점마다 <b>신재생(태양광)을 얼마나 더 설치할 수 있는지</b>, <b>부하를 얼마나 더 늘릴 수 있는지</b>, 무엇이 막는지 봅니다.
-      </p>
-      <p className="muted small">
-        신재생: 전압 1.05 pu 이하·선로 부하율 100% 이하·출구 차단기 차단 가능 / 부하: 전압 0.95 pu 이상·선로 부하율 100% 이하·차단 가능. 접속점마다
-        따로 계산한 값이라 여러 곳에 동시에 붙인 합은 아닙니다.
+        지금 계통에 <b>신재생(태양광)을 얼마나 더 설치할 수 있는지</b>, <b>부하를 얼마나 더 늘릴 수 있는지</b> 봅니다.
       </p>
       <div className="uc-controls">
         <button type="button" className="primary" disabled={!!busy} onClick={calc}>
@@ -330,13 +327,15 @@ export function CapacityPanel({ graph, at, onFocus }) {
         </button>
         {table && (
           <button type="button" className="primary-outline" disabled={!!busy || stale} onClick={explain}>
-            {report ? 'AI 설명 다시 만들기' : 'AI 설명 (어디에 얼마나, 늘리려면)'}
+            {report ? 'AI 설명 다시 만들기' : 'AI 설명 보기'}
           </button>
         )}
       </div>
       {busy && <Busy text={busy} />}
       <Fail error={error} />
       {stale && <p className="warn small">화면 시각이 바뀌었습니다. 아래는 {atText(table.at)} 결과이니 &ldquo;다시 계산&rdquo;을 눌러 주세요.</p>}
+
+      {report && <ReportCards report={report} titles={['계통 전체 요약', '막는 요인', '늘리는 방법']} />}
 
       {rows.length > 0 && (
         <>
@@ -364,43 +363,50 @@ export function CapacityPanel({ graph, at, onFocus }) {
               )
             })}
           </div>
-          <p className="muted small">{atText(table.at)} · ⌖를 누르면 단선도에서 막는 곳을 보여 줍니다</p>
-          <table className="rtable cap-table">
-            <thead>
-              <tr>
-                <th>접속점</th>
-                <th className="num">신재생 추가 가능</th>
-                <th>신재생을 막는 것</th>
-                <th className="num">부하 추가 가능</th>
-                <th>부하를 막는 것</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.bus_id}>
-                  <td>
-                    {r.name}{' '}
-                    {onFocus && (
-                      <button type="button" className="focus-btn" onClick={() => onFocus(r.bus_id)} title="단선도에서 이 위치로 이동">
-                        ⌖
-                      </button>
-                    )}
-                  </td>
-                  <td className="num cap-num pv">{kwText(r.pv_max_kw, top)} kW</td>
-                  <td>
-                    <LimitCell graph={graph} items={r.pv_limited_by} onFocus={onFocus} />
-                  </td>
-                  <td className="num cap-num load">{kwText(r.load_max_kw, top)} kW</td>
-                  <td>
-                    <LimitCell graph={graph} items={r.load_limited_by} onFocus={onFocus} />
-                  </td>
+          <details className="uc-acc">
+            <summary>
+              접속점별 세부 결과 ({rows.length}곳) · {atText(table.at)}
+            </summary>
+            <p className="muted small">
+              신재생: 전압 1.05 pu 이하·선로 부하율 100% 이하·출구 차단기 차단 가능 / 부하: 전압 0.95 pu 이상·선로 부하율 100% 이하·차단 가능. 접속점마다 따로
+              계산한 값이라 여러 곳에 동시에 붙인 합은 아닙니다. ⌖를 누르면 단선도에서 위치를 보여 줍니다.
+            </p>
+            <table className="rtable cap-table">
+              <thead>
+                <tr>
+                  <th>접속점</th>
+                  <th className="num">신재생 추가 가능</th>
+                  <th>신재생을 막는 것</th>
+                  <th className="num">부하 추가 가능</th>
+                  <th>부하를 막는 것</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.bus_id}>
+                    <td>
+                      {r.name}{' '}
+                      {onFocus && (
+                        <button type="button" className="focus-btn" onClick={() => onFocus(r.bus_id)} title="단선도에서 이 위치로 이동">
+                          ⌖
+                        </button>
+                      )}
+                    </td>
+                    <td className="num cap-num pv">{kwText(r.pv_max_kw, top)} kW</td>
+                    <td>
+                      <LimitCell graph={graph} items={r.pv_limited_by} onFocus={onFocus} />
+                    </td>
+                    <td className="num cap-num load">{kwText(r.load_max_kw, top)} kW</td>
+                    <td>
+                      <LimitCell graph={graph} items={r.load_limited_by} onFocus={onFocus} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </details>
         </>
       )}
-      {report && <ReportCards report={report} titles={['계통 전체 요약', '막는 요인', '늘리는 방법']} />}
     </div>
   )
 }

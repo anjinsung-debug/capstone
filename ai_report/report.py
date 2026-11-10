@@ -660,7 +660,7 @@ def build_capacity_prompt(graph: SubstationGraph, table, at: str = "최대 조�
     return "\n".join(lines)
 
 
-def generate_capacity_report(graph: SubstationGraph, table, at: str = "최대 조건", audience: str = "expert", client=None) -> Report:
+def generate_capacity_report(graph: SubstationGraph, table, at: str = "최대 조건", audience: str = "plain", client=None) -> Report:
     """추가 가능량 표(신재생·부하)를 받아 계통 전체 요약, 막는 요인, 늘리는 방법을 쓴다"""
     return _ask(f"{system_prompt(audience)}\n\n{_CAPACITY_TASK}", build_capacity_prompt(graph, table, at), graph.substation.id, client)
 
