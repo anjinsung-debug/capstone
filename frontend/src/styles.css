@@ -1251,8 +1251,9 @@ body.popup {
   padding: 5px 12px;
   font-size: 14px;
 }
-.rp-make {
+.rp-summary .rp-controls {
   margin-left: auto;
+  flex-shrink: 0;
 }
 .rp-state {
   display: flex;

@@ -245,18 +245,18 @@ function cellLevel(key, v) {
   return ''
 }
 
-// 한 시간 단위 표: 선택한 기록의 0~23시를 한 줄씩. 바로 전 기록이 있으면 칸마다 차이(▲▼)를 같이 보여 준다.
+// 한 시간 단위 표: 선택한 기록의 0~23시를 한 줄씩. 처음엔 접혀 있고 제목을 누르면 펼친다 (<details>, 스타일은 .uc-acc). 바로 전 기록이 있으면 칸마다 차이(▲▼)를 같이 보여 준다.
 // 줄에 마우스를 올리면 위 그래프의 같은 시각에 세로선이 생긴다 (hour를 같이 씀)
 // onViewHour(date, hour): 그 시각의 계통으로 단선도를 다시 그린다 (App.jsx의 viewHour, 유스케이스 2 ④). date = 지금 고른 날
 function HourlyTable({ cur, prev, sel, hour, setHour, date, onViewHour }) {
   const worstHour = Object.fromEntries(METRICS.map((m) => [m.key, worstOf(cur.daily, m)?.hour]))
   const prevByHour = prev?.daily ? Object.fromEntries(prev.daily.map((d) => [d.hour, d])) : null
   return (
-    <div className="hourly">
-      <h3 className="sub">
+    <details className="uc-acc hourly">
+      <summary>
         시간대별 값 · {sel + 1}번째 기록 ({cur.label})
-        {prevByHour && <span className="muted"> · 작은 글씨는 바로 전 기록({sel}번째)과의 차이</span>}
-      </h3>
+        {prevByHour && <span className="muted small"> · 작은 글씨는 바로 전 기록({sel}번째)과의 차이</span>}
+      </summary>
       <div className="hourly-scroll">
         <table className="rtable hourly-table" onMouseLeave={() => setHour(null)}>
           <thead>
@@ -307,7 +307,7 @@ function HourlyTable({ cur, prev, sel, hour, setHour, date, onViewHour }) {
         </table>
       </div>
       <p className="muted small">굵은 글씨 = 하루 중 가장 나쁜 시각 · 빨강 = 기준 넘음 · 주황 = 주의 (부하율 80% 이상, 역조류 있음, 단락용량 300 MVA 초과) · &ldquo;단선도&rdquo;를 누르면 지금 계통을 그 시각으로 계산해 단선도에 보여 줍니다 (요약 줄 맨 앞에 그 시각이 생김)</p>
-    </div>
+    </details>
   )
 }
 

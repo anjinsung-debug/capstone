@@ -503,13 +503,13 @@ export function ResultView({
           <>
             {historyNote && <p className="muted history-note">{historyNote}</p>}
             {dailyNote && <p className="muted history-note">{dailyNote}</p>}
+            {/* 구현 참고 (최민준 추가): 유스케이스 2 ⑥ AI 운영 권고 (components/UsecasePanels.jsx). 보강 우선순위·두 시각 비교는 따로 탭 (11/10). 탭 맨 위로 (11/10) */}
+            {graph && !dailyNote && dailyDate && <DailyAiBox graph={graph} date={dailyDate} />}
             <HistoryChart
               points={history}
               daily={!dailyNote && { date: dailyDate, max: maxDate, busy: dailyBusy, onChange: onDailyDate }}
               onViewHour={onViewHour}
             />
-            {/* 구현 참고 (최민준 추가): 유스케이스 2 ⑥ AI 운영 권고 (components/UsecasePanels.jsx). 보강 우선순위·두 시각 비교는 따로 탭 (11/10) */}
-            {graph && !dailyNote && dailyDate && <DailyAiBox graph={graph} date={dailyDate} />}
           </>
         )}
       </div>
@@ -518,7 +518,7 @@ export function ResultView({
 }
 
 // ── AI 리포트 창 (위 오른쪽 "AI 리포트" 버튼). ai_report/models.py의 Report(diagnosis, causes, solutions)를 한 화면에 모은다 ──
-// 읽기 쉽게 (팀 피드백 10/26): 맨 위 판정 요약 → 설명 방식·만들기 버튼 → ①②③ 카드. 진단은 문장마다 줄을 나누고,
+// 읽기 쉽게 (팀 피드백 10/26): 맨 위 판정 요약(오른쪽에 만들기 버튼) → ①②③ 카드. 진단은 문장마다 줄을 나누고,
 // 원인·솔루션은 번호 붙은 항목으로, 단위가 붙은 숫자(0.93 pu, 120% 등)는 굵게 강조한다.
 // 수치·표는 창 오른쪽 위 "결과 자세히"(ResultView)에서 본다
 const AUDIENCES = [
@@ -633,18 +633,17 @@ export function AiReportView({ graph, result, resultAt, report, reportMessage, r
             <span className="rp-chip ok">모든 항목이 기준 안에 있습니다</span>
           )}
         </div>
-      </div>
-
-      {/* 만들기 */}
-      <div className="rp-controls">
-        <button type="button" className="primary rp-make" disabled={reportBusy} onClick={make}>
-          {reportBusy ? '만드는 중...' : report ? '지금 결과로 다시 만들기' : 'AI 해설 만들기'}
-        </button>
-        {report && !reportBusy && (
-          <button type="button" className="mini" onClick={copy}>
-            {copied ? '복사됨' : '글 복사'}
+        {/* 만들기: 판정 블록 오른쪽 (11/10) */}
+        <div className="rp-controls">
+          {report && !reportBusy && (
+            <button type="button" className="mini" onClick={copy}>
+              {copied ? '복사됨' : '글 복사'}
+            </button>
+          )}
+          <button type="button" className="primary rp-make" disabled={reportBusy} onClick={make}>
+            {reportBusy ? '만드는 중...' : report ? '지금 결과로 다시 만들기' : 'AI 해설 만들기'}
           </button>
-        )}
+        </div>
       </div>
 
       {reportBusy && (
