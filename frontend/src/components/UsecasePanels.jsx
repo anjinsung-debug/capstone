@@ -318,9 +318,6 @@ export function CapacityPanel({ graph, at, onFocus }) {
   // 순서 (11/10 피드백): AI 설명 → 큰 숫자 요약 → 접속점별 세부 표(접었다 펴기)
   return (
     <div className="uc-panel">
-      <p className="lead">
-        지금 계통에 <b>신재생(태양광)을 얼마나 더 설치할 수 있는지</b>, <b>부하를 얼마나 더 늘릴 수 있는지</b> 봅니다.
-      </p>
       <div className="uc-controls">
         <button type="button" className="primary" disabled={!!busy} onClick={calc}>
           {table ? '다시 계산' : '추가 가능량 계산'} ({atText(at)})
@@ -331,6 +328,9 @@ export function CapacityPanel({ graph, at, onFocus }) {
           </button>
         )}
       </div>
+      <p className="lead">
+        지금 계통에 <b>신재생(태양광)을 얼마나 더 설치할 수 있는지</b>, <b>부하를 얼마나 더 늘릴 수 있는지</b> 봅니다.
+      </p>
       {busy && <Busy text={busy} />}
       <Fail error={error} />
       {stale && <p className="warn small">화면 시각이 바뀌었습니다. 아래는 {atText(table.at)} 결과이니 &ldquo;다시 계산&rdquo;을 눌러 주세요.</p>}
