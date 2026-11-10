@@ -173,7 +173,7 @@ function HostingSection({ graph, node, hosting, resultAt, onCheckHosting, onAddP
                 </ul>
               )}
               {added ? (
-                <span className="ok-line">붙였습니다 · 기록 탭에서 전후 비교, 되돌리려면 편집 모드에서 Ctrl+Z</span>
+                <span className="ok-line">붙였습니다 · 시간대별 시뮬레이션 탭에서 전후 비교, 되돌리려면 편집 모드에서 Ctrl+Z</span>
               ) : (
                 <button type="button" className="mini" disabled={stale} onClick={() => onAddPv(node.id, d.target_kw)} title="실제로 태양광 노드를 붙입니다 (자동 저장, 편집 모드에서 Ctrl+Z로 되돌리기)">
                   이 접속점에 {d.target_kw.toLocaleString()} kW 붙여 보기

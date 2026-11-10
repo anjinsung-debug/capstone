@@ -1,4 +1,4 @@
-// 3D 화면 공용 도구 (components/Diagram3D.jsx, components/SubstationInterior3D.jsx): 재질, 상자·원기둥, 애자, 글자 표지판
+// 3D 화면 공용 도구 (components/Diagram3D.jsx): 재질, 상자·원기둥, 애자, 글자 표지판
 import * as THREE from 'three'
 
 const mats = new Map() // 같은 색·옵션 재질은 하나만 만든다

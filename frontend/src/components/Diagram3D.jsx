@@ -10,7 +10,7 @@
 // ponytail: 설비는 기본 도형을 조합한 모양이다. 실제 3D 모델(.glb)로 바꾸려면 GLTFLoader로 불러와 build* 함수만 바꾸면 된다
 import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import { MapControls } from 'three/examples/jsm/controls/MapControls.js'
 import { COLORS, VOLTAGE_MAX_PU, loadingColor, voltageColor } from '../lib/overlay.js'
 import { box, cyl, glow, insulator, label, mat } from '../lib/threeKit.js'
 
@@ -372,6 +372,8 @@ function buildScene(graph, result) {
 export default function Diagram3D({ graph, result, onSelect }) {
   const box3 = useRef(null)
   const barsRef = useRef(null)
+  const viewRef = useRef(null) // 장면을 다시 만들 때 이어 쓸 카메라 위치·바라보는 점
+  const homeRef = useRef(null) // "처음 시점으로" 버튼
   const [tip, setTip] = useState(null) // 마우스 올린 것 { x, y, info }
   const [showBars, setShowBars] = useState(false)
   const showBarsRef = useRef(showBars)
@@ -396,13 +398,32 @@ export default function Diagram3D({ graph, result, onSelect }) {
     bars.visible = showBarsRef.current
     barsRef.current = bars
     const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 400)
-    camera.position.set(size * 0.25, size * 0.6, size * 0.95)
-    const controls = new OrbitControls(camera, renderer.domElement)
-    controls.target.set(0, 1, 0)
+    // 지도처럼 조작 (11/10 피드백: 너무 휙휙 돌아감, 옆으로 옮기기 쉽게)
+    //   왼쪽 끌기 = 옆으로 이동, 오른쪽 끌기 = 돌리기(천천히), 휠 = 확대, 방향키 = 이동
+    const controls = new MapControls(camera, renderer.domElement)
     controls.enableDamping = true
-    controls.maxPolarAngle = Math.PI / 2.05
+    controls.dampingFactor = 0.12
+    controls.rotateSpeed = 0.35
+    controls.panSpeed = 0.9
+    controls.zoomSpeed = 0.7
+    controls.keyPanSpeed = 14
+    controls.screenSpacePanning = false // 바닥을 따라 미끄러지듯 이동
+    controls.minPolarAngle = 0.15
+    controls.maxPolarAngle = Math.PI / 2.15
     controls.minDistance = 2
     controls.maxDistance = size * 3
+    controls.listenToKeyEvents(window)
+    const home = () => {
+      camera.position.set(size * 0.25, size * 0.6, size * 0.95)
+      controls.target.set(0, 1, 0)
+      controls.update()
+    }
+    // 결과가 새로 계산돼 장면을 다시 만들어도 보던 시점을 유지한다
+    if (viewRef.current) {
+      camera.position.copy(viewRef.current.position)
+      controls.target.copy(viewRef.current.target)
+    } else home()
+    homeRef.current = home
 
     const resize = () => {
       const w = el.clientWidth
@@ -456,6 +477,8 @@ export default function Diagram3D({ graph, result, onSelect }) {
     }
     loop()
     return () => {
+      viewRef.current = { position: camera.position.clone(), target: controls.target.clone() }
+      homeRef.current = null
       cancelAnimationFrame(raf)
       ro.disconnect()
       controls.dispose()
@@ -488,7 +511,10 @@ export default function Diagram3D({ graph, result, onSelect }) {
           <input type="checkbox" checked={showBars} onChange={(e) => setShowBars(e.target.checked)} />
           전압 막대 보기 (높이 = 전압, 붉은 판 = 1.05 pu)
         </label>
-        <span className="muted">끌기: 돌리기 · 휠: 확대 · 오른쪽 끌기: 이동 · 클릭: 속성 보기</span>
+        <span className="muted">왼쪽 끌기·방향키: 옆으로 이동 · 오른쪽 끌기: 돌리기 · 휠: 확대 · 클릭: 속성 보기</span>
+        <button type="button" className="mini" onClick={() => homeRef.current?.()}>
+          처음 시점으로
+        </button>
       </div>
     </div>
   )
