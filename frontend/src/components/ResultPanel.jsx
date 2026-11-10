@@ -610,18 +610,21 @@ export function AiReportView({ graph, result, resultAt, report, reportMessage, r
       <div className={`rp-summary ${hc.overall}`}>
         <div className="rp-overall">
           <small>계통 전체 판정 · {resultAt ? `${resultAt.date} ${resultAt.hour}시 기준` : '최대 조건'}</small>
-          <b style={{ color: LEVELS[hc.overall].color }}>{LEVELS[hc.overall].label}</b>
-        </div>
-        <div className="rp-chips">
-          {hc.problems.length ? (
-            hc.problems.map((r) => (
-              <span key={r.key} className={`rp-chip ${r.level}`} title={r.whereName ? `가장 나쁜 곳: ${r.whereName} (기준 ${r.standard})` : `기준 ${r.standard}`}>
-                {r.label} <b>{r.worstText}</b>
-              </span>
-            ))
-          ) : (
-            <span className="rp-chip ok">모든 항목이 기준 안에 있습니다</span>
-          )}
+          {/* 판정 등급 바로 옆에 문제 항목 칩 (11/10) */}
+          <div className="rp-grade">
+            <b style={{ color: LEVELS[hc.overall].color }}>{LEVELS[hc.overall].label}</b>
+            <div className="rp-chips">
+              {hc.problems.length ? (
+                hc.problems.map((r) => (
+                  <span key={r.key} className={`rp-chip ${r.level}`} title={r.whereName ? `가장 나쁜 곳: ${r.whereName} (기준 ${r.standard})` : `기준 ${r.standard}`}>
+                    {r.label} <b>{r.worstText}</b>
+                  </span>
+                ))
+              ) : (
+                <span className="rp-chip ok">모든 항목이 기준 안에 있습니다</span>
+              )}
+            </div>
+          </div>
         </div>
         {/* 만들기: 판정 블록 오른쪽 (11/10) */}
         <div className="rp-controls">

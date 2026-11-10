@@ -1206,7 +1206,13 @@ body.popup {
   color: var(--muted);
   font-size: 13px;
 }
-.rp-overall b {
+.rp-grade {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.rp-grade > b {
   font-size: 26px;
   line-height: 1.2;
 }
