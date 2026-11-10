@@ -193,7 +193,7 @@ export function ReinforceBox({ graph, onFocus }) {
             <i>개</i>
           </span>
         </label>
-        <button type="button" className="primary-outline mini" disabled={busy || !dates.some(Boolean)} onClick={make}>
+        <button type="button" className="primary" disabled={busy || !dates.some(Boolean)} onClick={make}>
           순위 계산 + AI 정리
         </button>
       </div>
