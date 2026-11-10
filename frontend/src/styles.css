@@ -1870,42 +1870,24 @@ body.popup {
   color: var(--accent);
 }
 
-/* 두 시각 비교 (HistoryChart.jsx의 CompareHours, 유스케이스 2 ⑤) */
-.compare-hours {
-  margin-top: 16px;
-}
+/* 두 시각 비교 (HistoryChart.jsx의 HourlyTable 안, 유스케이스 2 ⑤): 버튼 줄, 고른 두 줄 강조, 맨 아래 차이 줄 */
 .compare-quick {
   display: flex;
+  align-items: center;
   gap: 6px;
   flex-wrap: wrap;
   margin: 4px 0 8px;
 }
-.compare-table th select {
-  padding: 3px 6px;
-  margin-right: 6px;
+.rtable tr.pick td {
+  background: rgba(255, 216, 77, 0.1);
 }
-.compare-table td,
-.compare-table th {
-  white-space: nowrap;
+.rtable tr.pick td:first-child {
+  box-shadow: inset 3px 0 0 var(--feeder);
 }
-.compare-table td.worst {
+.hourly-table tr.pair-diff td {
+  border-top: 2px solid var(--line);
   font-weight: 700;
-}
-.compare-table td.bad {
-  color: var(--danger);
-}
-.compare-table td.warn {
-  color: var(--warn);
-}
-.compare-table small.up,
-.compare-table small.down {
-  color: var(--muted);
-  font-size: 13px;
-}
-.compare-summary {
-  margin: 8px 0 4px;
-  padding-left: 18px;
-  line-height: 1.7;
+  white-space: nowrap;
 }
 
 /* AI 리포트 창 안의 탭 (AI 리포트 | 추가 가능량, 11/9) */

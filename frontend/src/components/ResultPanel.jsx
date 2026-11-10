@@ -9,7 +9,7 @@
 // 형식이 바뀌면 AiReportView를 고친다. 원인 분석 탭 그래프는 ProfileChart.jsx가 그린다 (전압 프로파일 + 선로 조류)
 import { useEffect, useRef, useState } from 'react'
 import NodeIcon from './NodeIcon.jsx'
-import HistoryChart, { CompareTab } from './HistoryChart.jsx'
+import HistoryChart from './HistoryChart.jsx'
 import ProfileCharts from './ProfileChart.jsx'
 import { DailyAiBox } from './UsecasePanels.jsx'
 import {
@@ -450,7 +450,6 @@ export const RESULT_TABS = [
   ['solution', '③ 솔루션 제안'],
   ['elements', '요소별 결과'],
   ['history', '시간대별 시뮬레이션'],
-  ['compare', '두 시각 비교'],
 ]
 
 // 결과 창 내용. 가운데 창과 새 창이 같은 컴포넌트를 쓴다
@@ -480,7 +479,7 @@ export function ResultView({
         ))}
       </nav>
       <div className="tab-body">
-        {!result && !['history', 'compare'].includes(tab) ? (
+        {!result && tab !== 'history' ? (
           <p className="muted">결과가 없습니다. 계통이 완성되면 자동으로 계산됩니다.</p>
         ) : tab === 'health' ? (
           <HealthTab graph={graph} result={result} onFocus={onFocus} />
@@ -490,17 +489,11 @@ export function ResultView({
           <SolutionTab graph={graph} result={result} />
         ) : tab === 'elements' ? (
           <ElementsTab graph={graph} result={result} onFocus={onFocus} />
-        ) : tab === 'compare' ? (
-          dailyNote ? (
-            <p className="muted history-note">{dailyNote}</p>
-          ) : (
-            <CompareTab points={history} daily={{ date: dailyDate, max: maxDate, busy: dailyBusy, onChange: onDailyDate }} onViewHour={onViewHour} />
-          )
         ) : (
           <>
             {historyNote && <p className="muted history-note">{historyNote}</p>}
             {dailyNote && <p className="muted history-note">{dailyNote}</p>}
-            {/* 구현 참고 (최민준 추가): 유스케이스 2 ⑥ AI 운영 권고 (components/UsecasePanels.jsx). 두 시각 비교는 따로 탭, 보강 우선순위는 AI 리포트 창으로 (11/10). 탭 맨 위로 (11/10) */}
+            {/* 구현 참고 (최민준 추가): 유스케이스 2 ⑥ AI 운영 권고 (components/UsecasePanels.jsx). 두 시각 비교는 시간대별 값 표 안으로 합침, 보강 우선순위는 AI 리포트 창으로 (11/10). 탭 맨 위로 (11/10) */}
             {graph && !dailyNote && dailyDate && <DailyAiBox graph={graph} date={dailyDate} />}
             <HistoryChart
               points={history}
