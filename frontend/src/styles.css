@@ -1366,15 +1366,13 @@ body.popup {
 .rp-list li {
   counter-increment: rp;
   position: relative;
-  padding: 8px 12px 8px 40px;
-  border-radius: 8px;
-  background: var(--panel);
+  padding: 4px 0 4px 32px; /* 문장마다 있던 어두운 상자는 뺌 (11/10): 상자 대신 번호와 간격으로 나눈다 */
 }
 .rp-list li::before {
   content: counter(rp);
   position: absolute;
-  left: 12px;
-  top: 9px;
+  left: 0;
+  top: 7px;
   width: 20px;
   height: 20px;
   border-radius: 50%;
@@ -1729,7 +1727,7 @@ body.popup {
 /* 속성 칸(.hosting) 목록 모양이 AI 카드 목록에 섞이지 않게 되돌림 */
 .uc-ai .rp-list li {
   display: block;
-  padding: 8px 10px 8px 38px;
+  padding: 4px 0 4px 32px;
   border-bottom: 0;
 }
 .uc-ai .rp-card {
@@ -1905,6 +1903,14 @@ body.popup {
 /* 고장 계산 결과 (ResultPanel.jsx의 FaultSection) */
 .fault-sec {
   margin: 16px 0;
+}
+/* 솔루션 탭 대안 후보 번호 목록 */
+.cand-list {
+  margin: 0;
+  padding-left: 18px;
+}
+.cand-list li + li {
+  margin-top: 2px;
 }
 /* 피더별 출구 차단기 판정 한 줄씩 */
 .fault-verdict {

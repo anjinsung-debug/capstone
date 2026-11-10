@@ -128,11 +128,11 @@ function LineFlowChart({ graph, result }) {
   const names = Object.fromEntries(graph.nodes.map((n) => [n.id, n.name]))
   const lines = graph.lines
     .filter((l) => l.kind === 'line' && flows[l.id])
-    .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+    .sort((a, b) => Math.abs(flows[b.id].p_kw) - Math.abs(flows[a.id].p_kw)) // 많이 흐르는 선로부터 (11/10)
   if (!lines.length) return null
   const ROW = 22
   const W = 640
-  const P = { l: 170, r: 46, t: 8, b: 28 }
+  const P = { l: 170, r: 120, t: 8, b: 28 }
   const H = P.t + P.b + lines.length * ROW
   const ps = lines.map((l) => flows[l.id].p_kw)
   const lo = Math.min(0, ...ps)
@@ -146,7 +146,7 @@ function LineFlowChart({ graph, result }) {
   return (
     <figure className="hchart wide-chart">
       <figcaption>
-        <span>선로 유효전력 조류 (주황: 역조류, 빨강: 과부하, 막대 끝: 부하율)</span>
+        <span>선로별 전력 흐름 · 많이 흐르는 순 (주황 = 역조류, 빨강 = 과부하)</span>
         <b>{lines.length}개 선로</b>
       </figcaption>
       <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="선로별 유효전력 조류">
@@ -166,11 +166,9 @@ function LineFlowChart({ graph, result }) {
               <rect x={x0} y={yy + 4} width={w} height={ROW - 8} rx={2} style={{ fill: color(r) }}>
                 <title>{`${label(l)}: ${r.p_kw.toFixed(0)} kW${r.loading_pct == null ? '' : `, 부하율 ${r.loading_pct.toFixed(0)}%`}`}</title>
               </rect>
-              {r.loading_pct != null && (
-                <text x={end} y={yy + ROW / 2 + 3} className="htick" textAnchor={r.p_kw >= 0 ? 'start' : 'end'}>
-                  {r.loading_pct.toFixed(0)}%
-                </text>
-              )}
+              <text x={end} y={yy + ROW / 2 + 3} className="htick" textAnchor={r.p_kw >= 0 ? 'start' : 'end'}>
+                {Math.round(r.p_kw).toLocaleString()} kW{r.loading_pct == null ? '' : ` · ${r.loading_pct.toFixed(0)}%`}
+              </text>
             </g>
           )
         })}

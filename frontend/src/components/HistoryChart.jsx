@@ -16,10 +16,10 @@ const PAD = { l: 44, r: 10, t: 12, b: 24 }
 
 // worst: 하루 중 가장 나쁜 값을 고르는 방향 (최저 전압은 작을수록, 나머지는 클수록 나쁨)
 const METRICS = [
-  { key: 'minV', label: '① 최저 전압', unit: 'pu', fmt: (v) => v.toFixed(3), limit: VOLTAGE_MIN_PU, worst: 'min' },
-  { key: 'maxLoading', label: '② 최대 부하율', unit: '%', fmt: (v) => v.toFixed(0), limit: OVERLOAD_PCT, worst: 'max' },
-  { key: 'reverseMw', label: '③ 최대 역조류', unit: 'MW', fmt: (v) => v.toFixed(2), worst: 'max' },
-  { key: 'maxMva', label: '④ 최대 단락용량', unit: 'MVA', fmt: (v) => v.toFixed(0), limit: FAULT_HIGH_MVA, worst: 'max' },
+  { key: 'minV', label: '최저 전압', unit: 'pu', fmt: (v) => v.toFixed(3), limit: VOLTAGE_MIN_PU, worst: 'min' },
+  { key: 'maxLoading', label: '최대 부하율', unit: '%', fmt: (v) => v.toFixed(0), limit: OVERLOAD_PCT, worst: 'max' },
+  { key: 'reverseMw', label: '최대 역조류', unit: 'MW', fmt: (v) => v.toFixed(2), worst: 'max' },
+  { key: 'maxMva', label: '최대 단락용량', unit: 'MVA', fmt: (v) => v.toFixed(0), limit: FAULT_HIGH_MVA, worst: 'max' },
   { key: 'totalMw', label: '총 송출', unit: 'MW', fmt: (v) => v.toFixed(2), worst: 'max' },
   { key: 'lossKw', label: '선로 손실', unit: 'kW', fmt: (v) => v.toFixed(1), worst: 'max' },
 ]

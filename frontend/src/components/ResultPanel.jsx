@@ -135,6 +135,20 @@ function HealthTab({ graph, result, onFocus }) {
   const feederName = (id) => graph.feeders.find((f) => f.id === id)?.name ?? id
   return (
     <>
+      <div className="cards">
+        {result.feeders.map((f) => (
+          <div className="card feeder" key={f.feeder_id}>
+            <span>{feederName(f.feeder_id)} 송출</span>
+            <b>
+              {(f.p_kw / 1000).toFixed(2)} MW / {(f.q_kvar / 1000).toFixed(2)} MVAr
+            </b>
+          </div>
+        ))}
+        <div className="card">
+          <span>선로 손실</span>
+          <b>{result.loss_kw.toFixed(1)} kW</b>
+        </div>
+      </div>
       <table className="rtable health">
         <thead>
           <tr>
@@ -163,24 +177,8 @@ function HealthTab({ graph, result, onFocus }) {
           ))}
         </tbody>
       </table>
-      <p className="muted small">
-        판정 기준은 제안서 예시값입니다 (전압 0.90 미만·1.10 초과는 &lsquo;위험&rsquo;으로 팀이 가정). 한전 자문 후 lib/overlay.js에서 고칩니다.
-      </p>
+      <p className="muted small">판정 기준은 제안서 예시값입니다 (전압 0.90 미만·1.10 초과 &lsquo;위험&rsquo;은 팀 가정).</p>
       <FaultSection graph={graph} result={result} onFocus={onFocus} />
-      <div className="cards">
-        {result.feeders.map((f) => (
-          <div className="card feeder" key={f.feeder_id}>
-            <span>{feederName(f.feeder_id)} 송출</span>
-            <b>
-              {(f.p_kw / 1000).toFixed(2)} MW / {(f.q_kvar / 1000).toFixed(2)} MVAr
-            </b>
-          </div>
-        ))}
-        <div className="card">
-          <span>선로 손실</span>
-          <b>{result.loss_kw.toFixed(1)} kW</b>
-        </div>
-      </div>
     </>
   )
 }
@@ -258,7 +256,7 @@ function CauseTab({ graph, result, onFocus }) {
   return (
     <>
       {hc.problems.length === 0 ? (
-        <p className="ok">주의·위험 항목이 없습니다.</p>
+        <p className="ok">주의·위험 항목이 없습니다. 아래 그래프로 전압과 전력 흐름만 확인하세요.</p>
       ) : (
         <div className="cause-list">
           {hc.problems.map((r) => (
@@ -280,7 +278,7 @@ function CauseTab({ graph, result, onFocus }) {
           ))}
         </div>
       )}
-      <h3 className="sub">LLM이 함께 보는 정보: 전압 프로파일 · 선로 부하 · 전력 흐름</h3>
+      <h3 className="sub">전압과 전력 흐름</h3>
       <ProfileCharts graph={graph} result={result} />
     </>
   )
@@ -291,12 +289,11 @@ function SolutionTab({ graph, result }) {
   const hc = healthCheck(graph, result)
   return (
     <>
-      <p className="lead">
-        진단·원인 분석을 바탕으로 <b>어떻게 해결할지</b> 운전 조치부터 설비 보강까지 대안을 제시합니다.
-      </p>
-      {hc.problems.length > 0 && (
+      {hc.problems.length === 0 ? (
+        <p className="ok">주의·위험 항목이 없어 제안할 대안이 없습니다.</p>
+      ) : (
         <>
-          <h3 className="sub">참고: 제안서의 문제별 대안 후보 (발견된 문제만)</h3>
+          <h3 className="sub">발견된 문제별 대안 후보</h3>
           <table className="rtable">
             <thead>
               <tr>
@@ -312,11 +309,11 @@ function SolutionTab({ graph, result }) {
                     <b style={{ color: LEVELS[r.level].color }}>{SOLUTION_CANDIDATES[r.key].problem}</b>
                   </td>
                   <td>
-                    {SOLUTION_CANDIDATES[r.key].candidates.map((c, i) => (
-                      <div key={c}>
-                        {'①②③'[i]} {c}
-                      </div>
-                    ))}
+                    <ol className="cand-list">
+                      {SOLUTION_CANDIDATES[r.key].candidates.map((c) => (
+                        <li key={c}>{c}</li>
+                      ))}
+                    </ol>
                   </td>
                   <td>{SOLUTION_CANDIDATES[r.key].effect}</td>
                 </tr>
@@ -370,11 +367,11 @@ function ElementsTab({ graph, result, onFocus }) {
               <th />
               <th>종류</th>
               <th>이름</th>
-              <th className="num">① 전압 (pu)</th>
-              <th className="num">④ 3상 단락 (kA)</th>
+              <th className="num">전압 (pu)</th>
+              <th className="num">3상 단락 (kA)</th>
               <th className="num">1선 지락 (kA)</th>
               <th className="num">2선 지락 (kA)</th>
-              <th className="num">④ 단락용량 (MVA)</th>
+              <th className="num">단락용량 (MVA)</th>
               <th className="num">출력</th>
               <th>판정</th>
             </tr>
@@ -390,7 +387,7 @@ function ElementsTab({ graph, result, onFocus }) {
                 </td>
                 <td>{r.name}</td>
                 <td className="num" style={{ color: r.voltageColor ?? undefined }}>
-                  {r.voltage == null ? '-' : r.voltage.toFixed(4)}
+                  {r.voltage == null ? '-' : r.voltage.toFixed(3)}
                 </td>
                 <td className="num">{r.fault == null ? '-' : r.fault.toFixed(2)}</td>
                 <td className="num">{r.groundFault == null ? '-' : r.groundFault.toFixed(2)}</td>
@@ -413,9 +410,9 @@ function ElementsTab({ graph, result, onFocus }) {
               <th />
               <th>종류</th>
               <th>이름</th>
-              <th className="num">③ 유효전력 (kW)</th>
+              <th className="num">유효전력 (kW)</th>
               <th className="num">무효전력 (kvar)</th>
-              <th className="num">② 부하율 (%)</th>
+              <th className="num">부하율 (%)</th>
               <th>판정</th>
             </tr>
           </thead>
