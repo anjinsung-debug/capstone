@@ -1906,8 +1906,59 @@ body.popup {
 .fault-sec {
   margin: 16px 0;
 }
-.fault-sec .cards {
-  margin-top: 10px;
+/* 피더별 출구 차단기 판정 한 줄씩 */
+.fault-verdict {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+}
+.fault-verdict li {
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.fault-verdict b {
+  padding: 2px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 14px;
+}
+.fault-verdict li.ok b {
+  border-color: rgba(62, 207, 142, 0.6);
+  color: #3ecf8e;
+}
+.fault-verdict li.danger b {
+  border-color: rgba(255, 93, 93, 0.6);
+  color: var(--danger);
+}
+/* 차단기 정격 대비 막대: 막대 끝 = 정격 100% */
+.fault-meter {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.fault-meter .track {
+  width: 140px;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--line);
+  overflow: hidden;
+}
+.fault-meter i {
+  display: block;
+  height: 100%;
+  background: #3ecf8e;
+}
+.fault-meter.over i {
+  background: var(--danger);
+}
+.fault-meter small {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 /* 3D 보기 (components/Diagram3D.jsx). 단선도 자리를 덮고, 요약 줄(.ov-top)은 그 위에 남는다 */

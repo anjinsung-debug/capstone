@@ -174,11 +174,6 @@ function HealthTab({ graph, result, onFocus }) {
             <b>
               {(f.p_kw / 1000).toFixed(2)} MW / {(f.q_kvar / 1000).toFixed(2)} MVAr
             </b>
-            {f.breaker_interruptible != null && (
-              <small style={{ color: f.breaker_interruptible ? COLORS.green : COLORS.red }}>
-                출구 차단기 {f.breaker_interruptible ? '고장전류 차단 가능' : '고장전류 차단 불가 (정격 초과)'}
-              </small>
-            )}
           </div>
         ))}
         <div className="card">
@@ -190,53 +185,68 @@ function HealthTab({ graph, result, onFocus }) {
   )
 }
 
-// 고장 계산 결과 (11/9 팀 피드백: 1선·2선 지락도 화면에). 3상 단락·1선 지락·2선 지락마다 가장 큰 지점 + 피더별 출구 차단기 판정.
-// 단락용량(MVA) 판정은 위 진단표 ④에 있고, 여기는 kA 값 자체와 차단기가 끊을 수 있는지를 본다 (등급에는 넣지 않는 참고 정보)
+// 고장 계산 결과 (11/9 팀 피드백: 1선·2선 지락도 화면에). 맨 위 한 줄 = 피더별 출구 차단기가 끊을 수 있는지,
+// 표 = 고장 종류마다 가장 큰 전류와 차단기 정격 대비 막대 (11/10 정리: 숫자만 있던 %를 막대로, 차단기 카드는 한 줄로).
+// 단락용량(MVA) 판정은 위 진단표에 있고, 여기는 kA 값과 차단 가능 여부를 본다 (등급에는 넣지 않는 참고 정보)
 function FaultSection({ graph, result, onFocus }) {
   const kinds = faultSummary(graph, result)
   const feederName = (id) => graph.feeders.find((f) => f.id === id)?.name ?? id
   const hasGround = kinds.slice(1).some((k) => k.ka != null)
   return (
     <section className="fault-sec">
-      <h3 className="sub">
-        고장 계산 결과 <span className="muted">· 고장이 났을 때 흐르는 전류 (고장 저항 0, 대칭 실효값)</span>
-      </h3>
-      <table className="rtable">
+      <h3 className="sub">고장 계산 결과</h3>
+      <ul className="fault-verdict">
+        {result.feeders.map((f) => {
+          const ok = f.breaker_interruptible
+          return (
+            <li key={f.feeder_id} className={ok == null ? '' : ok ? 'ok' : 'danger'}>
+              <b>{ok == null ? '판정 없음' : ok ? '차단 가능' : '차단 불가'}</b>
+              <span>
+                출구 차단기({feederName(f.feeder_id)}){ok == null ? ': 정전 구간' : ok ? '가 가장 큰 고장전류도 끊을 수 있습니다' : '의 정격을 고장전류가 넘습니다'}
+              </span>
+            </li>
+          )
+        })}
+      </ul>
+      <table className="rtable fault-table">
         <thead>
           <tr>
             <th>고장 종류</th>
             <th className="num">최대 전류</th>
+            <th>차단기 정격 {BREAKER_INTERRUPT_KA} kA 대비</th>
             <th>위치</th>
-            <th className="num">차단기 정격 대비</th>
           </tr>
         </thead>
         <tbody>
-          {kinds.map((k) => (
-            <tr key={k.attr} className={k.ka != null && k.ka > BREAKER_INTERRUPT_KA ? 'danger' : ''}>
-              <td>{k.label}</td>
-              <td className="num">{k.ka == null ? '-' : <b>{k.ka.toFixed(2)} kA</b>}</td>
-              <td>{k.id ? <FocusBtn id={k.id} onFocus={onFocus} label={k.name} /> : '-'}</td>
-              <td className="num">{k.ka == null ? '-' : `${((k.ka / BREAKER_INTERRUPT_KA) * 100).toFixed(0)}%`}</td>
-            </tr>
-          ))}
+          {kinds.map((k) => {
+            const pct = k.ka == null ? null : (k.ka / BREAKER_INTERRUPT_KA) * 100
+            const over = pct != null && pct > 100
+            return (
+              <tr key={k.attr} className={over ? 'danger' : ''}>
+                <td>{k.label}</td>
+                <td className="num">{k.ka == null ? '-' : <b>{k.ka.toFixed(2)} kA</b>}</td>
+                <td>
+                  {pct == null ? (
+                    '-'
+                  ) : (
+                    <span className={`fault-meter ${over ? 'over' : ''}`}>
+                      <span className="track">
+                        <i style={{ width: `${Math.min(pct, 100)}%` }} />
+                      </span>
+                      <small>{pct.toFixed(0)}%</small>
+                    </span>
+                  )}
+                </td>
+                <td>{k.id ? <FocusBtn id={k.id} onFocus={onFocus} label={k.name} /> : '-'}</td>
+              </tr>
+            )
+          })}
         </tbody>
       </table>
-      <div className="cards">
-        {result.feeders.map((f) => (
-          <div className="card" key={f.feeder_id}>
-            <span>{feederName(f.feeder_id)} 출구 차단기</span>
-            <b style={{ color: f.breaker_interruptible == null ? undefined : f.breaker_interruptible ? COLORS.green : COLORS.red }}>
-              {f.breaker_interruptible == null ? '판정 없음 (정전 구간)' : f.breaker_interruptible ? '차단 가능' : '차단 불가 (정격 초과)'}
-            </b>
-            <small>차단기 위치 고장전류(3상·1선·2선 중 최대) ≤ 정격 {BREAKER_INTERRUPT_KA} kA(가정값)면 차단 가능</small>
-          </div>
-        ))}
-      </div>
       <p className="muted small">
         {hasGround
-          ? '접속점·설비마다의 3상 단락·1선 지락·2선 지락 전류는 "요소별 결과" 탭과 단선도에서 설비를 눌렀을 때 오른쪽 칸에서 볼 수 있습니다.'
-          : '지락 전류가 비어 있으면 백엔드가 지락을 계산하지 않는 버전입니다 (최신 코드를 받아 uvicorn을 다시 켜 주세요).'}{' '}
-        선로 영상분 임피던스(R0·X0)가 비어 있으면 정상분의 3배로 가정해 계산합니다.
+          ? '고장 저항 0, 대칭 실효값 · 차단기 정격은 가정값 · 선로 영상분(R0·X0)이 없으면 정상분의 3배로 가정 · 설비마다의 값은 "요소별 결과" 탭'
+          : '지락 전류가 비어 있으면 백엔드가 지락을 계산하지 않는 버전입니다 (최신 코드를 받아 uvicorn을 다시 켜 주세요).'}
       </p>
     </section>
   )
