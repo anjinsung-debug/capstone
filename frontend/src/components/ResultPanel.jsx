@@ -652,12 +652,6 @@ export function AiReportView({ graph, result, resultAt, report, reportMessage, r
           <small>API 키(.env)와 백엔드 연결을 확인한 뒤 다시 눌러 주세요.</small>
         </div>
       )}
-      {!report && !reportBusy && !failed && (
-        <div className="rp-state empty">
-          <b>아직 해설이 없습니다</b>
-          <small>LLM 호출은 비용·시간이 들어서 자동으로 만들지 않습니다. &ldquo;AI 해설 만들기&rdquo;를 누르면 ①②③이 한 번에 만들어집니다.</small>
-        </div>
-      )}
 
       {report && (
         <div className={`rp-body ${reportBusy ? 'stale' : ''}`}>
