@@ -1,9 +1,12 @@
 // 선택한 설비·선로의 속성 보기·고치기 (FR-06). 아무것도 선택하지 않으면 변전소 속성과 빠진 항목을 보여 준다.
 // 시뮬레이션 결과가 있으면 그 설비의 계산값(전압, 고장전류, 조류, 부하율)도 함께 보여 준다.
-import { useState } from 'react'
+// 설비를 고르면 맨 위에 그 설비의 3D 미리보기 (Diagram3D.jsx의 Equipment3D, three.js가 커서 처음 고를 때 불러옴)
+import { Suspense, lazy, useState } from 'react'
 import { NODE_TYPES, electricalKey, findIssues, updateLine, updateNode, updateSubstation } from '../lib/graphEdit.js'
 import { COLORS, OVERLOAD_PCT, loadingColor, mvaOf, voltageColor } from '../lib/overlay.js'
 import { HostingAi } from './UsecasePanels.jsx'
+
+const Equipment3D = lazy(() => import('./Diagram3D.jsx').then((m) => ({ default: m.Equipment3D })))
 
 // 숫자 입력: 입력 중에는 글자 그대로 두고, 포커스를 잃거나 Enter일 때 숫자로 반영 (빈칸 = 값 없음)
 // 빈칸(null)은 "데이터 없음"이라 시뮬레이션이 가정값을 쓴다 (단락용량 300 MVA, X/R 10, 허용전류 400 A — simulation/dss.py의 DEFAULT_*)
@@ -205,6 +208,9 @@ function NodeProps({ graph, node, result, editing, onChange, hosting, resultAt, 
       <h3>
         <span className={`type-dot t-${node.type}`} /> {info.label}
       </h3>
+      <Suspense fallback={<div className="eq3d" />}>
+        <Equipment3D node={node} color={r ? voltageColor(r) : COLORS.gray} />
+      </Suspense>
       {/* key: 다른 노드를 고르면 입력칸을 새로 만든다 */}
       <TextField key={`${node.id}-name`} label="이름" value={node.name} disabled={!editing} onCommit={(v) => set({ name: v })} />
       {power && (

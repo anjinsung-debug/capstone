@@ -11,6 +11,7 @@
 import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { MapControls } from 'three/examples/jsm/controls/MapControls.js'
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { COLORS, VOLTAGE_MAX_PU, loadingColor, voltageColor } from '../lib/overlay.js'
 import { box, cyl, glow, insulator, label, mat } from '../lib/threeKit.js'
 
@@ -165,6 +166,17 @@ function buildWind() {
 }
 
 // 처진 전선 한 가닥 (양 끝 a, b, 가운데가 sag만큼 내려감)
+// 노드 하나의 설비 모양 (위치·방향은 부르는 쪽이 정한다). color = 전압 판정 색. 3D 보기와 속성 칸 미리보기(Equipment3D)가 같이 쓴다
+function modelFor(n, color, substationName = '') {
+  if (n.type === 'source') return buildSubstation(substationName, 6.0, 4.6)
+  if (n.type === 'breaker') return buildBreaker(n.is_open)
+  if (n.type === 'bus' || n.type === 'switch') return buildPole(color, n.type === 'switch', n.is_open)
+  if (n.type === 'load') return (n.p_kw ?? 0) >= 1000 ? buildFactory(color) : buildHouse(color)
+  if (n.type === 'pv') return buildSolar(n.p_kw ?? 0)
+  if (n.type === 'wind') return buildWind()
+  return null
+}
+
 function wire(a, b, radius, m, sag = 0.25) {
   const mid = new THREE.Vector3().addVectors(a, b).multiplyScalar(0.5)
   mid.y -= sag
@@ -248,9 +260,8 @@ function buildScene(graph, result) {
 
     const dir = lineDir[n.id]?.lengthSq() > 1e-6 ? lineDir[n.id].clone().normalize() : new THREE.Vector3(0, 0, 1)
     const yaw = Math.atan2(dir.x, dir.z) // 선로 방향을 바라보게 (완금 = x축이 선로에 수직)
-    let obj
+    const obj = modelFor(n, color, graph.substation?.name ?? '')
     if (n.type === 'source') {
-      obj = buildSubstation(graph.substation?.name ?? '', 6.0, 4.6)
       // 구내 앞(배전반)이 접속점 쪽을 보게
       const b = n.bus_id && byId[n.bus_id]
       const toward = b ? pos(b).sub(p) : new THREE.Vector3(0, 0, 1)
@@ -259,12 +270,10 @@ function buildScene(graph, result) {
       const front = new THREE.Vector3(Math.sin(obj.rotation.y), 0, Math.cos(obj.rotation.y))
       anchor[n.id] = { at: obj.position.clone().addScaledVector(front, 1.9).setY(1.0), dir: new THREE.Vector3(front.z, 0, -front.x) }
     } else if (n.type === 'breaker') {
-      obj = buildBreaker(n.is_open)
       obj.position.copy(p)
       obj.rotation.y = yaw
       anchor[n.id] = { at: p.clone().setY(1.15), dir: new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw)), single: true }
     } else if (n.type === 'bus' || n.type === 'switch') {
-      obj = buildPole(color, n.type === 'switch', n.is_open)
       obj.position.copy(p)
       obj.rotation.y = yaw
       anchor[n.id] = { at: p.clone().setY(POLE_H + 0.12), dir: new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw)) }
@@ -277,15 +286,12 @@ function buildScene(graph, result) {
         bars.add(bar)
       }
     } else if (n.type === 'load') {
-      obj = (n.p_kw ?? 0) >= 1000 ? buildFactory(color) : buildHouse(color)
       obj.position.copy(p)
       anchor[n.id] = { at: p.clone().setY(n.p_kw >= 1000 ? 0.9 : 0.75), single: true }
     } else if (n.type === 'pv') {
-      obj = buildSolar(n.p_kw ?? 0)
       obj.position.copy(p)
       anchor[n.id] = { at: p.clone().setY(0.4), single: true }
     } else if (n.type === 'wind') {
-      obj = buildWind()
       obj.position.copy(p)
       anchor[n.id] = { at: p.clone().setY(1.0), single: true }
     }
@@ -518,4 +524,70 @@ export default function Diagram3D({ graph, result, onSelect }) {
       </div>
     </div>
   )
+}
+
+// ── 속성 칸 미리보기: 고른 설비 하나만 천천히 돌려 보여 준다 (components/PropertyPanel.jsx, 11/10) ──
+// 끌어서 돌리기·휠 확대. 모양·색은 3D 보기와 같다 (modelFor). 선로는 모양이 없어 쓰지 않는다
+export function Equipment3D({ node, color }) {
+  const el3 = useRef(null)
+  const { type, is_open: isOpen, p_kw: pKw } = node
+  useEffect(() => {
+    const el = el3.current
+    const obj = el && modelFor({ type, is_open: isOpen, p_kw: pKw }, color)
+    if (!obj) return
+    const renderer = new THREE.WebGLRenderer({ antialias: true })
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    renderer.setClearColor('#0b0f12')
+    el.appendChild(renderer.domElement)
+    const scene = new THREE.Scene()
+    scene.add(new THREE.HemisphereLight('#d6ecff', '#26302b', 1.6))
+    const sun = new THREE.DirectionalLight('#fff6e8', 1.6)
+    sun.position.set(3, 6, 4)
+    scene.add(sun, obj)
+    // 모양 크기에 맞춰 카메라 거리
+    const bb = new THREE.Box3().setFromObject(obj)
+    const center = bb.getCenter(new THREE.Vector3())
+    const r = bb.getSize(new THREE.Vector3()).length() / 2
+    const camera = new THREE.PerspectiveCamera(35, 1, 0.05, 200)
+    camera.position.set(center.x + r * 1.6, center.y + r * 1.0, center.z + r * 2.2)
+    const controls = new OrbitControls(camera, renderer.domElement)
+    controls.target.copy(center)
+    controls.enableDamping = true
+    controls.enablePan = false
+    controls.autoRotate = true
+    controls.autoRotateSpeed = 0.5 // 한 바퀴 약 2분 (1.5는 너무 빠름, 11/10)
+    controls.rotateSpeed = 0.4 // 끌어서 돌릴 때도 천천히
+    controls.minDistance = r * 1.2
+    controls.maxDistance = r * 6
+    const resize = () => {
+      renderer.setSize(el.clientWidth, el.clientHeight)
+      camera.aspect = el.clientWidth / Math.max(el.clientHeight, 1)
+      camera.updateProjectionMatrix()
+    }
+    resize()
+    const ro = new ResizeObserver(resize)
+    ro.observe(el)
+    const clock = new THREE.Clock()
+    let raf
+    const loop = () => {
+      const t = clock.getElapsedTime()
+      obj.traverse((o) => o.userData.spin && (o.rotation.z = t * 2))
+      controls.update()
+      renderer.render(scene, camera)
+      raf = requestAnimationFrame(loop)
+    }
+    loop()
+    return () => {
+      cancelAnimationFrame(raf)
+      ro.disconnect()
+      controls.dispose()
+      scene.traverse((o) => {
+        o.geometry?.dispose()
+        if (o.material?.map) o.material.map.dispose()
+      })
+      renderer.dispose()
+      renderer.domElement.remove()
+    }
+  }, [type, isOpen, pKw, color])
+  return <div className="eq3d" ref={el3} title="끌어서 돌리기 · 휠로 확대" />
 }

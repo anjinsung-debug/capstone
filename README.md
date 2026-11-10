@@ -44,7 +44,7 @@ capstone/
 ├── frontend/
 │   ├── src/
 │   │   ├── App.jsx          화면 흐름: 변전소 선택 → 단선도 → 자동 저장·시뮬레이션 → 결과·리포트
-│   │   ├── components/      Diagram(단선도), NavDrawer(편집 메뉴), PropertyPanel(속성), ResultPanel(결과), UsecasePanels(추가 가능량·AI 추천·권고), SubstationOverview(첫 화면: DB 변전소 단선도), NodeIcon(설비 모양·색), HistoryChart, ProfileChart, Modal, SubstationDialog, PopupWindow
+│   │   ├── components/      Diagram(단선도), Diagram3D(3D 보기·속성 칸 설비 3D 미리보기), NavDrawer(편집 메뉴), PropertyPanel(속성), ResultPanel(결과), UsecasePanels(추가 가능량·AI 추천·권고), SubstationOverview(첫 화면: DB 변전소 단선도), NodeIcon(설비 모양·색), HistoryChart, ProfileChart, Modal, SubstationDialog, PopupWindow
 │   │   ├── lib/             graphEdit.js(편집 로직), overlay.js(결과 → 단선도 표시)
 │   │   ├── api/client.js    백엔드 API 호출
 │   │   └── main.jsx, styles.css

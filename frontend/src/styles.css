@@ -1991,6 +1991,15 @@ body.popup {
   gap: 6px;
   cursor: pointer;
 }
+/* 속성 칸 설비 3D 미리보기 (Diagram3D.jsx의 Equipment3D) */
+.eq3d {
+  height: 180px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #0b0f12;
+  cursor: grab;
+}
 /* 접었다 펴는 세부 결과 (UsecasePanels.jsx 추가 가능량) */
 .uc-acc {
   border: 1px solid var(--line);
