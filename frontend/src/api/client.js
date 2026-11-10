@@ -98,8 +98,9 @@ const withQuery = (path, params, at) => {
 // AI 추천·권고 (ai_report/report.py, 전문가용 설명: 한전 담당자용 화면). 응답은 Report (보강 우선순위는 { ranking, report })
 export const createHostingReport = (body, at) => request('POST', withQuery('/reports/hosting', 'audience=expert', at), body)
 export const createDailyReport = (substationId, body) => request('POST', `/reports/daily/${substationId}?audience=expert`, body)
+// 보강 우선순위는 AI 리포트 창으로 옮기면서 다른 AI 리포트 창 탭처럼 쉬운 설명 (11/10)
 export const createReinforcementReport = (substationId, body) =>
-  request('POST', `/reports/reinforcement/${substationId}?audience=expert`, body)
+  request('POST', `/reports/reinforcement/${substationId}?audience=plain`, body)
 // 추가 가능량 (ai_report/capacity.py): 접속점마다 신재생·부하를 몇 kW까지 더 붙일 수 있는지, 무엇이 막는지. 계산만 (수 초~수십 초)
 export const runCapacity = (substationId, at) => request('POST', withQuery(`/reports/capacity/${substationId}`, '', at))
 // 추가 가능량 표를 AI가 설명 (계통 전체 요약, 막는 요인, 늘리는 방법). 쉬운 설명 (11/10 피드백)
