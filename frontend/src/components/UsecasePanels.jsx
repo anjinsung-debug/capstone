@@ -245,7 +245,7 @@ export function ReinforceBox({ graph, onFocus }) {
   )
 }
 
-// ── 추가 가능량 (진성이 피드백 11/5, 10/26 차장님 요청): 지금 계통에서 신재생·부하를 얼마나 더 붙일 수 있나 ──
+// ── 여유 용량 (화면 이름, 11/10 '추가 가능량'에서 바꿈. 한전 '배전선로 여유용량'과 같은 말) (진성이 피드백 11/5, 10/26 차장님 요청): 지금 계통에서 신재생·부하를 얼마나 더 붙일 수 있나 ──
 // 계산은 ai_report/capacity.py (신재생은 simulation/der.py의 hosting_capacity, 부하는 같은 방식으로 새로 계산)
 const KIND_KO = { overload: '선로 과부하', overvoltage: '과전압', undervoltage: '저전압', breaker: '차단기 차단 불가' }
 const kwText = (v, top) => (v >= top ? `${Math.round(top).toLocaleString('ko-KR')}+` : Math.round(v).toLocaleString('ko-KR'))
@@ -303,7 +303,7 @@ export function CapacityPanel({ graph, at, onFocus }) {
     }
   }
   const calc = () =>
-    run('접속점마다 신재생·부하 추가 가능량을 계산하는 중... (수 초~수십 초)', async () => {
+    run('접속점마다 신재생·부하 여유 용량을 계산하는 중... (수 초~수십 초)', async () => {
       setTable({ data: await runCapacity(sid, at), at, atKey })
       setReport(null)
     })
@@ -315,22 +315,25 @@ export function CapacityPanel({ graph, at, onFocus }) {
   const worst = (key) => rows.reduce((a, r) => (!a || r[key] < a[key] ? r : a), null)
   const stale = table && table.atKey !== atKey
 
-  // 순서 (11/10 피드백): AI 설명 → 큰 숫자 요약 → 접속점별 세부 표(접었다 펴기)
+  // 순서 (11/10 피드백): 맨 위 요약 칸(AI 리포트 탭과 같은 모양, 오른쪽에 버튼) → AI 설명 → 큰 숫자 요약 → 접속점별 세부 표(접었다 펴기)
   return (
     <div className="uc-panel">
-      <div className="uc-controls">
-        <button type="button" className="primary" disabled={!!busy} onClick={calc}>
-          {table ? '다시 계산' : '추가 가능량 계산'} ({atText(at)})
-        </button>
-        {table && (
-          <button type="button" className="primary-outline" disabled={!!busy || stale} onClick={explain}>
-            {report ? 'AI 설명 다시 만들기' : 'AI 설명 보기'}
+      <div className="rp-summary">
+        <div className="rp-overall">
+          <small>여유 용량 · {atText(at)}</small>
+          <span className="cap-question">태양광을 얼마나 더 설치하고, 부하를 얼마나 더 늘릴 수 있는지</span>
+        </div>
+        <div className="rp-controls">
+          {table && (
+            <button type="button" disabled={!!busy || stale} onClick={explain}>
+              {report ? 'AI 설명 다시 만들기' : 'AI 설명 보기'}
+            </button>
+          )}
+          <button type="button" className="primary rp-make" disabled={!!busy} onClick={calc}>
+            {table ? '다시 계산' : '여유 용량 계산'}
           </button>
-        )}
+        </div>
       </div>
-      <p className="lead">
-        지금 계통에 <b>신재생(태양광)을 얼마나 더 설치할 수 있는지</b>, <b>부하를 얼마나 더 늘릴 수 있는지</b> 봅니다.
-      </p>
       {busy && <Busy text={busy} />}
       <Fail error={error} />
       {stale && <p className="warn small">화면 시각이 바뀌었습니다. 아래는 {atText(table.at)} 결과이니 &ldquo;다시 계산&rdquo;을 눌러 주세요.</p>}
@@ -341,8 +344,8 @@ export function CapacityPanel({ graph, at, onFocus }) {
         <>
           <div className="cap-cards">
             {[
-              ['신재생 추가 설치 가능', 'pv_max_kw', 'pv'],
-              ['부하 추가 가능', 'load_max_kw', 'load'],
+              ['신재생 여유 용량', 'pv_max_kw', 'pv'],
+              ['부하 여유 용량', 'load_max_kw', 'load'],
             ].map(([title, key, cls]) => {
               const b = best(key)
               const w = worst(key)
@@ -375,9 +378,9 @@ export function CapacityPanel({ graph, at, onFocus }) {
               <thead>
                 <tr>
                   <th>접속점</th>
-                  <th className="num">신재생 추가 가능</th>
+                  <th className="num">신재생 여유</th>
                   <th>신재생을 막는 것</th>
-                  <th className="num">부하 추가 가능</th>
+                  <th className="num">부하 여유</th>
                   <th>부하를 막는 것</th>
                 </tr>
               </thead>

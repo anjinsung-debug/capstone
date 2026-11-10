@@ -1206,6 +1206,11 @@ body.popup {
   color: var(--muted);
   font-size: 13px;
 }
+/* 여유 용량 탭 요약 칸의 설명 (AI 리포트 요약 칸 모양을 같이 씀) */
+.cap-question {
+  font-size: 16px;
+  font-weight: 600;
+}
 .rp-grade {
   display: flex;
   align-items: center;

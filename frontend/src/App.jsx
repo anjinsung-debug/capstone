@@ -100,7 +100,7 @@ export default function App() {
   const [resultOpen, setResultOpen] = useState(null)
   const [resultTab, setResultTab] = useState('health')
   const [view3d, setView3d] = useState(false) // 단선도 자리에 3D 보기 (발표용, 편집은 2D)
-  const [aiTab, setAiTab] = useState('report') // AI 리포트 창 안의 탭: 'report' = AI 리포트 | 'capacity' = 추가 가능량 (11/9 팀 피드백: 같은 위치에) | 'reinforce' = 설비 보강 우선순위 (11/10 결과 자세히에서 옮김)
+  const [aiTab, setAiTab] = useState('report') // AI 리포트 창 안의 탭: 'report' = AI 리포트 | 'capacity' = 여유 용량 (11/10 '추가 가능량'에서 이름 바꿈) (11/9 팀 피드백: 같은 위치에) | 'reinforce' = 설비 보강 우선순위 (11/10 결과 자세히에서 옮김)
   const [popup, setPopup] = useState(null) // 브라우저 새 창 결과 { win, container }
   const [dialog, setDialog] = useState(null) // 'new' | 'rename' | null
   const [overview, setOverview] = useState(false) // 변전소를 고른 뒤에도 변전소 전체 단선도를 열어 볼 때 true
@@ -800,7 +800,7 @@ export default function App() {
                 AI 리포트
               </button>
               <button type="button" className={aiTab === 'capacity' ? 'on' : ''} onClick={() => setAiTab('capacity')}>
-                추가 가능량
+                여유 용량
               </button>
               <button type="button" className={aiTab === 'reinforce' ? 'on' : ''} onClick={() => setAiTab('reinforce')}>
                 보강 우선순위
