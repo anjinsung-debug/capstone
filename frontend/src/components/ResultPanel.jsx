@@ -135,9 +135,6 @@ function HealthTab({ graph, result, onFocus }) {
   const feederName = (id) => graph.feeders.find((f) => f.id === id)?.name ?? id
   return (
     <>
-      <p className="lead">
-        여러 시뮬레이션 결과를 하나로 묶어 <b>어디가 문제인지</b> 보여 줍니다. 계통 전체 판정: <LevelBadge level={hc.overall} />
-      </p>
       <table className="rtable health">
         <thead>
           <tr>
@@ -250,9 +247,6 @@ function CauseTab({ graph, result, onFocus }) {
   const hc = healthCheck(graph, result)
   return (
     <>
-      <p className="lead">
-        이상 위치를 넘어 <b>왜 발생했는지</b> 봅니다. 관측 현상은 시뮬레이션 값입니다. 물리적 원인에 대한 AI 해설은 위 오른쪽 &ldquo;AI 리포트&rdquo;에서 봅니다.
-      </p>
       {hc.problems.length === 0 ? (
         <p className="ok">주의·위험 항목이 없습니다.</p>
       ) : (
