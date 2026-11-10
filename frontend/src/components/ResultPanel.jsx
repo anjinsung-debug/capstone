@@ -7,7 +7,7 @@
 //     + 요소별 결과(모든 설비·선로 값), 기록(시점별)
 // AI 리포트(ai_report/models.py의 Report: diagnosis, causes, solutions)는 AiReportView에만 보여 준다 (결과 탭에는 없음, 팀 피드백).
 // 형식이 바뀌면 AiReportView를 고친다. 원인 분석 탭 그래프는 ProfileChart.jsx가 그린다 (전압 프로파일 + 선로 조류)
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import NodeIcon from './NodeIcon.jsx'
 import HistoryChart from './HistoryChart.jsx'
 import ProfileCharts from './ProfileChart.jsx'
@@ -511,11 +511,6 @@ export function ResultView({
 // 읽기 쉽게 (팀 피드백 10/26): 맨 위 판정 요약(오른쪽에 만들기 버튼) → ①②③ 카드. 진단은 문장마다 줄을 나누고,
 // 원인·솔루션은 번호 붙은 항목으로, 단위가 붙은 숫자(0.93 pu, 120% 등)는 굵게 강조한다.
 // 수치·표는 창 오른쪽 위 "결과 자세히"(ResultView)에서 본다
-const AUDIENCES = [
-  ['expert', '전문가용 설명'],
-  ['plain', '쉬운 설명'],
-] // 해설 대상 (ai_report/report.py의 AUDIENCES)
-
 // 단위가 붙은 숫자를 굵게: "최저 전압 0.93 pu" → 최저 전압 <b>0.93 pu</b>
 const NUM_UNIT = /(\d+(?:[.,]\d+)?\s?(?:pu|%|MVAr|MVA|MW|kW|kVA|kV|kA|A|km|개|시)(?![A-Za-z]))/g
 function Emph({ text }) {
@@ -551,15 +546,12 @@ function useElapsed(on) {
   return sec
 }
 
-function ReportSection({ no, title, question, children }) {
+function ReportSection({ no, title, children }) {
   return (
     <section className="rp-card">
       <header className="rp-card-head">
         <span className="rp-no">{no}</span>
-        <div>
-          <h4>{title}</h4>
-          <small>{question}</small>
-        </div>
+        <h4>{title}</h4>
       </header>
       {children}
     </section>
@@ -567,21 +559,13 @@ function ReportSection({ no, title, question, children }) {
 }
 
 export function AiReportView({ graph, result, resultAt, report, reportMessage, reportBusy, onMakeReport }) {
-  const [audience] = useState('plain') // AI 리포트는 쉬운 설명만 (10/26 결정, 설명 방식 선택 버튼 숨김)
-  const [madeFor, setMadeFor] = useState(null) // 지금 보이는 리포트를 어떤 설명 방식으로 만들었는지
-  const asked = useRef(null) // 마지막으로 누른 설명 방식 (리포트가 도착하면 madeFor로 옮김. 실패하면 그대로 둠)
+  const audience = 'plain' // AI 리포트는 쉬운 설명만 (10/26 결정, 설명 방식 선택 버튼 숨김)
   const [copied, setCopied] = useState(false)
   const elapsed = useElapsed(reportBusy)
-  useEffect(() => {
-    setMadeFor(report ? asked.current : null)
-  }, [report])
   if (!result) return <p className="muted">결과가 없습니다. 계통이 완성되면 자동으로 계산됩니다.</p>
   const hc = healthCheck(graph, result)
   const failed = !reportBusy && reportMessage.startsWith('AI 리포트 실패')
-  const make = () => {
-    asked.current = audience
-    onMakeReport(audience)
-  }
+  const make = () => onMakeReport(audience)
   const copy = () => {
     const text = [
       `[${graph.substation.name} AI 리포트]`,
@@ -658,8 +642,7 @@ export function AiReportView({ graph, result, resultAt, report, reportMessage, r
 
       {report && (
         <div className={`rp-body ${reportBusy ? 'stale' : ''}`}>
-          {madeFor && <p className="muted small rp-meta">{AUDIENCES.find(([v]) => v === madeFor)?.[1]}으로 만든 해설</p>}
-          <ReportSection no="1" title="건강도 진단" question="어디가 문제인가?">
+          <ReportSection no="1" title="건강도 진단">
             <div className="rp-diag">
               {sentences(report.diagnosis).map((t, i) => (
                 <p key={i}>
@@ -668,7 +651,7 @@ export function AiReportView({ graph, result, resultAt, report, reportMessage, r
               ))}
             </div>
           </ReportSection>
-          <ReportSection no="2" title="원인 분석" question="왜 발생했는가?">
+          <ReportSection no="2" title="원인 분석">
             <ol className="rp-list">
               {report.causes.map((c, i) => (
                 <li key={i}>
@@ -677,7 +660,7 @@ export function AiReportView({ graph, result, resultAt, report, reportMessage, r
               ))}
             </ol>
           </ReportSection>
-          <ReportSection no="3" title="솔루션 제안" question="어떻게 해결할까?">
+          <ReportSection no="3" title="솔루션 제안">
             <ol className="rp-list solution">
               {report.solutions.map((c, i) => (
                 <li key={i}>

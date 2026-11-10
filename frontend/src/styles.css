@@ -1316,9 +1316,6 @@ body.popup {
 .rp-body.stale {
   opacity: 0.45;
 }
-.rp-meta {
-  margin: 0;
-}
 .rp-card {
   padding: 14px 18px 16px;
   border: 1px solid var(--line);
@@ -1339,10 +1336,6 @@ body.popup {
   margin: 0;
   font-size: 17px;
   line-height: 1.3;
-}
-.rp-card-head small {
-  color: var(--muted);
-  font-size: 13px;
 }
 .rp-no {
   display: grid;
