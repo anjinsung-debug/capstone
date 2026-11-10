@@ -18,6 +18,7 @@ import {
   listSubstations,
   runDaily,
   runHostingCapacity,
+  runLoadCapacity,
   runSimulation,
   exportCim,
   saveSubstation,
@@ -82,7 +83,8 @@ export default function App() {
   const [simMode, setSimMode] = useState('now')
   const [pickAt, setPickAt] = useState(null) // 'pick'일 때 보는 시각 { date, hour }
   // 연계 가능 최대치 (simulation/der.py의 hosting_capacity): 접속점 속성 칸에서 부른다
-  // { busId, targetKw, at, status: 'busy' | 'done' | 'error', data, error }. 선로로 이동했다 돌아와도 남도록 여기 둔다
+  // { kind: 'pv' | 'load', busId, targetKw, at, status: 'busy' | 'done' | 'error', data, error }. 선로로 이동했다 돌아와도 남도록 여기 둔다
+  // kind 'load' = 부하 증설 검토 (11/10, ai_report/capacity.py의 load_check)
   const [hosting, setHosting] = useState(null)
   const [resultAt, setResultAt] = useState(null) // 지금 결과를 계산한 시각 { date, hour }
   const [busy, setBusy] = useState('') // 진행 중인 계산 이름 (단선도 위 요약 줄에 표시)
@@ -248,29 +250,35 @@ export default function App() {
   }
 
   // 연계 가능 최대치 (접속점 속성 칸의 버튼): 지금 화면과 같은 시각 기준
-  async function checkHosting(busId, targetKw) {
+  async function checkHosting(busId, targetKw, kind = 'pv') {
     const g = graphRef.current
     if (!g) return
     const at = resultAtRef.current
-    setHosting({ busId, targetKw, at, status: 'busy' })
+    const same = (h) => h?.busId === busId && h.kind === kind
+    setHosting({ kind, busId, targetKw, at, status: 'busy' })
     try {
-      const data = await runHostingCapacity(g.substation.id, busId, targetKw, at)
+      const data = await (kind === 'load' ? runLoadCapacity : runHostingCapacity)(g.substation.id, busId, targetKw, at)
       // key: 계산한 계통 (계통을 고치면 결과가 옛것이 되어 다시 계산하라고 표시)
-      setHosting((h) => (h?.busId === busId ? { busId, targetKw, at, status: 'done', data, key: electricalKey(g) } : h))
+      setHosting((h) => (same(h) ? { kind, busId, targetKw, at, status: 'done', data, key: electricalKey(g) } : h))
     } catch (e) {
-      setHosting((h) => (h?.busId === busId ? { busId, targetKw, at, status: 'error', error: describe(e) } : h))
+      setHosting((h) => (same(h) ? { kind, busId, targetKw, at, status: 'error', error: describe(e) } : h))
     }
   }
 
   // 연계 검토한 접속점에 태양광을 실제로 붙여 본다 (편집과 같음: 자동 저장 → 재계산 → 기록 탭에서 전후 비교, Ctrl+Z로 되돌리기)
-  function addPvAt(busId, kw) {
+  // 부하도 같다 (kind 'load', 역률 0.95 가정으로 무효전력을 같이 넣음: ai_report/capacity.py의 LOAD_PF)
+  function addPvAt(busId, kw, kind = 'pv') {
     const g = graphRef.current
     const bus = g?.nodes.find((n) => n.id === busId)
     if (!bus) return
-    const { graph: g2, node } = addNode(g, 'pv', bus.x + 70, bus.y + 70)
-    onChange(updateNode(g2, node.id, { p_kw: kw, bus_id: busId, name: `연계 검토 태양광 ${kw} kW` }), `태양광 ${kw} kW 연계 검토`)
-    setHosting((h) => (h?.busId === busId ? { ...h, added: node.id } : h)) // 같은 결과로 또 붙이지 않게 (여러 번 누르면 태양광이 쌓이던 문제)
-    info(`${bus.name}에 태양광 ${kw} kW를 붙였습니다. 시간대별 시뮬레이션 탭에서 붙이기 전후를 비교할 수 있고, 되돌리려면 Ctrl+Z`)
+    const load = kind === 'load'
+    const what = load ? '부하' : '태양광'
+    const { graph: g2, node } = addNode(g, kind, bus.x + 70, bus.y + 70)
+    const patch = { p_kw: kw, bus_id: busId, name: load ? `증설 검토 부하 ${kw} kW` : `연계 검토 태양광 ${kw} kW` }
+    if (load) patch.q_kvar = Math.round(kw * Math.tan(Math.acos(0.95)))
+    onChange(updateNode(g2, node.id, patch), `${what} ${kw} kW ${load ? '증설' : '연계'} 검토`)
+    setHosting((h) => (h?.busId === busId && h.kind === kind ? { ...h, added: node.id } : h)) // 같은 결과로 또 붙이지 않게 (여러 번 누르면 쌓이던 문제)
+    info(`${bus.name}에 ${what} ${kw} kW를 붙였습니다. 시간대별 시뮬레이션 탭에서 붙이기 전후를 비교할 수 있고, 되돌리려면 Ctrl+Z`)
   }
 
   // 기록 탭에서 고른 시각으로 단선도 보기 (유스케이스 2: 하루 중 위험한 시각의 단선도)

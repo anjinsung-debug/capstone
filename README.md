@@ -40,7 +40,7 @@ capstone/
 ├── ai_report/
 │   ├── models.py            리포트 형식 (진단, 원인, 솔루션)
 │   ├── report.py            Claude(또는 Gemini)로 리포트 생성 (자체 점검: python -m ai_report.report)
-│   └── capacity.py          접속점별 신재생·부하 추가 가능량 (이분 탐색)
+│   └── capacity.py          접속점별 신재생·부하 여유 용량, 접속점 하나의 부하 증설 검토 (이분 탐색, 자체 점검: python -m ai_report.capacity)
 ├── frontend/
 │   ├── src/
 │   │   ├── App.jsx          화면 흐름: 변전소 선택 → 단선도 → 자동 저장·시뮬레이션 → 결과·리포트
@@ -86,6 +86,7 @@ frontend ──HTTP──▶ backend ────────┤ cim/graph.py (�
    - 연계 가능 최대치 `POST /api/substations/{id}/simulations/hosting-capacity?bus_id=&target_kw=`: 접속점에 태양광을 몇 kW까지 더 붙일 수 있는지 이분 탐색(10 kW 단위, 최대 20 MW)으로 찾고, 막는 원인(과전압 1.05 pu, 선로 과부하 100%, 차단기 차단 불가)과 목표 용량을 붙일 때 늘려야 할 선로 허용전류를 돌려줌. 역조류 자체는 회의 기준대로 막는 원인으로 보지 않음
    - 둘 다 `date`·`hour`를 주면 그 시각 배율로 계산 (없으면 최대 조건)
    - 화면: 접속점 속성 칸 "태양광 연계 검토" (전후 비교 화면은 11/9 팀 피드백으로 뺐고 API만 남김)
+   - 부하 증설 검토 `POST /api/substations/{id}/simulations/load-capacity?bus_id=&target_kw=`: 위와 같은 방식으로 접속점에 부하를 몇 kW까지 더 늘릴 수 있는지 (저전압 0.95 pu, 선로 과부하 100%, 차단기 차단 불가, 추가 부하 역률 0.95 가정). 화면은 같은 속성 칸에서 "태양광 | 부하"로 바꿔 봄 (11/10)
 6. **AI 리포트**: 버튼을 누르면 시뮬레이션 결과를 AI(Claude, 선택 시 Gemini)에 넘겨 진단·원인·솔루션 리포트 생성
 7. **추가 가능량·AI 추천·권고** (유스케이스 시나리오, 모의 백엔드에는 없음):
    - 추가 가능량 `POST /api/reports/capacity/{id}`: 접속점마다 신재생·부하를 몇 kW까지 더 붙일 수 있는지와 막는 요인 (부하는 전압 0.95 pu 이상, 역률 0.95 가정). `POST /api/reports/capacity-ai/{id}`로 AI 설명. 화면은 AI 리포트 창의 "여유 용량" 탭 (11/9에 결과 자세히에서 옮김, 11/10에 "추가 가능량"에서 이름 바꿈)

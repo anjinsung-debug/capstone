@@ -5,6 +5,7 @@ import datetime as dt
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
+from ai_report.capacity import LoadCapacity, load_check
 from cim import graph
 from simulation.daily import DailyRequest, DailyResult, graph_at, simulate_daily
 from simulation.der import DerComparison, HostingCapacity, compare_der, hosting_capacity
@@ -61,6 +62,17 @@ def run_hosting_capacity(substation_id: str, bus_id: str, target_kw: float | Non
     추가하는 태양광 kW는 그 시각의 출력으로 본다 (배율을 곱하지 않음)"""
     try:
         return hosting_capacity(graph_at(graph.get_substation(substation_id), date, hour), bus_id, target_kw)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+
+
+@router.post("/substations/{substation_id}/simulations/load-capacity")
+def run_load_capacity(substation_id: str, bus_id: str, target_kw: float | None = None,
+                      date: dt.date | None = None, hour: int | None = None) -> LoadCapacity:
+    """접속점 bus_id에 부하를 몇 kW까지 더 늘릴 수 있는지, 무엇 때문에 막히는지 (ai_report/capacity.py, 11/10).
+    hosting-capacity의 부하 버전: 기준은 전압 ≥ 0.95 pu, 선로 부하율 ≤ 100%, 차단기 차단 가능. 추가 부하 역률 0.95 가정"""
+    try:
+        return load_check(graph_at(graph.get_substation(substation_id), date, hour), bus_id, target_kw)
     except ValueError as e:
         raise HTTPException(422, str(e)) from e
 

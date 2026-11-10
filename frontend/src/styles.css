@@ -2071,3 +2071,11 @@ body.popup {
 .uc-acc > :not(summary) {
   margin: 0 14px 12px;
 }
+
+/* 속성 칸 검토 제목 + 태양광/부하 전환 (11/10) */
+.hosting-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}

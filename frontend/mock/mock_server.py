@@ -11,6 +11,7 @@ ponytail: 아래 계산·리포트는 화면 확인용 근사다. 진짜 백엔�
   전원 1개 필수(아니면 422)이고 이미 있는 변전소는 이름만 바뀐다 — cim/graph.py의 save_substation
 - 하루(24시간) 시뮬레이션: 배율 규칙은 진짜와 같은 simulation/daily.py를 쓰고, 시간마다 계산만 근사로 한다
 - 태양광 연결 전후 비교·연계 가능 최대치: 진짜와 같은 simulation/der.py를 쓰고 계산만 근사로 한다
+- 부하 증설 검토(load-capacity): 진짜와 같은 ai_report/capacity.py를 쓰고 계산만 근사로 한다
 - 고장전류: 3상 단락·1선 지락·2선 지락을 대칭좌표법으로 근사 계산 (전원 영상분 = 정상분, 선로 영상분 없으면 정상분 × 3, 진짜와 같은 가정)
 - 역조류 정상 판정(reverse_flow_ok)·출구 차단기 차단 가능(breaker_interruptible)도 진짜와 같은 규칙 (차단기는 3상 단락·1선 지락·2선 지락 중 큰 값)
 
@@ -189,6 +190,7 @@ except ImportError:
     sys.modules["simulation.simulate"] = _fake
     import simulation.der as der  # noqa: E402
 der.simulate = simulate
+from ai_report.capacity import load_check  # noqa: E402  부하 증설 검토도 진짜와 같은 코드, 계산만 근사 (der.simulate를 씀)
 
 
 def mock_report(g: SubstationGraph, r: SimulationResult) -> dict:
@@ -308,6 +310,16 @@ class Handler(SimpleHTTPRequestHandler):
                 target = q.get("target_kw", [None])[0]
                 return self._send(200, der.hosting_capacity(self._at(g), q.get("bus_id", [""])[0],
                                                              float(target) if target else None).model_dump())
+            if m == "POST" and len(p) == 4 and p[0] == "substations" and p[2:] == ["simulations", "load-capacity"]:
+                g = self._graph(p[1])
+                if not g:
+                    return self._send(404, {"detail": "변전소가 없습니다"})
+                q = parse_qs(urlsplit(self.path).query)
+                target = q.get("target_kw", [None])[0]
+                try:
+                    return self._send(200, load_check(self._at(g), q.get("bus_id", [""])[0], float(target) if target else None).model_dump())
+                except ValueError as e:
+                    return self._send(422, {"detail": str(e)})
             if m == "POST" and len(p) == 3 and p[0] == "substations" and p[2] == "simulations":
                 g = self._graph(p[1])
                 if not g:

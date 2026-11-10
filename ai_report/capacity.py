@@ -98,6 +98,31 @@ def load_capacity(graph: SubstationGraph, bus_id: str) -> tuple[float, list[Limi
     return ok * SEARCH_STEP_KW, check(bad * SEARCH_STEP_KW)
 
 
+class LoadCapacity(BaseModel):
+    """접속점 하나의 부하 증설 검토 (속성 칸 "부하 증설 검토", 태양광의 der.HostingCapacity와 같은 모양)"""
+
+    bus_id: str
+    max_kw: float  # 이 접속점에 더 늘릴 수 있는 부하 (kW). MAX_SEARCH_KW면 상한까지 괜찮음
+    limited_by: list[Limit]  # max_kw를 넘기면 처음 생기는 위반
+    target_kw: float | None = None
+    target_violations: list[Limit] = []  # target_kw만큼 늘렸을 때의 위반 (선로 보강 필요량 포함)
+
+
+def load_check(graph: SubstationGraph, bus_id: str, target_kw: float | None = None) -> LoadCapacity:
+    """접속점 bus_id 하나에 부하를 몇 kW까지 늘릴 수 있는지 + 목표 kW를 늘렸을 때의 위반 (11/10, 태양광 연계 검토와 같은 기능).
+    없는 접속점이거나 target_kw가 음수면 ValueError (API에서 422)"""
+    if bus_id not in {n.id for n in graph.nodes if n.type == "bus"}:
+        raise ValueError(f"접속점(bus) 노드가 아닙니다: {bus_id}")
+    if target_kw is not None and target_kw < 0:
+        raise ValueError(f"target_kw는 0 이상이어야 합니다: {target_kw}")
+    max_kw, limited = load_capacity(graph, bus_id)
+    target = []
+    if target_kw:
+        g = with_load(graph, bus_id, target_kw)
+        target = load_violations(g, der.simulate(g))
+    return LoadCapacity(bus_id=bus_id, max_kw=max_kw, limited_by=limited, target_kw=target_kw, target_violations=target)
+
+
 def capacity_table(graph: SubstationGraph) -> CapacityTable:
     """접속점마다 신재생·부하 추가 가능량. 변전소 모선(전원이 바로 붙은 접속점)은 빼고 배전선로 쪽 접속점만"""
     source_buses = {n.bus_id for n in graph.nodes if n.type == "source"}
@@ -109,3 +134,23 @@ def capacity_table(graph: SubstationGraph) -> CapacityTable:
                                 pv_limited_by=[Limit.model_validate(v.model_dump()) for v in h.limited_by],
                                 load_max_kw=load_kw, load_limited_by=load_lim))
     return CapacityTable(substation_id=graph.substation.id, rows=rows)
+
+
+if __name__ == "__main__":
+    # 자체 점검: python -m ai_report.capacity (data/의 한전 CIM XML로 실행, Neo4j 불필요)
+    from pathlib import Path
+
+    from cim.load import read_raw, to_substation_graphs
+
+    g = to_substation_graphs(read_raw(Path(__file__).parent.parent / "data/korean_distribution_cim.xml"))[0]
+    end = next(n.id for n in g.nodes if n.type == "bus" and "말단" in n.name)
+    c = load_check(g, end, target_kw=MAX_SEARCH_KW)
+    assert 0 < c.max_kw < MAX_SEARCH_KW and c.limited_by  # 말단은 상한 전에 막힌다
+    assert c.target_violations  # 상한만큼 늘리면 위반이 있다
+    assert not load_check(g, end, target_kw=c.max_kw).target_violations  # 최대치만큼은 괜찮다
+    try:
+        load_check(g, "없는-id")
+        raise AssertionError("없는 접속점은 ValueError여야 합니다")
+    except ValueError:
+        pass
+    print(f"ok: 말단 부하 증설 최대 {c.max_kw:,.0f} kW, 막는 것 {[x.kind for x in c.limited_by]}")

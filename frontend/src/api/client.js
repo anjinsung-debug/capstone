@@ -73,6 +73,12 @@ export const runHostingCapacity = (substationId, busId, targetKw, at) => {
   const q = [`bus_id=${encodeURIComponent(busId)}`, targetKw != null ? `target_kw=${targetKw}` : '', atQuery(at)].filter(Boolean).join('&')
   return request('POST', `/substations/${substationId}/simulations/hosting-capacity?${q}`)
 }
+// 부하 증설 검토 (11/10): 위와 같은 모양으로 부하를 몇 kW까지 더 늘릴 수 있는지 (ai_report/capacity.py의 load_check)
+// Violation kind에 'undervoltage'가 더 있다 (부하는 전압을 내린다)
+export const runLoadCapacity = (substationId, busId, targetKw, at) => {
+  const q = [`bus_id=${encodeURIComponent(busId)}`, targetKw != null ? `target_kw=${targetKw}` : '', atQuery(at)].filter(Boolean).join('&')
+  return request('POST', `/substations/${substationId}/simulations/load-capacity?${q}`)
+}
 
 // 시뮬레이션 결과 그래프: runSimulation 결과를 그대로 넘기면 <img src>에 쓸 수 있는 PNG 주소를 돌려준다
 export async function createPlot(simulationResult) {

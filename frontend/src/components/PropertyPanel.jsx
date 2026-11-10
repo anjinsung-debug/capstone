@@ -80,12 +80,17 @@ function Stat({ label, value, color }) {
 // ── 태양광 연계 검토 (접속점만): "이 접속점에 태양광을 몇 kW까지 더 붙일 수 있나, 무엇 때문에 막히나, 목표만큼 붙이려면 무엇을 늘려야 하나" ──
 // 백엔드 simulation/der.py의 hosting_capacity (유스케이스 1, 10/26 중간 발표 요청). 기준: 접속점 전압 ≤ 1.05 pu, 선로 부하율 ≤ 100%, 출구 차단기 차단 가능
 // 결과는 App.jsx의 hosting 상태에 있어서, 막는 선로로 이동했다가 이 접속점으로 돌아와도 남아 있다
-const VIOLATION_TEXT = { overvoltage: '전압 상승', overload: '선로 과부하', breaker: '차단기 차단 불가' }
+const VIOLATION_TEXT = { overvoltage: '전압 상승', undervoltage: '전압 저하', overload: '선로 과부하', breaker: '차단기 차단 불가' }
+// 태양광 연계 / 부하 증설 (11/10): 같은 화면, 글만 다르다. 부하는 ai_report/capacity.py의 load_check (전압 ≥ 0.95 pu, 역률 0.95 가정)
+const KIND = {
+  pv: { title: '태양광 연계 검토', what: '태양광', obj: '태양광을', verb: '붙일', criteria: '전압 ≤ 1.05 pu', calc: '연계 가능량 계산', okText: '그대로 연계 가능' },
+  load: { title: '부하 증설 검토', what: '부하', obj: '부하를', verb: '늘릴', criteria: '전압 ≥ 0.95 pu', calc: '증설 가능량 계산', okText: '그대로 증설 가능' },
+}
 
 function violationLine(v, names) {
   const what = names[v.element_id] ?? v.element_id
   const val =
-    v.kind === 'overvoltage'
+    v.kind === 'overvoltage' || v.kind === 'undervoltage'
       ? `${v.value.toFixed(3)} pu (기준 ${v.limit})`
       : v.kind === 'overload'
         ? `${v.value.toFixed(0)}% (기준 ${v.limit}%)`
@@ -95,7 +100,9 @@ function violationLine(v, names) {
 
 function HostingSection({ graph, node, hosting, resultAt, onCheckHosting, onAddPv, onFocus }) {
   const [target, setTarget] = useState('')
-  const mine = hosting?.busId === node.id ? hosting : null
+  const [kind, setKind] = useState(hosting?.busId === node.id && hosting.kind ? hosting.kind : 'pv')
+  const k = KIND[kind]
+  const mine = hosting?.busId === node.id && (hosting.kind ?? 'pv') === kind ? hosting : null
   const names = Object.fromEntries([...graph.nodes, ...graph.lines, ...graph.feeders].map((x) => [x.id, x.name]))
   const targetKw = target.trim() === '' || Number.isNaN(Number(target)) ? null : Math.max(0, Number(target))
   const basis = (at) => (at ? `${at.date} ${at.hour}시 기준` : '최대 조건 기준')
@@ -107,9 +114,19 @@ function HostingSection({ graph, node, hosting, resultAt, onCheckHosting, onAddP
   const added = mine?.added && graph.nodes.some((n) => n.id === mine.added)
   return (
     <div className="hosting">
-      <h4>태양광 연계 검토</h4>
+      <div className="hosting-head">
+        <h4>{k.title}</h4>
+        <div className="seg">
+          {Object.entries(KIND).map(([key, x]) => (
+            <button key={key} type="button" className={kind === key ? 'on' : ''} onClick={() => setKind(key)}>
+              {x.what}
+            </button>
+          ))}
+        </div>
+      </div>
       <p className="muted small">
-        이 접속점에 태양광을 더 붙일 때 몇 kW까지 되는지 찾습니다 (전압 ≤ 1.05 pu, 선로 부하율 ≤ 100%, 출구 차단기 차단 가능). 지금 화면과 같은 시각({basis(resultAt)})으로 계산합니다.
+        이 접속점에 {k.obj} 더 {k.verb} 때 몇 kW까지 되는지 찾습니다 ({k.criteria}, 선로 부하율 ≤ 100%, 출구 차단기 차단 가능
+        {kind === 'load' && ', 역률 0.95 가정'}). 지금 화면과 같은 시각({basis(resultAt)})으로 계산합니다.
       </p>
       <div className="hosting-row">
         <label className="field">
@@ -119,22 +136,22 @@ function HostingSection({ graph, node, hosting, resultAt, onCheckHosting, onAddP
             <i>kW</i>
           </div>
         </label>
-        <button type="button" className="primary-outline" disabled={mine?.status === 'busy'} onClick={() => onCheckHosting(node.id, targetKw)}>
-          {mine?.status === 'busy' ? '계산 중...' : '연계 가능량 계산'}
+        <button type="button" className="primary-outline" disabled={mine?.status === 'busy'} onClick={() => onCheckHosting(node.id, targetKw, kind)}>
+          {mine?.status === 'busy' ? '계산 중...' : k.calc}
         </button>
       </div>
       {mine?.status === 'error' && <p className="warn small">계산하지 못했습니다: {mine.error}</p>}
       {d && (
         <>
-          {stale && <p className="warn small">계산한 뒤 계통이나 화면 시각이 바뀌었습니다. 아래는 예전 결과이니 &ldquo;연계 가능량 계산&rdquo;을 다시 눌러 주세요.</p>}
+          {stale && <p className="warn small">계산한 뒤 계통이나 화면 시각이 바뀌었습니다. 아래는 예전 결과이니 &ldquo;{k.calc}&rdquo;을 다시 눌러 주세요.</p>}
           <div className="hosting-max">
-            <span className="muted small">더 붙일 수 있는 최대 · {basis(mine.at)}</span>
+            <span className="muted small">더 {k.verb} 수 있는 최대 · {basis(mine.at)}</span>
             <b>{d.max_kw >= 20000 && atLimit ? '20,000 kW 이상' : `${d.max_kw.toLocaleString()} kW`}</b>
-            {d.max_kw === 0 && d.limited_by.length > 0 && <span className="warn small">지금 계통이 이미 기준을 넘어서 더 붙일 수 없습니다</span>}
+            {d.max_kw === 0 && d.limited_by.length > 0 && <span className="warn small">지금 계통이 이미 기준을 넘어서 더 {k.verb} 수 없습니다</span>}
           </div>
           {d.limited_by.length > 0 && (
             <>
-              <span className="small">이 이상 붙이면 막히는 곳</span>
+              <span className="small">이 이상 {k.verb === '붙일' ? '붙이면' : '늘리면'} 막히는 곳</span>
               <ul>
                 {d.limited_by.map((v) => {
                   const t = violationLine(v, names)
@@ -154,9 +171,9 @@ function HostingSection({ graph, node, hosting, resultAt, onCheckHosting, onAddP
           )}
           {d.target_kw != null && (
             <>
-              <span className="small">목표 {d.target_kw.toLocaleString()} kW를 붙이면</span>
+              <span className="small">목표 {d.target_kw.toLocaleString()} kW를 {k.verb === '붙일' ? '붙이면' : '늘리면'}</span>
               {d.target_violations.length === 0 ? (
-                <span className="ok-line">기준 안에 있음 · 그대로 연계 가능</span>
+                <span className="ok-line">기준 안에 있음 · {k.okText}</span>
               ) : (
                 <ul>
                   {d.target_violations.map((v) => {
@@ -178,17 +195,17 @@ function HostingSection({ graph, node, hosting, resultAt, onCheckHosting, onAddP
               {added ? (
                 <span className="ok-line">붙였습니다 · 시간대별 시뮬레이션 탭에서 전후 비교, 되돌리려면 편집 모드에서 Ctrl+Z</span>
               ) : (
-                <button type="button" className="mini" disabled={stale} onClick={() => onAddPv(node.id, d.target_kw)} title="실제로 태양광 노드를 붙입니다 (자동 저장, 편집 모드에서 Ctrl+Z로 되돌리기)">
+                <button type="button" className="mini" disabled={stale} onClick={() => onAddPv(node.id, d.target_kw, kind)} title={`실제로 ${k.what} 노드를 붙입니다 (자동 저장, 편집 모드에서 Ctrl+Z로 되돌리기)`}>
                   이 접속점에 {d.target_kw.toLocaleString()} kW 붙여 보기
                 </button>
               )}
               <span className="muted small">
-                붙인 태양광의 kW는 설비용량이라 &ldquo;지금 시각&rdquo; 화면에서는 그 시각 배율만큼만 나옵니다. 위 검토 값과 똑같이 보려면 &ldquo;최대 조건&rdquo;으로 바꿔 보세요.
+                붙인 {k.what}의 kW는 {kind === 'pv' ? '설비용량' : '최대 부하'}라 &ldquo;지금 시각&rdquo; 화면에서는 그 시각 배율만큼만 나옵니다. 위 검토 값과 똑같이 보려면 &ldquo;최대 조건&rdquo;으로 바꿔 보세요.
               </span>
             </>
           )}
           {/* 구현 참고 (최민준 추가, 고영민 확인 필요): 유스케이스 1 ⑤ AI 추천 (components/UsecasePanels.jsx) */}
-          <HostingAi graph={graph} hosting={mine} stale={stale} />
+          {kind === 'pv' && <HostingAi graph={graph} hosting={mine} stale={stale} />}
           <span className="muted small">선로 허용전류는 데이터가 없으면 400 A 가정값이라 최대치가 이 값에 크게 좌우됩니다.</span>
         </>
       )}
