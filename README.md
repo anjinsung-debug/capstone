@@ -91,7 +91,7 @@ frontend ──HTTP──▶ backend ────────┤ cim/graph.py (�
    - 추가 가능량 `POST /api/reports/capacity/{id}`: 접속점마다 신재생·부하를 몇 kW까지 더 붙일 수 있는지와 막는 요인 (부하는 전압 0.95 pu 이상, 역률 0.95 가정). `POST /api/reports/capacity-ai/{id}`로 AI 설명. 화면은 AI 리포트 창의 "추가 가능량" 탭 (11/9에 결과 자세히에서 옮김)
    - 연계 추천 `POST /api/reports/hosting`: 연계 가능 최대치 결과로 연계 여부·막는 원인·선로 보강 추천 (속성 칸 "태양광 연계 검토" 아래)
    - 24시간 운영 권고 `POST /api/reports/daily/{id}`: 고른 날의 시간대별 위험과 대비 조치 (기록 탭)
-   - 설비 보강 우선순위 `POST /api/reports/reinforcement/{id}`: 1~4개 날짜의 24시간 결과로 선로 순위를 매기고 증강 순서 권고 (기록 탭)
+   - 설비 보강 우선순위 `POST /api/reports/reinforcement/{id}`: 1~4개 날짜의 24시간 결과로 선로 순위를 매기고 증강 순서 권고 (AI 리포트 창 "보강 우선순위" 탭)
 8. **CIM 내보내기**: 편집 메뉴 "CIM으로 내보내기" → `GET /api/substations/{id}/cim`이 마지막으로 저장된 계통을 한전 원본과 같은 CIM16 RDF/XML 파일로 돌려줌 (`cim/export.py`, `cim/mapping.py`를 거꾸로 적용). 다시 `python -m cim.load --file`로 적재할 수 있음. 좌표·피더 이름·변전소 단락용량 등 CIM에 넣지 않는 값은 파일 맨 위 주석에 적음
 
 24시간 분석의 날짜·데이터 기준:

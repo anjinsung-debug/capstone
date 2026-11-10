@@ -29,7 +29,7 @@ import PopupWindow, { openPopup } from './components/PopupWindow.jsx'
 import PropertyPanel from './components/PropertyPanel.jsx'
 import SubstationOverview from './components/SubstationOverview.jsx'
 import { AiReportView, Legend, ResultView, SummaryStrip } from './components/ResultPanel.jsx'
-import { CapacityPanel } from './components/UsecasePanels.jsx'
+import { CapacityPanel, ReinforceBox } from './components/UsecasePanels.jsx'
 // 3D 보기는 three.js가 커서 버튼을 처음 누를 때 불러온다
 const Diagram3D = lazy(() => import('./components/Diagram3D.jsx'))
 import { NewSubstationDialog, RenameDialog } from './components/SubstationDialog.jsx'
@@ -100,7 +100,7 @@ export default function App() {
   const [resultOpen, setResultOpen] = useState(null)
   const [resultTab, setResultTab] = useState('health')
   const [view3d, setView3d] = useState(false) // 단선도 자리에 3D 보기 (발표용, 편집은 2D)
-  const [aiTab, setAiTab] = useState('report') // AI 리포트 창 안의 탭: 'report' = AI 리포트 | 'capacity' = 추가 가능량 (11/9 팀 피드백: 같은 위치에)
+  const [aiTab, setAiTab] = useState('report') // AI 리포트 창 안의 탭: 'report' = AI 리포트 | 'capacity' = 추가 가능량 (11/9 팀 피드백: 같은 위치에) | 'reinforce' = 설비 보강 우선순위 (11/10 결과 자세히에서 옮김)
   const [popup, setPopup] = useState(null) // 브라우저 새 창 결과 { win, container }
   const [dialog, setDialog] = useState(null) // 'new' | 'rename' | null
   const [overview, setOverview] = useState(false) // 변전소를 고른 뒤에도 변전소 전체 단선도를 열어 볼 때 true
@@ -802,9 +802,15 @@ export default function App() {
               <button type="button" className={aiTab === 'capacity' ? 'on' : ''} onClick={() => setAiTab('capacity')}>
                 추가 가능량
               </button>
+              <button type="button" className={aiTab === 'reinforce' ? 'on' : ''} onClick={() => setAiTab('reinforce')}>
+                보강 우선순위
+              </button>
             </nav>
             {aiTab === 'report' ? (
               <AiReportView graph={graph} result={result} resultAt={resultAt} report={report} reportMessage={reportMessage} reportBusy={reportBusy} onMakeReport={makeReport} />
+            ) : aiTab === 'reinforce' ? (
+              // 설비 보강 우선순위: 날짜 입력·순위·AI 정리가 이 칸 안에서 끝나서 AI 창으로 옮김 (11/10). 하루 운영 권고는 그래프와 같이 봐야 해서 결과 자세히에 남김
+              <div className="ai-capacity">{graph && <ReinforceBox graph={graph} onFocus={focusElement} />}</div>
             ) : (
               // 구현 참고 (최민준): 신재생·부하 추가 가능량 + AI 설명 (components/UsecasePanels.jsx). 11/9에 결과 자세히 탭에서 이 창으로 옮김
               <div className="ai-capacity">
