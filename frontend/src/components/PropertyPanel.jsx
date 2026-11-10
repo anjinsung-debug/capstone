@@ -83,8 +83,8 @@ function Stat({ label, value, color }) {
 const VIOLATION_TEXT = { overvoltage: '전압 상승', undervoltage: '전압 저하', overload: '선로 과부하', breaker: '차단기 차단 불가' }
 // 태양광 연계 / 부하 증설 (11/10): 같은 화면, 글만 다르다. 부하는 ai_report/capacity.py의 load_check (전압 ≥ 0.95 pu, 역률 0.95 가정)
 const KIND = {
-  pv: { title: '태양광 연계 검토', what: '태양광', obj: '태양광을', verb: '붙일', criteria: '전압 ≤ 1.05 pu', calc: '연계 가능량 계산', okText: '그대로 연계 가능' },
-  load: { title: '부하 증설 검토', what: '부하', obj: '부하를', verb: '늘릴', criteria: '전압 ≥ 0.95 pu', calc: '증설 가능량 계산', okText: '그대로 증설 가능' },
+  pv: { title: '태양광 연계 검토', what: '태양광', verb: '붙일', calc: '연계 가능량 계산', okText: '그대로 연계 가능' },
+  load: { title: '부하 증설 검토', what: '부하', verb: '늘릴', calc: '증설 가능량 계산', okText: '그대로 증설 가능' },
 }
 
 function violationLine(v, names) {
@@ -124,10 +124,6 @@ function HostingSection({ graph, node, hosting, resultAt, onCheckHosting, onAddP
           ))}
         </div>
       </div>
-      <p className="muted small">
-        이 접속점에 {k.obj} 더 {k.verb} 때 몇 kW까지 되는지 찾습니다 ({k.criteria}, 선로 부하율 ≤ 100%, 출구 차단기 차단 가능
-        {kind === 'load' && ', 역률 0.95 가정'}). 지금 화면과 같은 시각({basis(resultAt)})으로 계산합니다.
-      </p>
       <div className="hosting-row">
         <label className="field">
           <span>목표 용량 (선택)</span>
