@@ -559,7 +559,8 @@ function ReportSection({ no, title, children }) {
   )
 }
 
-export function AiReportView({ graph, result, resultAt, report, reportMessage, reportBusy, onMakeReport }) {
+// reportStale: 리포트를 만든 뒤 계통이나 계산 시각이 바뀜 (정각 재계산 등). 지우지 않고 표시만 한다 (11/11 점검 3번)
+export function AiReportView({ graph, result, resultAt, report, reportStale, reportMessage, reportBusy, onMakeReport }) {
   const audience = 'plain' // AI 리포트는 쉬운 설명만 (10/26 결정, 설명 방식 선택 버튼 숨김)
   const [copied, setCopied] = useState(false)
   const elapsed = useElapsed(reportBusy)
@@ -641,8 +642,13 @@ export function AiReportView({ graph, result, resultAt, report, reportMessage, r
         </div>
       )}
 
+      {report && reportStale && !reportBusy && (
+        <p className="warn small">
+          아래 해설은 {report.forAt ? `${report.forAt.date} ${report.forAt.hour}시` : '이전'} 결과로 만든 것이라 지금 결과와 다를 수 있습니다. &ldquo;지금 결과로 다시 만들기&rdquo;를 눌러 주세요.
+        </p>
+      )}
       {report && (
-        <div className={`rp-body ${reportBusy ? 'stale' : ''}`}>
+        <div className={`rp-body ${reportBusy || reportStale ? 'stale' : ''}`}>
           <ReportSection no="1" title="건강도 진단">
             <div className="rp-diag">
               {sentences(report.diagnosis).map((t, i) => (
@@ -672,7 +678,7 @@ export function AiReportView({ graph, result, resultAt, report, reportMessage, r
           </ReportSection>
         </div>
       )}
-      <p className="muted small">AI 해설은 참고용입니다. 판정 등급과 수치는 화면이 기준으로 계산한 값이며, 표와 그래프는 오른쪽 위 &ldquo;결과 자세히&rdquo;에서 볼 수 있습니다.</p>
+      <p className="muted small">AI 해설은 참고용입니다. 판정 등급과 수치는 화면이 판정 기준에 따라 계산한 값이며, 표와 그래프는 오른쪽 위 &ldquo;결과 자세히&rdquo;에서 볼 수 있습니다.</p>
     </div>
   )
 }

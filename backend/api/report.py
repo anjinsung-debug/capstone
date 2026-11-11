@@ -114,7 +114,7 @@ def create_reinforcement_report(substation_id: str, body: ReinforcementRequest,
 
 @router.post("/reports/capacity/{substation_id}")
 def run_capacity(substation_id: str, date: dt.date | None = None, hour: int | None = None) -> CapacityTable:
-    """추가 가능량: 접속점마다 신재생·부하를 몇 kW까지 더 붙일 수 있는지, 무엇이 막는지 (ai_report/capacity.py, 진성이 피드백 11/5).
+    """여유 용량: 접속점마다 신재생·부하를 몇 kW까지 더 붙일 수 있는지, 무엇이 막는지 (ai_report/capacity.py, 진성이 피드백 11/5).
     date·hour는 /simulations와 같다 (없으면 최대 조건). 계산만 하고 AI는 부르지 않는다 (접속점 수 × 2번 이분 탐색, 수 초)"""
     return capacity_table(_graph_at(substation_id, date, hour))
 
@@ -122,7 +122,7 @@ def run_capacity(substation_id: str, date: dt.date | None = None, hour: int | No
 @router.post("/reports/capacity-ai/{substation_id}")
 def create_capacity_report(substation_id: str, table: CapacityTable, audience: Literal["expert", "plain"] = "plain",
                            date: dt.date | None = None, hour: int | None = None) -> Report:
-    """추가 가능량 표를 AI가 설명: 계통 전체 요약, 막는 요인, 늘리는 방법 (화면이 받아 둔 표를 그대로 보낸다)"""
+    """여유 용량 표를 AI가 설명: 계통 전체 요약, 막는 요인, 늘리는 방법 (화면이 받아 둔 표를 그대로 보낸다)"""
     if table.substation_id != substation_id:
         raise HTTPException(422, "주소의 변전소 id와 표의 substation_id가 다릅니다")
     return generate_capacity_report(_graph_at(substation_id, date, hour), table, _at_text(date, hour), audience)

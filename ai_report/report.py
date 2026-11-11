@@ -180,9 +180,13 @@ def check_findings(graph: SubstationGraph, result: SimulationResult) -> dict:
     """판정 기준으로 문제 항목과 건강도 등급을 계산한다 (LLM에 넘기는 확정된 사실). 각 항목은 (이름, 수치) 목록."""
     names = {n.id: n.name for n in graph.nodes}
     line_names = {line.id: line.name for line in graph.lines}
-    low = [(names.get(r.node_id, r.node_id), r.voltage_pu) for r in result.nodes if r.energized and r.voltage_pu < VOLTAGE_MIN_PU]
-    high = [(names.get(r.node_id, r.node_id), r.voltage_pu) for r in result.nodes if r.energized and r.voltage_pu > VOLTAGE_MAX_PU]
-    outage = [names.get(r.node_id, r.node_id) for r in result.nodes if not r.energized]
+    # 단자 1개 설비(부하·태양광·풍력·전원)는 자기 접속점과 값이 같으므로 접속점(bus_id 없는 노드)만 센다
+    # (11/11 점검 2번, 화면 overlay.js의 healthCheck와 같은 규칙)
+    buses = {n.id for n in graph.nodes if n.bus_id is None}
+    bus_res = [r for r in result.nodes if r.node_id in buses]
+    low = [(names.get(r.node_id, r.node_id), r.voltage_pu) for r in bus_res if r.energized and r.voltage_pu < VOLTAGE_MIN_PU]
+    high = [(names.get(r.node_id, r.node_id), r.voltage_pu) for r in bus_res if r.energized and r.voltage_pu > VOLTAGE_MAX_PU]
+    outage = [names.get(r.node_id, r.node_id) for r in bus_res if not r.energized]
     overload = [(line_names.get(r.line_id, r.line_id), r.loading_pct) for r in result.lines if r.loading_pct is not None and r.loading_pct > OVERLOAD_PCT]
     watch = [(line_names.get(r.line_id, r.line_id), r.loading_pct) for r in result.lines if r.loading_pct is not None and LOADING_WATCH_PCT <= r.loading_pct <= OVERLOAD_PCT]
     # 역조류 (10/26 회의 기준, 화면 frontend/src/lib/overlay.js의 healthCheck와 같은 규칙): 역조류 자체는 정상.
@@ -195,7 +199,7 @@ def check_findings(graph: SubstationGraph, result: SimulationResult) -> dict:
     # 3상 단락용량(MVA) = √3 × 선간전압(kV) × 단락전류(kA). 정전 지점은 단락전류가 없으니 뺀다
     fault = [
         (names.get(r.node_id, r.node_id), math.sqrt(3) * BASE_KV * r.fault_current_ka)
-        for r in result.nodes
+        for r in bus_res
         if r.energized and r.fault_current_ka is not None and math.sqrt(3) * BASE_KV * r.fault_current_ka > FAULT_HIGH_MVA
     ]
     fault.sort(key=lambda x: -x[1])
@@ -614,9 +618,10 @@ def generate_hosting_report(graph: SubstationGraph, hosting, trial: tuple | None
     return _ask(hosting_system_prompt(audience), build_hosting_prompt(graph, hosting, trial, der, at), graph.substation.id, client)
 
 
-# ── 추가 가능량 (진성이 피드백 11/5): 접속점마다 신재생·부하를 얼마나 더 붙일 수 있는지 → AI 설명 ──
+# ── 여유 용량 (화면 이름. 11/10 '추가 가능량'에서 바꿈, 진성이 피드백 11/5): 접속점마다 신재생·부하를 얼마나 더 붙일 수 있는지 → AI 설명 ──
 # 가능량과 막는 곳은 ai_report/capacity.py(부하)와 simulation/der.py(신재생)가 계산한다. AI는 계통 전체를 요약하고 늘리는 방법을 쓴다
-_CAPACITY_TASK = """[이번 작업: 추가 가능량 설명. 이 지침이 위 지침보다 우선합니다]
+_CAPACITY_TASK = """[이번 작업: 여유 용량 설명. 이 지침이 위 지침보다 우선합니다]
+화면 이름은 "여유 용량"입니다. 글에서도 "여유 용량"이라고 부르고 "추가 가능량"이라는 말은 쓰지 마세요.
 사용자가 지금 계통에서 접속점마다 신재생(태양광)과 부하를 얼마나 더 붙일 수 있는지 코드가 계산한 표를 줍니다. 리포트 형식(진단·원인·솔루션)은 같고 내용은 아래처럼 쓰세요.
 - 진단(계통 전체 요약, 3~5문장): 신재생을 가장 많이/가장 적게 더 붙일 수 있는 접속점과 kW, 부하를 가장 많이/가장 적게 더 늘릴 수 있는 접속점과 kW, 전체적으로 어느 쪽(말단·변전소 가까운 쪽)이 여유가 없는지.
 - 원인: 막는 요인별로 항목 하나. "신재생은 ○○ 선로 과부하(남는 전기가 변전소 쪽으로 거꾸로 몰림)·○○ 접속점 과전압 때문에", "부하는 말단 ○○ 접속점 저전압·○○ 선로 과부하 때문에"처럼 어느 설비가 몇 개 접속점을 막는지 쓰세요.
@@ -636,11 +641,11 @@ def build_capacity_prompt(graph: SubstationGraph, table, at: str = "최대 조�
     def lim(items):
         return "; ".join(_violation_text(graph, v) for v in items) or "없음 (검토 상한까지 기준 안)"
 
-    lines = [f"# 추가 가능량 ({graph.substation.name})", f"- 검토 시각: {at}",
+    lines = [f"# 여유 용량 ({graph.substation.name})", f"- 검토 시각: {at}",
              f"- 신재생 기준: 접속점 전압 {VOLTAGE_MAX_PU} pu 이하, 선로 부하율 {OVERLOAD_PCT:.0f}% 이하, 출구 차단기 차단 가능 (역조류 자체는 문제 아님)",
              f"- 부하 기준: 접속점 전압 {VOLTAGE_MIN_PU} pu 이상, 선로 부하율 {OVERLOAD_PCT:.0f}% 이하, 출구 차단기 차단 가능 (추가 부하 역률 0.95 가정)",
              "- 접속점마다 따로 계산한 값 (여러 곳에 동시에 붙인 합이 아님)", "",
-             "## 접속점별 추가 가능량 (코드가 계산한 사실. 그대로 쓰세요)",
+             "## 접속점별 여유 용량 (코드가 계산한 사실. 그대로 쓰세요)",
              "| 접속점 | 신재생 추가 가능 kW | 신재생을 막는 것 | 부하 추가 가능 kW | 부하를 막는 것 |", "| --- | --- | --- | --- | --- |"]
     for x in table.rows:
         lines.append(f"| {x.name} | {kw(x.pv_max_kw)} | {lim(x.pv_limited_by)} | {kw(x.load_max_kw)} | {lim(x.load_limited_by)} |")
@@ -661,7 +666,7 @@ def build_capacity_prompt(graph: SubstationGraph, table, at: str = "최대 조�
 
 
 def generate_capacity_report(graph: SubstationGraph, table, at: str = "최대 조건", audience: str = "plain", client=None) -> Report:
-    """추가 가능량 표(신재생·부하)를 받아 계통 전체 요약, 막는 요인, 늘리는 방법을 쓴다"""
+    """여유 용량 표(신재생·부하)를 받아 계통 전체 요약, 막는 요인, 늘리는 방법을 쓴다"""
     return _ask(f"{system_prompt(audience)}\n\n{_CAPACITY_TASK}", build_capacity_prompt(graph, table, at), graph.substation.id, client)
 
 

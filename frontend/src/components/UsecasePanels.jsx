@@ -1,5 +1,5 @@
 // AI 추천·권고 화면 (한승우 유스케이스 시나리오, 11/4). 담당: 최민준 (frontend·ai_report)
-// - CapacityPanel: AI 리포트 창 "추가 가능량" 탭. 접속점마다 신재생·부하를 얼마나 더 붙일 수 있는지 + AI 설명(쉬운 설명) (진성이 피드백 11/5, 11/10 정리)
+// - CapacityPanel: AI 리포트 창 "여유 용량" 탭. 접속점마다 신재생·부하를 얼마나 더 붙일 수 있는지 + AI 설명(쉬운 설명) (진성이 피드백 11/5, 11/10 정리)
 // - HostingAi: 유스케이스 1 ⑤ "AI 추천". 영민이형의 태양광 연계 검토(PropertyPanel.jsx의 HostingSection) 결과 아래에 붙는다
 // - DailyAiBox: 유스케이스 2 ⑥ "AI 운영 권고" (고른 날 24시간 결과 → 시간대별 위험과 대비 조치)
 // - ReinforceBox: 유스케이스 3 "설비 보강 우선순위" (여러 날 24시간 결과 → 선로 순위 → AI 정리)
@@ -245,6 +245,9 @@ export function ReinforceBox({ graph, onFocus }) {
   )
 }
 
+// "가장 빡빡한 곳"을 빨간색으로 보일 기준 (11/11 점검 8번: 예전에는 16,630 kW처럼 넉넉해도 늘 빨간색이었음). 팀 가정값
+const TIGHT_KW = 1000
+
 // ── 여유 용량 (화면 이름, 11/10 '추가 가능량'에서 바꿈. 한전 '배전선로 여유용량'과 같은 말) (진성이 피드백 11/5, 10/26 차장님 요청): 지금 계통에서 신재생·부하를 얼마나 더 붙일 수 있나 ──
 // 계산은 ai_report/capacity.py (신재생은 simulation/der.py의 hosting_capacity, 부하는 같은 방식으로 새로 계산)
 const KIND_KO = { overload: '선로 과부하', overvoltage: '과전압', undervoltage: '저전압', breaker: '차단기 차단 불가' }
@@ -359,7 +362,9 @@ export function CapacityPanel({ graph, at, onFocus }) {
                     </div>
                     <div>
                       <small>가장 빡빡한 곳 · {w.name}</small>
-                      <b className="tight">{kwText(w[key], top)} kW</b>
+                      <b className={w[key] < TIGHT_KW ? 'tight' : ''} title={w[key] < TIGHT_KW ? `${TIGHT_KW.toLocaleString()} kW 미만이라 빨간색` : undefined}>
+                        {kwText(w[key], top)} kW
+                      </b>
                     </div>
                   </div>
                 </div>

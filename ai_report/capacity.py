@@ -1,8 +1,8 @@
-"""추가 가능량: 지금 계통에서 접속점마다 신재생(태양광)과 부하를 얼마나 더 붙일 수 있는지 (진성이 피드백 11/5, 10/26 차장님 요청). 담당: 최민준
+"""여유 용량 (11/10 화면 이름 바꿈, 예전 이름 추가 가능량): 지금 계통에서 접속점마다 신재생(태양광)과 부하를 얼마나 더 붙일 수 있는지 (진성이 피드백 11/5, 10/26 차장님 요청). 담당: 최민준
 
-- 신재생 추가 가능량: simulation/der.py의 hosting_capacity를 그대로 쓴다 (안진성)
+- 신재생 여유 용량: simulation/der.py의 hosting_capacity를 그대로 쓴다 (안진성)
     기준: 접속점 전압 ≤ 1.05 pu, 선로 부하율 ≤ 100%, 출구 차단기 차단 가능
-- 부하 추가 가능량: 같은 방식(이분 탐색)으로 이 파일에서 계산한다
+- 부하 여유 용량: 같은 방식(이분 탐색)으로 이 파일에서 계산한다
     기준: 접속점 전압 ≥ 0.95 pu, 선로 부하율 ≤ 100%, 출구 차단기 차단 가능 (부하는 전압을 내리고 선로 전류를 늘린다)
 계산은 simulation/der.py의 simulate()를 여러 번 부른다. 시각(date·hour)은 호출하는 쪽이 graph_at으로 맞춰 넘긴다
 
@@ -124,7 +124,7 @@ def load_check(graph: SubstationGraph, bus_id: str, target_kw: float | None = No
 
 
 def capacity_table(graph: SubstationGraph) -> CapacityTable:
-    """접속점마다 신재생·부하 추가 가능량. 변전소 모선(전원이 바로 붙은 접속점)은 빼고 배전선로 쪽 접속점만"""
+    """접속점마다 신재생·부하 여유 용량. 변전소 모선(전원이 바로 붙은 접속점)은 빼고 배전선로 쪽 접속점만"""
     source_buses = {n.bus_id for n in graph.nodes if n.type == "source"}
     rows = []
     for bus in (n for n in graph.nodes if n.type == "bus" and n.id not in source_buses):

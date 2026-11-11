@@ -1321,6 +1321,10 @@ body.popup {
 .rp-body.stale {
   opacity: 0.45;
 }
+/* 옛 결과 안내 (AI 리포트 창·여유 용량 탭) */
+p.warn {
+  color: var(--warn);
+}
 .rp-card {
   padding: 14px 18px 16px;
   border: 1px solid var(--line);
