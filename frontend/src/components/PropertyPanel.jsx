@@ -9,7 +9,7 @@ import { HostingAi } from './UsecasePanels.jsx'
 const Equipment3D = lazy(() => import('./Diagram3D.jsx').then((m) => ({ default: m.Equipment3D })))
 
 // 숫자 입력: 입력 중에는 글자 그대로 두고, 포커스를 잃거나 Enter일 때 숫자로 반영 (빈칸 = 값 없음)
-// 빈칸(null)은 "데이터 없음"이라 시뮬레이션이 가정값을 쓴다 (단락용량 250 MVA, X/R 10, 허용전류 400 A — simulation/dss.py의 DEFAULT_*)
+// 빈칸(null)은 "데이터 없음"이라 시뮬레이션이 가정값을 쓴다 (단락용량 300 MVA, X/R 10, 허용전류 400 A — simulation/dss.py의 DEFAULT_*)
 // 한 글자 칠 때마다 계통을 바꾸면 되돌리기 기록이 글자 수만큼 쌓이므로 확정 시점에만 반영한다
 // min: 'positive' = 0보다 커야 함, 'nonNegative' = 0 이상 (11/11 점검 4번: 허용전류 0이면 계산이 서버 오류로 멈췄음)
 const MIN_RULES = { positive: [(v) => v > 0, '0보다 커야 합니다'], nonNegative: [(v) => v >= 0, '0 이상이어야 합니다'] }

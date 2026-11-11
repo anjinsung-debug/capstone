@@ -71,7 +71,7 @@
 | 단락 | Short circuit | 서로 다른 전위의 도체가 낮은 임피던스로 연결되는 고장 |
 | 3상 단락 | Three-phase short circuit | 세 상이 단락되는 고장. fault_current_ka |
 | 고장전류 | fault_current_ka | 고장 시 흐르는 전류. 3상 단락 대칭 실효값 (1선 지락은 ground_fault_current_ka) |
-| 단락용량 | Short-circuit level, MVA | 단락전류 수준을 전력 단위로 나타낸 값. 전원 기본 가정 250MVA (판정 기준은 300MVA 초과) |
+| 단락용량 | Short-circuit level, MVA | 단락전류 수준을 전력 단위로 나타낸 값. 전원 기본 가정 300MVA |
 | 차단용량 | Breaking capacity | 차단기가 차단할 수 있는 고장 수준. 정격전류 600A와 다르며 현재 비교 기능 없음 |
 | 지락 | Ground fault | 전력선이 대지와 연결되는 고장. 1선 지락(ground_fault_current_ka)·2선 지락(double_ground_fault_current_ka) 계산 |
 | 3상 평형 | Balanced three-phase | 세 상 크기가 같고 위상이 120°씩 차이 나는 상태 |

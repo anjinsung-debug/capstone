@@ -42,9 +42,7 @@ class SimulationError(ValueError):
 # 그대로 두면 4대 시뮬레이션 중 선로 과부하·단락 고장전류를 계산할 수 없으므로, 값이 없을 때(None)만 아래 가정값을 쓴다.
 # 실제 값을 받으면 cim 쪽 데이터(Substation.short_circuit_mva·x_r_ratio, Line.rated_current_a)에 넣는다. 그 값이 우선이다.
 # 가정값으로 계산한 고장전류·부하율은 실제 설비 기준이 아니므로 결과를 해석할 때 주의한다.
-DEFAULT_SHORT_CIRCUIT_MVA = 250.0  # 변전소 22.9kV 모선 3상 단락용량 (약 6.3kA). 154/22.9kV 주변압기 2차측 수준의 가정값
-# 11/11 점검 1번: 예전 300 MVA는 판정 기준(300 MVA 초과 = 단락용량 증가, overlay.js·report.py의 FAULT_HIGH_MVA)과 같아서
-#   태양광 기여가 조금만 있어도 늘 기준을 넘었다. 가정값을 기준 아래로 둬서 분산전원 때문에 늘어나는 것만 잡히게 한다 (실제 값이 있으면 그 값이 우선)
+DEFAULT_SHORT_CIRCUIT_MVA = 300.0  # 변전소 22.9kV 모선 3상 단락용량 (약 7.6kA). 154/22.9kV 주변압기 2차측 수준의 가정값
 DEFAULT_X_R_RATIO = 10.0  # 전원 임피던스 X/R. 변전소 근처 계통의 일반적인 가정값
 DEFAULT_RATED_CURRENT_A = 400.0  # 선로·개폐기 허용전류. 22.9kV 간선 굵은 전선 수준의 가정값 (선종별 구분 없음)
 # 변전소 출구 차단기 정격 차단전류. 22.9kV(정격 25.8kV) 진공·가스 차단기에 흔히 쓰는 값 (세부 기준은 한전 ES 150, 원문 미확인).

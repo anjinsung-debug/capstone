@@ -165,7 +165,7 @@ if __name__ == "__main__":
     assert all(x.loading_pct is not None for x in r.lines)  # 허용전류 기본값으로 과부하 계산
     theory_ka = DEFAULT_SHORT_CIRCUIT_MVA / (3**0.5 * 22.9)  # 전원만의 3상 단락 전류. 분산전원 기여만큼 조금 더 커야 함
     assert theory_ka < at_source.fault_current_ka < theory_ka * 1.15
-    assert r.feeders[0].breaker_interruptible is True  # 약 6.3kA < 25kA
+    assert r.feeders[0].breaker_interruptible is True  # 약 7.6kA < 25kA
 
     # 1선 지락: 전원은 MVAsc1 = MVAsc3이라 모선에서는 3상 단락과 거의 같고, 선로 영상분(정상분 × 3) 때문에 말단으로 갈수록 더 작음
     assert all(x.r0_ohm_per_km is not None for x in g.lines if x.kind == "line")  # 원본 r0·x0 적재
