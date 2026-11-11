@@ -142,8 +142,10 @@ export function healthCheck(graph, result) {
   const names = Object.fromEntries(graph.nodes.map((n) => [n.id, n.name]))
   const lineName = (l) => l.name || `${names[l.from_node_id]} → ${names[l.to_node_id]}`
   const lineById = Object.fromEntries(graph.lines.map((l) => [l.id, l]))
-  // 단자 1개 설비는 자기 접속점과 값이 같으므로 접속점(결과에 직접 있는 노드)만 본다
-  const busRes = result.nodes.filter((r) => names[r.node_id] !== undefined)
+  // 단자 1개 설비(부하·태양광·풍력·전원)는 자기 접속점과 값이 같으므로 접속점(bus_id 없는 노드)만 본다
+  // (11/11 점검 2번: 예전에는 모든 노드를 세서 접속점 1곳 문제가 붙은 설비 수만큼 "N곳"으로 늘어났음)
+  const isBus = new Set(graph.nodes.filter((n) => !n.bus_id).map((n) => n.id))
+  const busRes = result.nodes.filter((r) => isBus.has(r.node_id))
   const energized = busRes.filter((r) => r.energized)
 
   // 1) 전압: 정상 범위에서 가장 멀리 벗어난 노드

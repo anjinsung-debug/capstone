@@ -112,6 +112,7 @@ export default function App() {
 
   // 마지막 요청의 결과만 표시하기 위한 번호 (변전소 선택·계산마다 증가)
   const runId = useRef(0)
+  const reportRun = useRef(0) // AI 리포트 요청 번호: 변전소를 바꿀 때만 무효로 한다 (다시 계산해도 만들던 리포트는 받음, 11/11 점검 3번)
   const history = useRef([]) // 되돌리기용 이전 계통들
   const editRev = useRef(0) // 편집할 때마다 1씩 증가. 저장하는 동안 또 편집했는지 확인용
   const graphRef = useRef(graph)
@@ -165,6 +166,7 @@ export default function App() {
 
   function resetResult() {
     ++runId.current
+    ++reportRun.current
     simulatedKey.current = null
     setResult(null)
     setSimNote('')
@@ -227,8 +229,8 @@ export default function App() {
     setResultAt(at)
     setResult(res)
     setSimNote('')
-    setReport(null)
-    setReportMessage('')
+    // AI 리포트는 지우지 않는다 (11/11 점검 3번: 정각 재계산·시각 골라 보기 때 만들어 둔 리포트가 사라졌음).
+    // 리포트에 만든 시각·계통을 적어 두고, 지금 결과와 다르면 AI 리포트 창이 "옛 결과" 표시를 한다 (reportStale)
     // 결과 기록(시점별)에는 계통이 다 이어진 상태의 계산만 남긴다. 노드를 놓기만 하고 아직 연결하지 않은 중간 단계,
     // 그리고 지표가 직전 기록과 똑같은 계산은 건너뛴다 (편집할 때마다 점이 쌓여 보기 불편하다는 팀 피드백)
     if (!record) return
@@ -477,14 +479,16 @@ export default function App() {
 
   async function makeReport(audience) {
     if (!result) return
-    const id = runId.current
+    const id = ++reportRun.current
+    const forAt = resultAt
+    const forKey = simulatedKey.current
     setReportBusy(true)
     setReportMessage('AI 리포트 생성 중... (수 초~수십 초)')
     try {
-      const r = await createReport(result, audience, resultAt)
-      if (id === runId.current) setReport(r)
+      const r = await createReport(result, audience, forAt)
+      if (id === reportRun.current) setReport({ ...r, forAt, forKey })
     } catch (e) {
-      if (id === runId.current) setReportMessage(`AI 리포트 실패 (${e.message})`)
+      if (id === reportRun.current) setReportMessage(`AI 리포트 실패 (${e.message})`)
     } finally {
       setReportBusy(false)
     }
@@ -815,7 +819,16 @@ export default function App() {
               </button>
             </nav>
             {aiTab === 'report' ? (
-              <AiReportView graph={graph} result={result} resultAt={resultAt} report={report} reportMessage={reportMessage} reportBusy={reportBusy} onMakeReport={makeReport} />
+              <AiReportView
+                graph={graph}
+                result={result}
+                resultAt={resultAt}
+                report={report}
+                reportStale={!!report && (report.forKey !== simulatedKey.current || report.forAt?.date !== resultAt?.date || report.forAt?.hour !== resultAt?.hour)}
+                reportMessage={reportMessage}
+                reportBusy={reportBusy}
+                onMakeReport={makeReport}
+              />
             ) : aiTab === 'reinforce' ? (
               // 설비 보강 우선순위: 날짜 입력·순위·AI 정리가 이 칸 안에서 끝나서 AI 창으로 옮김 (11/10). 하루 운영 권고는 그래프와 같이 봐야 해서 결과 자세히에 남김
               <div className="ai-capacity">{graph && <ReinforceBox graph={graph} onFocus={focusElement} />}</div>

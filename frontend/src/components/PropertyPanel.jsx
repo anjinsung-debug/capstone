@@ -11,15 +11,23 @@ const Equipment3D = lazy(() => import('./Diagram3D.jsx').then((m) => ({ default:
 // 숫자 입력: 입력 중에는 글자 그대로 두고, 포커스를 잃거나 Enter일 때 숫자로 반영 (빈칸 = 값 없음)
 // 빈칸(null)은 "데이터 없음"이라 시뮬레이션이 가정값을 쓴다 (단락용량 300 MVA, X/R 10, 허용전류 400 A — simulation/dss.py의 DEFAULT_*)
 // 한 글자 칠 때마다 계통을 바꾸면 되돌리기 기록이 글자 수만큼 쌓이므로 확정 시점에만 반영한다
-function NumberField({ label, unit, value, onCommit, disabled, required }) {
+// min: 'positive' = 0보다 커야 함, 'nonNegative' = 0 이상 (11/11 점검 4번: 허용전류 0이면 계산이 서버 오류로 멈췄음)
+const MIN_RULES = { positive: [(v) => v > 0, '0보다 커야 합니다'], nonNegative: [(v) => v >= 0, '0 이상이어야 합니다'] }
+function NumberField({ label, unit, value, onCommit, disabled, required, min }) {
   const [text, setText] = useState(null) // null이면 value를 그대로 보여 줌
+  const [bad, setBad] = useState('') // 받아들이지 않은 값의 이유 (다시 입력하면 지움)
   const shown = text ?? (value === null || value === undefined ? '' : String(value))
   const commit = () => {
     if (text === null) return
     const t = text.trim()
     const v = t === '' ? null : Number(t)
     setText(null)
-    if (t !== '' && Number.isNaN(v)) return
+    if (t !== '' && !Number.isFinite(v)) return
+    const rule = MIN_RULES[min]
+    if (v !== null && rule && !rule[0](v)) {
+      setBad(rule[1])
+      return
+    }
     if (v !== value) onCommit(v)
   }
   return (
@@ -27,6 +35,7 @@ function NumberField({ label, unit, value, onCommit, disabled, required }) {
       <span>
         {label}
         {required && shown === '' && <em className="req"> 필요</em>}
+        {bad && <em className="req"> {bad}</em>}
       </span>
       <div className="field-input">
         <input
@@ -35,7 +44,10 @@ function NumberField({ label, unit, value, onCommit, disabled, required }) {
           value={shown}
           disabled={disabled}
           placeholder={required ? '' : '없음 (가정값)'}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value)
+            setBad('')
+          }}
           onBlur={commit}
           onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
         />
@@ -105,7 +117,7 @@ function HostingSection({ graph, node, hosting, resultAt, onCheckHosting, onAddP
   const mine = hosting?.busId === node.id && (hosting.kind ?? 'pv') === kind ? hosting : null
   const names = Object.fromEntries([...graph.nodes, ...graph.lines, ...graph.feeders].map((x) => [x.id, x.name]))
   const targetKw = target.trim() === '' || Number.isNaN(Number(target)) ? null : Math.max(0, Number(target))
-  const basis = (at) => (at ? `${at.date} ${at.hour}시 기준` : '최대 조건 기준')
+  const basis = (at) => (at ? `${at.date} ${at.hour}시 기준` : '저장된 값 기준')
   const d = mine?.status === 'done' ? mine.data : null
   const atLimit = d && d.limited_by.length === 0
   // 계산한 뒤 계통을 고쳤거나(허용전류·태양광 등) 화면 시각을 바꿨으면 결과가 옛것
@@ -196,7 +208,7 @@ function HostingSection({ graph, node, hosting, resultAt, onCheckHosting, onAddP
                 </button>
               )}
               <span className="muted small">
-                붙인 {k.what}의 kW는 {kind === 'pv' ? '설비용량' : '최대 부하'}라 &ldquo;지금 시각&rdquo; 화면에서는 그 시각 배율만큼만 나옵니다. 위 검토 값과 똑같이 보려면 &ldquo;최대 조건&rdquo;으로 바꿔 보세요.
+                붙인 {k.what}의 kW는 {kind === 'pv' ? '설비용량' : '최대 부하'}라 &ldquo;지금 시각&rdquo; 화면에서는 그 시각 배율만큼만 나옵니다. 그래서 단선도 값이 위 검토 값보다 작게 보일 수 있고, 하루 동안의 변화는 &ldquo;결과 자세히 → 시간대별 시뮬레이션&rdquo;에서 볼 수 있습니다.
               </span>
             </>
           )}
@@ -299,9 +311,9 @@ function LineProps({ graph, line, result, editing, onChange }) {
       </dl>
       {!isSwitch && (
         <>
-          <NumberField key={`${line.id}-len`} label="길이" unit="km" value={line.length_km} disabled={!editing} required onCommit={(v) => set({ length_km: v ?? 0 })} />
-          <NumberField key={`${line.id}-r`} label="저항 R1" unit="Ω/km" value={line.r_ohm_per_km} disabled={!editing} required onCommit={(v) => set({ r_ohm_per_km: v ?? 0 })} />
-          <NumberField key={`${line.id}-x`} label="리액턴스 X1" unit="Ω/km" value={line.x_ohm_per_km} disabled={!editing} required onCommit={(v) => set({ x_ohm_per_km: v ?? 0 })} />
+          <NumberField key={`${line.id}-len`} label="길이" unit="km" value={line.length_km} disabled={!editing} required min="nonNegative" onCommit={(v) => set({ length_km: v ?? 0 })} />
+          <NumberField key={`${line.id}-r`} label="저항 R1" unit="Ω/km" value={line.r_ohm_per_km} disabled={!editing} required min="nonNegative" onCommit={(v) => set({ r_ohm_per_km: v ?? 0 })} />
+          <NumberField key={`${line.id}-x`} label="리액턴스 X1" unit="Ω/km" value={line.x_ohm_per_km} disabled={!editing} required min="nonNegative" onCommit={(v) => set({ x_ohm_per_km: v ?? 0 })} />
           {/* 구현 참고 (고영민·최민준 확인 필요): 선로 전체 임피던스 = Ω/km × 길이 (OpenDSS가 계산에 쓰는 값과 같음, 안진성 추가) */}
           <dl className="meta">
             <dt>선로 임피던스</dt>
@@ -315,7 +327,7 @@ function LineProps({ graph, line, result, editing, onChange }) {
           <NumberField key={`${line.id}-x0`} label="영상분 리액턴스 X0" unit="Ω/km" value={line.x0_ohm_per_km} disabled={!editing} onCommit={(v) => set({ x0_ohm_per_km: v })} />
         </>
       )}
-      <NumberField key={`${line.id}-amp`} label="허용전류" unit="A" value={line.rated_current_a} disabled={!editing} onCommit={(v) => set({ rated_current_a: v })} />
+      <NumberField key={`${line.id}-amp`} label="허용전류" unit="A" value={line.rated_current_a} disabled={!editing} min="positive" onCommit={(v) => set({ rated_current_a: v })} />
       {r && (
         <div className="stats">
           <Stat label="유효전력" value={`${r.p_kw.toFixed(0)} kW`} />

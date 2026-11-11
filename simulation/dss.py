@@ -99,6 +99,12 @@ def check_complete(graph: SubstationGraph) -> None:
             problems.append(f"{names[n.id]}: 출력(p_kw)이 없습니다")
         if n.type in ONE_TERMINAL_TYPES and n.bus_id is None:
             problems.append(f"{names[n.id]}: 연결된 접속점(bus_id)이 없습니다")
+    # 11/11 점검 4번: 허용전류 0이면 부하율 계산(simulate.py)에서 0으로 나누기 오류(500)가 났고, 음수면 부하율이 음수가 됐다
+    for line in graph.lines:
+        if line.rated_current_a is not None and line.rated_current_a <= 0:
+            problems.append(f"{line.name or line.id}: 허용전류는 0보다 커야 합니다")
+        if min(line.length_km, line.r_ohm_per_km, line.x_ohm_per_km) < 0:
+            problems.append(f"{line.name or line.id}: 길이·저항·리액턴스는 음수일 수 없습니다")
     if problems:
         raise SimulationError("계통이 완성되지 않아 계산할 수 없습니다: " + "; ".join(problems))
 
