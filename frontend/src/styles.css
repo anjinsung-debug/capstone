@@ -229,8 +229,105 @@ button.icon-label {
 }
 
 .sub-picker {
+  position: relative;
+}
+/* 변전소 선택 (직접 만든 목록, 11/14: 항목마다 ✕) */
+.sub-current {
   display: flex;
-  gap: 4px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 180px;
+  text-align: left;
+}
+.sub-current.empty span {
+  color: var(--muted);
+}
+.sub-current i {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--muted);
+}
+.sub-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 50;
+  min-width: 100%;
+  max-height: 60vh;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+.sub-list li {
+  display: flex;
+  align-items: center;
+  border-radius: 6px;
+}
+.sub-list li:hover,
+.sub-list li.cursor {
+  background: rgba(255, 255, 255, 0.06);
+}
+.sub-list li.on .sub-name {
+  color: var(--accent);
+  font-weight: 600;
+}
+.sub-list button {
+  border: 0;
+  background: none;
+}
+.sub-name {
+  flex: 1;
+  text-align: left;
+  white-space: nowrap;
+  padding: 7px 10px;
+}
+.sub-name small {
+  color: var(--muted);
+}
+.sub-x {
+  padding: 4px 9px;
+  margin-right: 2px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.sub-x:hover:not(:disabled) {
+  color: var(--danger);
+  background: rgba(255, 93, 93, 0.12);
+}
+.sub-list li.sub-new {
+  border-top: 1px solid var(--line);
+  margin-top: 4px;
+  padding-top: 4px;
+  border-radius: 0 0 6px 6px;
+}
+.sub-new .sub-name {
+  color: var(--accent);
+}
+/* 변전소 삭제 확인 창 */
+.delete-warn {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+.delete-list {
+  margin: 0 0 10px;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.danger-btn {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+  font-weight: 600;
+}
+.danger-btn:hover:not(:disabled) {
+  filter: brightness(1.1);
 }
 /* 자동 저장 상태 표시 */
 .save-state {
