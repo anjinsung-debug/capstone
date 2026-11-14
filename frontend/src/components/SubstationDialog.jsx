@@ -133,7 +133,7 @@ export function DeleteSubstationDialog({ target, graph, onDelete, onClose }) {
         <p className="muted small">
           {target.unsaved
             ? '아직 저장 전인 새 변전소라 만들던 내용만 버립니다.'
-            : '위 내용이 DB에서 모두 지워지고 되돌릴 수 없습니다. (적재 데이터로 만든 변전소는 python -m cim.load로 다시 넣을 수 있습니다)'}
+            : '위 내용이 모두 지워지고 되돌릴 수 없습니다.'}
         </p>
         <div className="dialog-buttons">
           <button type="button" onClick={onClose} disabled={busy} autoFocus>
