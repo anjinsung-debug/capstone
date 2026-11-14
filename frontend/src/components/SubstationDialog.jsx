@@ -1,7 +1,8 @@
 // 새 변전소 만들기 / 변전소 이름 바꾸기 창
 // 새 변전소는 "기본 구성"(전원·모선·차단기·접속점)으로 시작하는 것을 권장한다:
 // 진짜 백엔드는 전원이 정확히 1개여야 저장되기 때문 (cim/graph.py의 save_substation)
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { getSubstation } from '../api/client.js'
 import Modal from './Modal.jsx'
 
 export function NewSubstationDialog({ onCreate, onClose }) {
@@ -93,28 +94,46 @@ export function RenameDialog({ current, onRename, onClose }) {
   )
 }
 
-// 변전소 완전 삭제 확인 (변전소 목록 옆 ✕ 버튼, 11/14). 한 번 더 물어본다
+// 변전소 완전 삭제 확인 (변전소 목록의 ✕, 11/14). 한 번 더 물어본다
+// target: { id, name, unsaved }. 지금 열린 변전소면 graph를 받아 개수를 바로 보이고, 다른 변전소면 불러와서 보인다
 // 저장 전인 새 변전소는 DB에 없으므로 "만들던 것 버리기"만 한다
-export function DeleteSubstationDialog({ graph, saved, onDelete, onClose }) {
+export function DeleteSubstationDialog({ target, graph, onDelete, onClose }) {
   const [busy, setBusy] = useState(false)
-  const name = graph.substation.name
-  const count = (types) => graph.nodes.filter((n) => types.includes(n.type)).length
+  const [loaded, setLoaded] = useState(null)
+  useEffect(() => {
+    if (graph || target.unsaved) return
+    let alive = true
+    getSubstation(target.id)
+      .then((g) => alive && setLoaded(g))
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [graph, target])
+  const g = graph ?? loaded
+  const count = (types) => g.nodes.filter((n) => types.includes(n.type)).length
   return (
     <Modal title="변전소 완전 삭제" onClose={busy ? () => {} : onClose}>
       <div className="dialog-form">
         <p className="delete-warn">
-          <b>&lsquo;{name}&rsquo;</b> 변전소를 완전히 삭제할까요?
+          <b>&lsquo;{target.name}&rsquo;</b> 변전소를 완전히 삭제할까요?
         </p>
-        <ul className="delete-list">
-          <li>배전선로 {graph.feeders.length}개, 선로 {graph.lines.length}개</li>
-          <li>
-            부하 {count(['load'])}개 · 태양광 {count(['pv'])}개 · 풍력 {count(['wind'])}개 · 접속점 {count(['bus'])}개
-          </li>
-        </ul>
+        {g ? (
+          <ul className="delete-list">
+            <li>
+              배전선로 {g.feeders.length}개, 선로 {g.lines.length}개
+            </li>
+            <li>
+              부하 {count(['load'])}개 · 태양광 {count(['pv'])}개 · 풍력 {count(['wind'])}개 · 접속점 {count(['bus'])}개
+            </li>
+          </ul>
+        ) : (
+          !target.unsaved && <p className="muted small">지울 내용을 불러오는 중...</p>
+        )}
         <p className="muted small">
-          {saved
-            ? '위 내용이 DB에서 모두 지워지고 되돌릴 수 없습니다. (적재 데이터로 만든 변전소는 python -m cim.load로 다시 넣을 수 있습니다)'
-            : '아직 저장 전인 새 변전소라 만들던 내용만 버립니다.'}
+          {target.unsaved
+            ? '아직 저장 전인 새 변전소라 만들던 내용만 버립니다.'
+            : '위 내용이 DB에서 모두 지워지고 되돌릴 수 없습니다. (적재 데이터로 만든 변전소는 python -m cim.load로 다시 넣을 수 있습니다)'}
         </p>
         <div className="dialog-buttons">
           <button type="button" onClick={onClose} disabled={busy} autoFocus>
@@ -126,7 +145,7 @@ export function DeleteSubstationDialog({ graph, saved, onDelete, onClose }) {
             disabled={busy}
             onClick={async () => {
               setBusy(true)
-              await onDelete()
+              await onDelete(target)
               setBusy(false)
             }}
           >

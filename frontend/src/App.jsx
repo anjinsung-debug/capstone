@@ -35,6 +35,7 @@ import { CapacityPanel, ReinforceBox } from './components/UsecasePanels.jsx'
 // 3D 보기는 three.js가 커서 버튼을 처음 누를 때 불러온다
 const Diagram3D = lazy(() => import('./components/Diagram3D.jsx'))
 import { DeleteSubstationDialog, NewSubstationDialog, RenameDialog } from './components/SubstationDialog.jsx'
+import SubstationPicker from './components/SubstationPicker.jsx'
 import {
   addNode,
   electricalKey,
@@ -66,7 +67,6 @@ const HOUR_CHECK_MS = 30000 // 정각이 지났는지 확인하는 간격
 
 const describe = (e) => e.message.replace(/^HTTP \d+: /, '')
 
-const NEW_SUB = '__new__' // 변전소 목록의 '+ 새 변전소' 항목 값
 
 export default function App() {
   // 연결 상태 (위 왼쪽 표시): server·db = true(연결) | false(끊김) | null(확인 중). db는 모의 서버면 'mock'
@@ -106,6 +106,7 @@ export default function App() {
   const [aiTab, setAiTab] = useState('report') // AI 리포트 창 안의 탭: 'report' = AI 리포트 | 'capacity' = 여유 용량 (11/10 '추가 가능량'에서 이름 바꿈) (11/9 팀 피드백: 같은 위치에) | 'reinforce' = 설비 보강 우선순위 (11/10 결과 자세히에서 옮김)
   const [popup, setPopup] = useState(null) // 브라우저 새 창 결과 { win, container }
   const [dialog, setDialog] = useState(null) // 'new' | 'rename' | 'delete' | null
+  const [deleting, setDeleting] = useState(null) // 삭제 확인 창의 대상 변전소 { id, name, unsaved }
   const [overview, setOverview] = useState(false) // 변전소를 고른 뒤에도 변전소 전체 단선도를 열어 볼 때 true
   const showOverview = !graph || overview // 변전소를 고르기 전(첫 화면)에는 늘 보인다
   const [message, setMessage] = useState({ text: '', kind: 'info' }) // action: { label, run } 이면 알림 안에 버튼 하나
@@ -473,34 +474,38 @@ export default function App() {
     info(template === 'starter' ? '기본 구성으로 만들었습니다. 왼쪽 메뉴에서 부하를 끌어다 접속점 근처에 놓고 연결하세요' : '왼쪽 메뉴에서 전원부터 끌어다 놓으세요')
   }
 
-  // 변전소 완전 삭제 (변전소 목록 옆 ✕ → 확인 창의 "완전 삭제", 11/14)
-  // 자동 저장이 삭제 뒤에 도착하면 변전소가 다시 만들어지므로(save는 없는 id면 새로 만듦), 저장 대기를 멈추고 진행 중인 저장이 끝난 뒤 지운다
-  async function removeSubstation() {
-    const g = graphRef.current
-    if (!g) return
-    const saved = !isNew
-    setDirty(false) // 자동 저장 타이머 취소
-    while (flushing.current) await new Promise((r) => setTimeout(r, 100))
-    if (saved) {
+  // 변전소 완전 삭제 (변전소 목록의 ✕ → 확인 창의 "완전 삭제", 11/14)
+  // 지금 열린 변전소면: 자동 저장이 삭제 뒤에 도착하면 변전소가 다시 만들어지므로(save는 없는 id면 새로 만듦),
+  //   저장 대기를 멈추고 진행 중인 저장이 끝난 뒤 지우고, 첫 화면(변전소 전체)으로 돌아간다
+  // 다른 변전소면: DB에서만 지우고 지금 화면은 그대로 둔다
+  async function removeSubstation(target) {
+    const isCurrent = graphRef.current?.substation.id === target.id
+    if (isCurrent) {
+      setDirty(false) // 자동 저장 타이머 취소
+      while (flushing.current) await new Promise((r) => setTimeout(r, 100))
+    }
+    if (!target.unsaved) {
       try {
-        await deleteSubstation(g.substation.id)
+        await deleteSubstation(target.id)
       } catch (e) {
         setDialog(null)
-        fail(`'${g.substation.name}' 변전소를 삭제하지 못했습니다 (${describe(e)})`)
+        fail(`'${target.name}' 변전소를 삭제하지 못했습니다 (${describe(e)})`)
         return
       }
     }
     setDialog(null)
-    resetResult()
-    history.current = []
-    setSelectedIds([])
-    setGraph(null)
-    setNavOpen(false)
-    setView3d(false)
-    setOverview(true)
-    setSave({ status: 'saved', text: '저장됨' })
+    if (isCurrent) {
+      resetResult()
+      history.current = []
+      setSelectedIds([])
+      setGraph(null)
+      setNavOpen(false)
+      setView3d(false)
+      setOverview(true)
+      setSave({ status: 'saved', text: '저장됨' })
+    }
     refreshList()
-    info(saved ? `'${g.substation.name}' 변전소를 완전히 삭제했습니다` : `저장 전이던 '${g.substation.name}'을(를) 버렸습니다`)
+    info(target.unsaved ? `저장 전이던 '${target.name}'을(를) 버렸습니다` : `'${target.name}' 변전소를 완전히 삭제했습니다`)
   }
 
   function renameSubstation(name) {
@@ -669,28 +674,18 @@ export default function App() {
           >
             AI 리포트
           </button>
-          <div className="sub-picker">
-            <select
-              value={isNew ? '' : (graph?.substation.id ?? '')}
-              onChange={(e) => (e.target.value === NEW_SUB ? setDialog('new') : selectSubstation(e.target.value))}
-            >
-              <option value="" disabled>
-                {isNew ? `${graph.substation.name} (저장 전)` : '변전소 선택'}
-              </option>
-              {substations.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-              {/* 새 변전소는 내 변전소 목록 맨 아래 (11/10 피드백) */}
-              <option value={NEW_SUB}>+ 새 변전소</option>
-            </select>
-            {graph && (
-              <button type="button" className="sub-delete" onClick={() => setDialog('delete')} title={`'${graph.substation.name}' 변전소 완전 삭제`} aria-label="변전소 삭제">
-                ✕
-              </button>
-            )}
-          </div>
+          {/* 펼친 목록의 변전소마다 ✕ = 완전 삭제 (11/14). 맨 아래 + 새 변전소 (11/10) */}
+          <SubstationPicker
+            substations={substations}
+            current={graph?.substation}
+            isNew={isNew}
+            onSelect={selectSubstation}
+            onNew={() => setDialog('new')}
+            onDelete={(s) => {
+              setDeleting({ id: s.id, name: s.name, unsaved: !!s.unsaved })
+              setDialog('delete')
+            }}
+          />
           {graph && (
             <button
               type="button"
@@ -907,7 +902,14 @@ export default function App() {
 
       {dialog === 'new' && <NewSubstationDialog onCreate={createSubstation} onClose={() => setDialog(null)} />}
       {dialog === 'rename' && graph && <RenameDialog current={graph.substation.name} onRename={renameSubstation} onClose={() => setDialog(null)} />}
-      {dialog === 'delete' && graph && <DeleteSubstationDialog graph={graph} saved={!isNew} onDelete={removeSubstation} onClose={() => setDialog(null)} />}
+      {dialog === 'delete' && deleting && (
+        <DeleteSubstationDialog
+          target={deleting}
+          graph={graph?.substation.id === deleting.id ? graph : null}
+          onDelete={removeSubstation}
+          onClose={() => setDialog(null)}
+        />
+      )}
     </div>
   )
 }
