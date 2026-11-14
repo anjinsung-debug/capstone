@@ -232,6 +232,36 @@ button.icon-label {
   display: flex;
   gap: 4px;
 }
+/* 변전소 목록 옆 ✕ (완전 삭제, 11/14) */
+.sub-delete {
+  width: 34px;
+  padding: 0;
+  color: var(--muted);
+}
+.sub-delete:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+/* 변전소 삭제 확인 창 */
+.delete-warn {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+.delete-list {
+  margin: 0 0 10px;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.danger-btn {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+  font-weight: 600;
+}
+.danger-btn:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
 /* 자동 저장 상태 표시 */
 .save-state {
   display: flex;

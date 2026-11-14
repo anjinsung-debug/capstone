@@ -275,6 +275,11 @@ class Handler(SimpleHTTPRequestHandler):
                 if not g:
                     return self._send(404, {"detail": "변전소가 없습니다"})
                 return self._send(200, to_cim_xml(g), "application/rdf+xml")  # 진짜와 같은 cim/export.py
+            if m == "DELETE" and len(p) == 2 and p[0] == "substations":
+                g = STORE.pop(p[1], None)
+                if not g:
+                    return self._send(404, {"detail": "변전소가 없습니다"})
+                return self._send(200, {"substation_id": p[1], "nodes": len(g.nodes), "lines": len(g.lines), "feeders": len(g.feeders)})
             if m == "PUT" and len(p) == 2 and p[0] == "substations":
                 snap = SubstationSnapshot.model_validate(self._body())
                 if snap.substation.id != p[1]:
@@ -349,6 +354,9 @@ class Handler(SimpleHTTPRequestHandler):
             super().do_GET()  # --static으로 빌드 결과를 줄 때만 쓰임
 
     def do_PUT(self):
+        self._route()
+
+    def do_DELETE(self):
         self._route()
 
     def do_POST(self):

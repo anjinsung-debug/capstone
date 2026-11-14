@@ -253,6 +253,41 @@ def save_substation(substation_id: str, snapshot: SubstationSnapshot) -> Snapsho
     return SnapshotSaved(graph=g, element_ids=element_ids)
 
 
+def _delete_substation(tx, sid: str) -> dict | None:
+    """변전소와 그 노드·좌표 노드·선로·설비 연결·피더를 지운다. 지운 개수를 돌려준다 (없는 변전소면 None)"""
+    if tx.run("MATCH (s:Substation {id: $sid}) RETURN s.id AS id", sid=sid).single() is None:
+        return None
+    counts = tx.run("""
+        OPTIONAL MATCH (n:Node {substation_id: $sid})
+        WITH count(n) AS nodes
+        OPTIONAL MATCH ()-[l:LINE {substation_id: $sid}]->()
+        WITH nodes, count(l) AS lines
+        OPTIONAL MATCH (:Substation {id: $sid})-[:HAS_FEEDER]->(f:Feeder)
+        RETURN nodes, lines, count(f) AS feeders""", sid=sid).single().data()
+    # 노드를 지우면(DETACH) 그 노드에 붙은 선로(LINE)·설비 연결(CONNECTED_TO)도 같이 지워진다
+    tx.run("""
+        MATCH (n:Node {substation_id: $sid})
+        OPTIONAL MATCH (n)-[:HAS_DIAGRAM]->(d:DiagramObject)
+        DETACH DELETE n, d""", sid=sid)
+    tx.run("""
+        MATCH (s:Substation {id: $sid})
+        OPTIONAL MATCH (s)-[:HAS_FEEDER]->(f:Feeder)
+        DETACH DELETE f, s""", sid=sid)
+    tx.run("MATCH (f:Feeder {substation_id: $sid}) DETACH DELETE f", sid=sid)  # 변전소와 연결이 끊긴 채 남은 피더
+    return counts
+
+
+def delete_substation(substation_id: str) -> dict:
+    """변전소 완전 삭제 (웹 변전소 목록 옆 ✕ 버튼, 11/14). 하나의 트랜잭션이라 중간에 실패하면 아무것도 지워지지 않는다.
+    되돌릴 수 없다: 적재 데이터(data/*.xml)로 만든 변전소는 python -m cim.load로 다시 넣을 수 있지만, 웹에서 만든 변전소는 사라진다.
+    없는 변전소 id면 SubstationNotFound (API에서 404)"""
+    with db.get_driver().session() as session:
+        counts = session.execute_write(_delete_substation, substation_id)
+    if counts is None:
+        raise SubstationNotFound(substation_id)
+    return {"substation_id": substation_id, **counts}
+
+
 def classify_connection(from_node: Node, to_node: Node) -> LineKind:
     """두 노드의 설비 종류(type)로 연결 특성을 정한다 (위상 형성 논리). 차단기·개폐기에 닿으면 switch, 그 외는 line."""
     return "switch" if {"breaker", "switch"} & {from_node.type, to_node.type} else "line"

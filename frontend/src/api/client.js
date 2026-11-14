@@ -37,6 +37,8 @@ export const getSubstation = (substationId) => request('GET', `/substations/${su
 // 응답의 element_ids(UUID → Neo4j element id)를 받는다
 export const saveSubstation = (substationId, snapshot) =>
   request('PUT', `/substations/${substationId}`, snapshot)
+// 변전소 완전 삭제 (변전소와 그 배전선로·설비·선로를 DB에서 모두 지움, 되돌릴 수 없음). 응답: 지운 개수
+export const deleteSubstation = (substationId) => request('DELETE', `/substations/${substationId}`)
 
 // CIM 내보내기: 마지막으로 저장된 계통을 CIM16 RDF/XML 파일로 받는다 (backend/api/grid.py → cim/export.py).
 // 내보낼 수 없는 계통(접속점에 안 붙은 부하 등)이면 422와 이유. 돌려주는 값: <a href>에 쓸 내려받기용 주소

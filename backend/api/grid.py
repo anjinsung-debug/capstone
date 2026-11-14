@@ -31,6 +31,12 @@ def save_substation(substation_id: str, snapshot: SubstationSnapshot) -> Snapsho
     return graph.save_substation(substation_id, snapshot)
 
 
+@router.delete("/substations/{substation_id}")
+def delete_substation(substation_id: str) -> dict:
+    """변전소 완전 삭제: 변전소와 그 배전선로·설비·선로를 DB에서 모두 지운다 (되돌릴 수 없음). 지운 개수를 돌려준다"""
+    return graph.delete_substation(substation_id)
+
+
 @router.get("/substations/{substation_id}/cim")
 def export_cim(substation_id: str) -> Response:
     """마지막으로 저장된 계통을 CIM16 RDF/XML 파일로 내려받기 (cim/export.py). 내보낼 수 없는 계통이면 422와 이유"""

@@ -92,3 +92,48 @@ export function RenameDialog({ current, onRename, onClose }) {
     </Modal>
   )
 }
+
+// 변전소 완전 삭제 확인 (변전소 목록 옆 ✕ 버튼, 11/14). 한 번 더 물어본다
+// 저장 전인 새 변전소는 DB에 없으므로 "만들던 것 버리기"만 한다
+export function DeleteSubstationDialog({ graph, saved, onDelete, onClose }) {
+  const [busy, setBusy] = useState(false)
+  const name = graph.substation.name
+  const count = (types) => graph.nodes.filter((n) => types.includes(n.type)).length
+  return (
+    <Modal title="변전소 완전 삭제" onClose={busy ? () => {} : onClose}>
+      <div className="dialog-form">
+        <p className="delete-warn">
+          <b>&lsquo;{name}&rsquo;</b> 변전소를 완전히 삭제할까요?
+        </p>
+        <ul className="delete-list">
+          <li>배전선로 {graph.feeders.length}개, 선로 {graph.lines.length}개</li>
+          <li>
+            부하 {count(['load'])}개 · 태양광 {count(['pv'])}개 · 풍력 {count(['wind'])}개 · 접속점 {count(['bus'])}개
+          </li>
+        </ul>
+        <p className="muted small">
+          {saved
+            ? '위 내용이 DB에서 모두 지워지고 되돌릴 수 없습니다. (적재 데이터로 만든 변전소는 python -m cim.load로 다시 넣을 수 있습니다)'
+            : '아직 저장 전인 새 변전소라 만들던 내용만 버립니다.'}
+        </p>
+        <div className="dialog-buttons">
+          <button type="button" onClick={onClose} disabled={busy} autoFocus>
+            취소
+          </button>
+          <button
+            type="button"
+            className="danger-btn"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true)
+              await onDelete()
+              setBusy(false)
+            }}
+          >
+            {busy ? '삭제 중...' : '완전 삭제'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
