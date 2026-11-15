@@ -318,7 +318,8 @@ export function CapacityPanel({ graph, at, onFocus }) {
   const worst = (key) => rows.reduce((a, r) => (!a || r[key] < a[key] ? r : a), null)
   const stale = table && table.atKey !== atKey
 
-  // 순서 (11/10 피드백): 맨 위 요약 칸(AI 리포트 탭과 같은 모양, 오른쪽에 버튼) → AI 설명 → 큰 숫자 요약 → 접속점별 세부 표(접었다 펴기)
+  // 순서 (11/10 피드백, 11/15 수정): 맨 위 요약 칸(AI 리포트 탭과 같은 모양, 오른쪽에 버튼) → 큰 숫자 요약 → 접속점별 세부 표(접었다 펴기) → AI 설명
+  // (AI 설명이 생겨도 숫자 카드가 밀려 내려가지 않게 맨 아래에 붙인다)
   return (
     <div className="uc-panel">
       <div className="rp-summary">
@@ -340,8 +341,6 @@ export function CapacityPanel({ graph, at, onFocus }) {
       {busy && <Busy text={busy} />}
       <Fail error={error} />
       {stale && <p className="warn small">화면 시각이 바뀌었습니다. 아래는 {atText(table.at)} 결과이니 &ldquo;다시 계산&rdquo;을 눌러 주세요.</p>}
-
-      {report && <ReportCards report={report} titles={['계통 전체 요약', '막는 요인', '늘리는 방법']} />}
 
       {rows.length > 0 && (
         <>
@@ -415,6 +414,8 @@ export function CapacityPanel({ graph, at, onFocus }) {
           </details>
         </>
       )}
+
+      {report && <ReportCards report={report} titles={['계통 전체 요약', '막는 요인', '늘리는 방법']} />}
     </div>
   )
 }
