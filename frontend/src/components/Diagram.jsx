@@ -17,13 +17,19 @@ import { buildOverlay } from '../lib/overlay.js'
 
 // 설비 종류별 모양·색은 NodeIcon.jsx의 TYPE_STYLE (편집 메뉴 아이콘과 같은 정의)
 
+// 설비·선로 이름 글씨: 전체 계통을 한눈에 보도록 축소하면 글씨가 너무 작아져서(11/16 피드백),
+// 축소할수록 글씨를 키워 화면에서 LABEL_PX 정도로 보이게 한다. 다만 LABEL_MAX를 넘지 않게 해서 서로 겹치는 것을 줄인다
+const LABEL_PX = 13
+const LABEL_MAX = 30
+const labelSize = (ele) => Math.min(LABEL_MAX, Math.max(LABEL_PX, LABEL_PX / ele.cy().zoom()))
+
 const STYLE = [
   {
     selector: 'node',
     style: {
       label: (ele) => (ele.data('ovSub') ? `${ele.data('name')}\n${ele.data('ovSub')}` : ele.data('name')),
       'text-wrap': 'wrap',
-      'font-size': 10,
+      'font-size': labelSize,
       'font-family': 'Pretendard, "Noto Sans KR", system-ui, sans-serif',
       color: '#dfe6e9',
       'text-valign': 'bottom',
@@ -78,7 +84,7 @@ const STYLE = [
       'curve-style': 'taxi',
       'taxi-direction': 'vertical',
       'taxi-turn': '50%',
-      'font-size': 10,
+      'font-size': labelSize,
       color: '#dfe6e9',
       'text-outline-color': '#0d1316',
       'text-outline-width': 2,
@@ -226,11 +232,22 @@ export default function Diagram({ graph, result, editing, tool, mode, focus, onC
       })
     })
 
+    // 확대·축소하면 글씨 크기(labelSize)를 다시 계산 (한 프레임에 한 번만)
+    let zoomRaf = 0
+    cy.on('zoom', () => {
+      if (zoomRaf) return
+      zoomRaf = requestAnimationFrame(() => {
+        zoomRaf = 0
+        cy.style().update()
+      })
+    })
+
     // 편집 도구가 열리고 닫히면 단선도 크기가 바뀌므로 Cytoscape에 알린다
     const ro = new ResizeObserver(() => cy.resize())
     ro.observe(containerRef.current)
 
     return () => {
+      cancelAnimationFrame(zoomRaf)
       ro.disconnect()
       cy.destroy()
       cyRef.current = null
