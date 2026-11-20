@@ -763,6 +763,33 @@ export default function App() {
           onSelect={setSelectedIds}
           onMessage={info}
         >
+          {/* AI 챗봇: 변전소를 열었으면 단선도 오른쪽 아래 "화면에 맞추기" 버튼 옆 (11/20, 속성 칸을 가리지 않게) */}
+          {graph && (
+            <ChatBot
+              graph={graph}
+              result={result}
+              resultAt={resultAt}
+              isNew={isNew}
+              // 챗봇 첫 화면의 "AI 기능 바로 쓰기": 계산 결과가 있을 때만 (AI 리포트 버튼과 같은 조건)
+              tools={
+                result
+                  ? [
+                      [
+                        'AI 리포트 만들기',
+                        () => {
+                          setAiTab('report')
+                          setResultOpen('ai')
+                          if (!report && !reportBusy) makeReport('plain')
+                        },
+                      ],
+                      ['여유 용량 보기', () => (setAiTab('capacity'), setResultOpen('ai'))],
+                      ['설비 보강 우선순위', () => (setAiTab('reinforce'), setResultOpen('ai'))],
+                      ['24시간 AI 운영 권고', () => (setResultTab('history'), setResultOpen('detail'))],
+                    ]
+                  : []
+              }
+            />
+          )}
           {view3d && graph && (
             <Suspense fallback={<div className="d3-wrap d3-loading">3D 화면 불러오는 중...</div>}>
               <Diagram3D graph={graph} result={result} onSelect={setSelectedIds} />
@@ -903,8 +930,8 @@ export default function App() {
 
       {dialog === 'new' && <NewSubstationDialog onCreate={createSubstation} onClose={() => setDialog(null)} />}
       {dialog === 'rename' && graph && <RenameDialog current={graph.substation.name} onRename={renameSubstation} onClose={() => setDialog(null)} />}
-      {/* AI 챗봇: 오른쪽 아래 "질문하기" (11/20). 질문할 때 지금 변전소·계산 결과·계산 시각을 같이 보낸다 */}
-      <ChatBot graph={graph} result={result} resultAt={resultAt} isNew={isNew} />
+      {/* AI 챗봇: 변전소를 고르기 전에는 화면 오른쪽 아래 "질문하기" (11/20). 질문할 때 지금 변전소·계산 결과·계산 시각을 같이 보낸다 */}
+      {!graph && <ChatBot graph={graph} result={result} resultAt={resultAt} isNew={isNew} />}
       {dialog === 'delete' && deleting && (
         <DeleteSubstationDialog
           target={deleting}

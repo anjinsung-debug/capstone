@@ -13,6 +13,32 @@ const SUGGESTIONS_WITH_RESULT = ['지금 계통 상태를 한 줄로 알려줘',
 const SUGGESTIONS_NO_SUB = ['내 변전소는 몇 곳이야?', '이 플랫폼으로 뭘 할 수 있어?', '새 변전소는 어떻게 만들어?', '판정 기준이 뭐야?']
 
 let saved = [] // 창을 닫았다 열어도 대화가 남게 (모듈에 보관)
+let savedPos = null // 끌어서 옮긴 창 위치 { left, top } (닫았다 열어도 그 자리). null = 기본(오른쪽 아래)
+
+// 제목 줄을 잡고 끌면 창을 옮긴다 (11/20). 화면 밖으로 나가지 않게 가둔다. 버튼을 누른 건 끌기로 보지 않는다
+function useDrag(panel) {
+  const [pos, setPos] = useState(savedPos)
+  const onPointerDown = (e) => {
+    if (e.button !== 0 || e.target.closest('button')) return
+    const box = panel.current.getBoundingClientRect()
+    const dx = e.clientX - box.left
+    const dy = e.clientY - box.top
+    const move = (ev) => {
+      const left = Math.min(Math.max(0, ev.clientX - dx), window.innerWidth - box.width)
+      const top = Math.min(Math.max(0, ev.clientY - dy), window.innerHeight - box.height)
+      savedPos = { left, top }
+      setPos(savedPos)
+    }
+    const up = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    e.preventDefault() // 끄는 동안 글자 선택 안 되게
+  }
+  return { style: pos ? { left: pos.left, top: pos.top, right: 'auto', bottom: 'auto' } : undefined, onPointerDown }
+}
 
 function Bubble({ m }) {
   return (
@@ -24,13 +50,16 @@ function Bubble({ m }) {
   )
 }
 
-export default function ChatBot({ graph, result, resultAt, isNew }) {
+// tools: [[이름, 실행 함수], ...] = 우리 AI 기능 바로 열기 (App.jsx가 넘김, 11/20). 누르면 그 기능 창을 열고 이 창은 닫는다
+export default function ChatBot({ graph, result, resultAt, isNew, tools = [] }) {
   const [open, setOpen] = useState(false)
   const [msgs, setMsgs] = useState(saved)
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const list = useRef(null)
   const input = useRef(null)
+  const panel = useRef(null)
+  const drag = useDrag(panel)
 
   useEffect(() => {
     saved = msgs
@@ -83,14 +112,14 @@ export default function ChatBot({ graph, result, resultAt, isNew }) {
   }
   const suggestions = subId && result ? SUGGESTIONS_WITH_RESULT : SUGGESTIONS_NO_SUB
   return (
-    <section className="chat-panel" aria-label="AI 질문하기">
-      <header>
+    <section className="chat-panel" aria-label="AI 질문하기" ref={panel} style={drag.style}>
+      <header onPointerDown={drag.onPointerDown} title="끌어서 창 옮기기">
         <div>
           <strong>AI 질문하기</strong>
           <span title="질문할 때 이 화면의 변전소·계산 결과를 같이 보냅니다">{where}</span>
         </div>
-        <button type="button" className="chat-head-btn" disabled={busy || msgs.length === 0} onClick={() => setMsgs([])} title="대화 지우기">
-          새 대화
+        <button type="button" className="chat-head-btn" disabled={busy || msgs.length === 0} onClick={() => setMsgs([])} aria-label="새 대화" title="새 대화 (대화 지우기)">
+          ↺
         </button>
         <button type="button" className="chat-head-btn" onClick={() => setOpen(false)} aria-label="닫기" title="닫기 (Esc)">
           ✕
@@ -99,6 +128,25 @@ export default function ChatBot({ graph, result, resultAt, isNew }) {
       <div className="chat-list" ref={list}>
         {msgs.length === 0 && (
           <div className="chat-empty">
+            {tools.length > 0 && (
+              <>
+                <p>AI 기능 바로 쓰기</p>
+                <div className="chat-suggest chat-tools">
+                  {tools.map(([label, run]) => (
+                    <button
+                      type="button"
+                      key={label}
+                      onClick={() => {
+                        run()
+                        setOpen(false)
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
             <p>지금 계통 상태, 계산 결과, 플랫폼 사용법을 물어보세요. 답은 이 화면의 결과를 근거로 합니다.</p>
             <div className="chat-suggest">
               {suggestions.map((s) => (

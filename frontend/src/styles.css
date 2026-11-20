@@ -2205,6 +2205,15 @@ p.warn {
   font-weight: 600;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
+/* 변전소를 열었을 때: 단선도 오른쪽 아래 "화면에 맞추기"(.fit-btn) 바로 왼쪽, 같은 높이 */
+.diagram .chat-fab {
+  position: absolute;
+  right: 52px;
+  bottom: 10px;
+  z-index: 2;
+  padding: 4px 12px;
+  box-shadow: none;
+}
 .chat-panel {
   position: fixed;
   right: 20px;
@@ -2221,6 +2230,9 @@ p.warn {
   overflow: hidden;
 }
 .chat-panel header {
+  cursor: move; /* 끌어서 창 옮기기 (ChatBot.jsx useDrag) */
+  user-select: none;
+  touch-action: none;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -2299,6 +2311,14 @@ p.warn {
   padding: 6px 10px;
   font-size: 12.5px;
   border-radius: 999px;
+}
+/* AI 기능 바로 쓰기: 질문 예시와 구분되게 초록 테두리 */
+.chat-tools {
+  margin-bottom: 14px;
+}
+.chat-tools button {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 .chat-input {
   display: flex;

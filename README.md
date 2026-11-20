@@ -20,7 +20,7 @@
 capstone/
 ├── backend/
 │   ├── main.py              앱 생성, Neo4j 연결, 오류 → HTTP 상태
-│   └── api/                 health.py, grid.py(계통 조회·저장·CIM 내보내기), simulation.py(시뮬레이션·그래프), report.py(리포트)
+│   └── api/                 health.py, grid.py(계통 조회·저장·CIM 내보내기), simulation.py(시뮬레이션·그래프), report.py(리포트), chat.py(AI 챗봇)
 ├── cim/
 │   ├── models.py            계통 데이터 형식
 │   ├── graph.py             Neo4j 계통 조회·스냅샷 저장
@@ -40,11 +40,12 @@ capstone/
 ├── ai_report/
 │   ├── models.py            리포트 형식 (진단, 원인, 솔루션)
 │   ├── report.py            Claude(또는 Gemini)로 리포트 생성 (자체 점검: python -m ai_report.report)
-│   └── capacity.py          접속점별 신재생·부하 여유 용량, 접속점 하나의 부하 증설 검토 (이분 탐색, 자체 점검: python -m ai_report.capacity)
+│   ├── capacity.py          접속점별 신재생·부하 여유 용량, 접속점 하나의 부하 증설 검토 (이분 탐색, 자체 점검: python -m ai_report.capacity)
+│   └── chat.py              AI 챗봇 답변 (지금 계통·결과·플랫폼 기능 근거)
 ├── frontend/
 │   ├── src/
 │   │   ├── App.jsx          화면 흐름: 변전소 선택 → 단선도 → 자동 저장·시뮬레이션 → 결과·리포트
-│   │   ├── components/      Diagram(단선도), Diagram3D(3D 보기·속성 칸 설비 3D 미리보기), NavDrawer(편집 메뉴), PropertyPanel(속성), ResultPanel(결과), UsecasePanels(여유 용량·AI 추천·권고), SubstationOverview(첫 화면: DB 변전소 단선도), NodeIcon(설비 모양·색), HistoryChart, ProfileChart, Modal, SubstationDialog, PopupWindow
+│   │   ├── components/      Diagram(단선도), Diagram3D(3D 보기·속성 칸 설비 3D 미리보기), NavDrawer(편집 메뉴), PropertyPanel(속성), ResultPanel(결과), UsecasePanels(여유 용량·AI 추천·권고), SubstationOverview(첫 화면: DB 변전소 단선도), NodeIcon(설비 모양·색), HistoryChart, ProfileChart, Modal, SubstationDialog, PopupWindow, ChatBot(AI 질문하기: 단선도 오른쪽 아래, 끌어서 옮기기, AI 기능 바로 쓰기)
 │   │   ├── lib/             graphEdit.js(편집 로직), overlay.js(결과 → 단선도 표시)
 │   │   ├── api/client.js    백엔드 API 호출
 │   │   └── main.jsx, styles.css
