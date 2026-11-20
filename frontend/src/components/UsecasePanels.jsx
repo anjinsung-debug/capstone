@@ -32,6 +32,18 @@ function usePersisted(key, initial) {
   return [value, set]
 }
 
+// AI 챗봇(ChatBot.jsx)에 보낼, 화면에서 이미 계산한 결과 (11/20). 계산 안 했으면 null
+const atLabel = (at) => (at ? `${at.date} ${at.hour}시` : null)
+export function chatExtras(sid, at) {
+  if (!sid) return {}
+  const table = store.get(`cap:${sid}:table`)
+  const rf = store.get(`reinforce:${sid}:data`)
+  return {
+    capacity: table ? { table: table.data, at: atLabel(table.at), stale: atLabel(table.at) !== atLabel(at) } : null,
+    reinforce: rf?.ranking ? { ranking: rf.ranking, dates: (store.get(`reinforce:${sid}:dates`) ?? DEFAULT_DATES).filter(Boolean) } : null,
+  }
+}
+
 // AI 리포트(ai_report/models.py의 Report)를 AI 리포트 창과 같은 카드 모양으로
 function ReportCards({ report, titles }) {
   const [t1, t2, t3] = titles

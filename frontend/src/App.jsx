@@ -903,8 +903,15 @@ export default function App() {
 
       {dialog === 'new' && <NewSubstationDialog onCreate={createSubstation} onClose={() => setDialog(null)} />}
       {dialog === 'rename' && graph && <RenameDialog current={graph.substation.name} onRename={renameSubstation} onClose={() => setDialog(null)} />}
-      {/* AI 챗봇: 오른쪽 아래 "질문하기" (11/20). 질문할 때 지금 변전소·계산 결과·계산 시각을 같이 보낸다 */}
-      <ChatBot graph={graph} result={result} resultAt={resultAt} isNew={isNew} />
+      {/* AI 챗봇: 오른쪽 아래 "질문하기" (11/20). 질문할 때 지금 변전소·계산 결과·계산 시각·이미 만든 AI 리포트를 같이 보낸다 */}
+      <ChatBot
+        graph={graph}
+        result={result}
+        resultAt={resultAt}
+        isNew={isNew}
+        report={report}
+        reportStale={!!report && (report.forKey !== simulatedKey.current || report.forAt?.date !== resultAt?.date || report.forAt?.hour !== resultAt?.hour)}
+      />
       {dialog === 'delete' && deleting && (
         <DeleteSubstationDialog
           target={deleting}

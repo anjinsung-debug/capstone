@@ -1,14 +1,16 @@
 // AI 챗봇 (11/20): 화면 오른쪽 아래 "질문하기". 지금 계통·계산 결과·플랫폼 기능을 LLM에 묻고 답을 받는다 (ai_report/chat.py)
-// - 질문할 때마다 지금 화면의 변전소·계산 결과·계산 시각을 같이 보낸다. 그래서 편집하거나 시각이 바뀌면 다음 질문부터 새 결과로 답한다
+// - 질문할 때마다 지금 화면의 변전소·계산 결과·계산 시각, 이미 만든 AI 리포트·여유 용량·보강 우선순위를 같이 보낸다.
+//   서버는 내 변전소 전체(같은 시각 판정)와 그날 24시간 결과를 직접 계산해 붙인다 (backend/api/chat.py)
 // - 대화는 창을 닫아도 남는다(새로고침하면 지워짐). "새 대화"로 지울 수 있다. 최근 몇 개만 서버로 보낸다 (ai_report/chat.py MAX_TURNS)
 // - Enter 보내기, Shift+Enter 줄바꿈, Esc 닫기
 // ponytail: 답을 한 번에 받는다(스트리밍 아님). 기다림이 길면 서버를 스트리밍으로 바꾸고 여기서 조각을 이어 붙인다
 import { useEffect, useRef, useState } from 'react'
 import { askChat } from '../api/client.js'
+import { chatExtras } from './UsecasePanels.jsx'
 
 const SEND_TURNS = 12 // 서버로 보내는 최근 대화 수
-const SUGGESTIONS_WITH_RESULT = ['지금 계통 상태를 한 줄로 알려줘', '문제가 있는 곳은 어디고 왜 그래?', '태양광을 더 붙이려면 어디가 좋아?', '여유 용량은 어디서 어떻게 봐?']
-const SUGGESTIONS_NO_SUB = ['이 플랫폼으로 뭘 할 수 있어?', '새 변전소는 어떻게 만들어?', '판정 기준이 뭐야?']
+const SUGGESTIONS_WITH_RESULT = ['지금 계통 상태를 한 줄로 알려줘', '오늘 몇 시가 제일 위험해?', '내 변전소는 몇 곳이고 상태는 어때?', '문제가 있는 곳은 어디고 왜 그래?']
+const SUGGESTIONS_NO_SUB = ['내 변전소는 몇 곳이야?', '이 플랫폼으로 뭘 할 수 있어?', '새 변전소는 어떻게 만들어?', '판정 기준이 뭐야?']
 
 let saved = [] // 창을 닫았다 열어도 대화가 남게 (모듈에 보관)
 
@@ -22,7 +24,7 @@ function Bubble({ m }) {
   )
 }
 
-export default function ChatBot({ graph, result, resultAt, isNew }) {
+export default function ChatBot({ graph, result, resultAt, isNew, report, reportStale }) {
   const [open, setOpen] = useState(false)
   const [msgs, setMsgs] = useState(saved)
   const [text, setText] = useState('')
@@ -55,11 +57,14 @@ export default function ChatBot({ graph, result, resultAt, isNew }) {
     setText('')
     setBusy(true)
     try {
+      // 화면에서 이미 만든 결과도 같이 보낸다: AI 리포트, 여유 용량 표, 보강 우선순위 (서버는 변전소 목록·24시간 결과를 직접 계산)
+      const extras = subId ? { ...chatExtras(subId, resultAt), report: report ? { diagnosis: report.diagnosis, causes: report.causes, solutions: report.solutions, at: report.forAt ? `${report.forAt.date} ${report.forAt.hour}시` : null, stale: !!reportStale } : null } : null
       const { reply } = await askChat(
         next.slice(-SEND_TURNS).map(({ role, content }) => ({ role, content })),
         subId,
         subId ? result : null,
         subId && result ? resultAt : null,
+        extras,
       )
       setMsgs((m) => [...m, { role: 'assistant', content: reply }])
     } catch (e) {
