@@ -1488,10 +1488,6 @@ p.warn {
   line-height: 18px;
   text-align: center;
 }
-.rp-list.solution li::before {
-  border-color: var(--accent);
-  color: var(--accent);
-}
 .num-hl {
   color: #8fd0ff;
   font-weight: 700;
@@ -1807,6 +1803,20 @@ p.warn {
   flex-wrap: wrap;
   align-items: flex-end;
   gap: 10px;
+}
+/* 보강 우선순위: 점검 날짜마다 고른 이유 (11/20) */
+.uc-date-why {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.uc-date-why b {
+  color: var(--text, inherit);
+  font-weight: 600;
+  margin-right: 4px;
 }
 .uc-controls .field {
   margin-bottom: 0;

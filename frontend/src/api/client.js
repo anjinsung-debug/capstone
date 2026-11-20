@@ -113,6 +113,8 @@ const withQuery = (path, params, at) => {
 export const createHostingReport = (body, at) => request('POST', withQuery('/reports/hosting', 'audience=expert', at), body)
 export const createDailyReport = (substationId, body) => request('POST', `/reports/daily/${substationId}?audience=expert`, body)
 // 보강 우선순위는 AI 리포트 창으로 옮기면서 다른 AI 리포트 창 탭처럼 쉬운 설명 (11/10)
+// 보강 우선순위 기본 점검 날짜: [{ date, label, reason }] (순부하 최대일·최소일, ai_report/report.py critical_dates)
+export const getReinforceDates = (substationId) => request('GET', `/reports/reinforcement/${substationId}/dates`)
 export const createReinforcementReport = (substationId, body) =>
   request('POST', `/reports/reinforcement/${substationId}?audience=plain`, body)
 // 여유 용량 (ai_report/capacity.py): 접속점마다 신재생·부하를 몇 kW까지 더 붙일 수 있는지, 무엇이 막는지. 계산만 (수 초~수십 초)
