@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 from ai_report.report import ReportError
-from backend.api import grid, health, report, simulation
+from backend.api import chat, grid, health, report, simulation
 from cim import db
 from cim.graph import InvalidSnapshot, SubstationNotFound
 from simulation.simulate import SimulationError
@@ -50,3 +50,4 @@ app.include_router(health.router, prefix="/api", tags=["health"])
 app.include_router(grid.router, prefix="/api", tags=["grid"])
 app.include_router(simulation.router, prefix="/api", tags=["simulation"])
 app.include_router(report.router, prefix="/api", tags=["report"])
+app.include_router(chat.router, prefix="/api", tags=["chat"])

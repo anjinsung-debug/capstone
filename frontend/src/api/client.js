@@ -95,6 +95,11 @@ export async function createPlot(simulationResult) {
 
 // AI 리포트 (FR-08, FR-09): runSimulation 결과를 그대로 넘긴다
 // at: 결과를 계산한 시각 (runSimulation에 준 값). 백엔드가 프롬프트의 부하·태양광 kW를 같은 시각 값으로 맞춘다
+// AI 챗봇 (ai_report/chat.py, 11/20). messages: [{ role: 'user'|'assistant', content }] (마지막이 이번 질문)
+// substationId·result·at: 지금 화면의 변전소·계산 결과·계산 시각 (없으면 null). 응답: { reply }
+export const askChat = (messages, substationId = null, result = null, at = null) =>
+  request('POST', '/chat', { messages, substation_id: substationId, result, date: at?.date ?? null, hour: at?.hour ?? null })
+
 export const createReport = (simulationResult, audience = 'expert', at = null) =>
   request('POST', `/reports?audience=${audience}${at ? `&${atQuery(at)}` : ''}`, simulationResult)
 
