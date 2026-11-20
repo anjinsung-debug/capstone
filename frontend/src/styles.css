@@ -1895,7 +1895,7 @@ p.warn {
 }
 .ov-154 {
   stroke: #e05d5d;
-  stroke-width: 4;
+  stroke-width: 3;
 }
 .ov-wire {
   stroke: #9fb3c8;
@@ -1903,7 +1903,7 @@ p.warn {
 }
 .ov-bus {
   stroke: #4fa3ff;
-  stroke-width: 6;
+  stroke-width: 4;
   stroke-linecap: round;
 }
 .ov-tr {

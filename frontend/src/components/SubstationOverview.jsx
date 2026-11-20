@@ -9,6 +9,8 @@ import { getSubstation } from '../api/client.js'
 const COL_W = 230 // 변전소 한 칸 너비
 const TOP = 46 // 154 kV 선 높이
 const BUS_Y = 178 // 22.9 kV 모선 높이
+const GAP_154 = 5 // 154 kV 2회선: 가운데(TOP)에서 위아래로 이만큼 (11/20 피드백: 송전선·모선 모두 두 줄)
+const GAP_BUS = 4 // 22.9 kV 이중 모선: 가운데(BUS_Y)에서 위아래로 이만큼
 
 function Column({ x, sub, detail, current, onSelect }) {
   const feeders = detail?.feeders ?? []
@@ -20,16 +22,18 @@ function Column({ x, sub, detail, current, onSelect }) {
     <g className={`ov-sub${current ? ' current' : ''}`} onClick={() => onSelect(sub.id)} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && onSelect(sub.id)}>
       <title>{`${sub.name} · 눌러서 배전선로 단선도 열기 (편집·계산)`}</title>
       <rect className="ov-hit" x={x - COL_W / 2 + 8} y={TOP + 8} width={COL_W - 16} height={300} rx="12" />
-      <line className="ov-wire" x1={x} y1={TOP} x2={x} y2={TOP + 40} />
+      <line className="ov-wire" x1={x} y1={TOP - GAP_154} x2={x} y2={TOP + 40} />
       {/* 주변압기 (원 두 개) */}
       <circle className="ov-tr" cx={x} cy={TOP + 56} r="16" />
       <circle className="ov-tr" cx={x} cy={TOP + 80} r="16" />
       <text className="ov-small" x={x + 24} y={TOP + 72}>
         154/22.9 kV
       </text>
-      <line className="ov-wire" x1={x} y1={TOP + 96} x2={x} y2={BUS_Y} />
-      {/* 22.9 kV 모선 */}
-      <line className="ov-bus" x1={x - span / 2 - 18} y1={BUS_Y} x2={x + span / 2 + 18} y2={BUS_Y} />
+      <line className="ov-wire" x1={x} y1={TOP + 96} x2={x} y2={BUS_Y + GAP_BUS} />
+      {/* 22.9 kV 이중 모선 (두 줄) */}
+      {[-GAP_BUS, GAP_BUS].map((d) => (
+        <line key={d} className="ov-bus" x1={x - span / 2 - 18} y1={BUS_Y + d} x2={x + span / 2 + 18} y2={BUS_Y + d} />
+      ))}
       {feeders.length === 0 && (
         <text className="ov-small" x={x} y={BUS_Y + 40} textAnchor="middle">
           {detail ? '배전선로 없음' : '불러오는 중…'}
@@ -37,7 +41,7 @@ function Column({ x, sub, detail, current, onSelect }) {
       )}
       {feeders.map((f, i) => (
         <g key={f.id}>
-          <line className="ov-wire" x1={fx(i)} y1={BUS_Y} x2={fx(i)} y2={BUS_Y + 70} />
+          <line className="ov-wire" x1={fx(i)} y1={BUS_Y - GAP_BUS} x2={fx(i)} y2={BUS_Y + 70} />
           <rect className="ov-cb" x={fx(i) - 7} y={BUS_Y + 22} width="14" height="14" />
           <text className="ov-feeder" x={fx(i)} y={BUS_Y + 88} textAnchor="middle">
             {f.name}
@@ -90,8 +94,11 @@ export default function SubstationOverview({ substations, currentId, onSelect, o
       </div>
       <div className="ov-scroll">
         <svg className="ov-svg" width={width} height={BUS_Y + 170} viewBox={`0 0 ${width} ${BUS_Y + 170}`}>
-          <line className="ov-154" x1="10" y1={TOP} x2={width - 10} y2={TOP} />
-          <text className="ov-small" x="14" y={TOP - 10}>
+          {/* 154 kV 송전선로 2회선 (두 줄) */}
+          {[-GAP_154, GAP_154].map((d) => (
+            <line key={d} className="ov-154" x1="10" y1={TOP + d} x2={width - 10} y2={TOP + d} />
+          ))}
+          <text className="ov-small" x="14" y={TOP - GAP_154 - 8}>
             154 kV 송전선로
           </text>
           {substations.map((s, i) => (
