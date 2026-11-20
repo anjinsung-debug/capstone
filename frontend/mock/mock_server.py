@@ -340,6 +340,10 @@ class Handler(SimpleHTTPRequestHandler):
             # AI 추천·권고(UsecasePanels.jsx)는 LLM과 OpenDSS 24시간 계산이 필요해 모의 백엔드에는 없다
             if m == "POST" and p[:1] == ["reports"] and len(p) >= 2 and p[1] in ("hosting", "daily", "reinforcement"):
                 return self._send(501, {"detail": "모의 백엔드에는 없는 기능입니다. 진짜 백엔드(uvicorn + Docker Neo4j)로 확인하세요"})
+            if m == "POST" and p == ["chat"]:  # AI 챗봇 (모의: 실제 AI 대신 정해진 답)
+                body = self._body() or {}
+                q = body["messages"][-1]["content"] if body.get("messages") else ""
+                return self._send(200, {"reply": f"(모의 백엔드) '{q}'에 대한 답입니다. 실제 답은 진짜 백엔드와 AI 키가 있어야 나옵니다."})
             if m == "POST" and p == ["reports"]:
                 r = SimulationResult.model_validate(self._body())
                 return self._send(200, mock_report(self._at(STORE[r.substation_id]), r))

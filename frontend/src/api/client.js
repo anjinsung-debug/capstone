@@ -95,6 +95,12 @@ export async function createPlot(simulationResult) {
 
 // AI 리포트 (FR-08, FR-09): runSimulation 결과를 그대로 넘긴다
 // at: 결과를 계산한 시각 (runSimulation에 준 값). 백엔드가 프롬프트의 부하·태양광 kW를 같은 시각 값으로 맞춘다
+// AI 챗봇 (ai_report/chat.py, 11/20). messages: [{ role: 'user'|'assistant', content }] (마지막이 이번 질문)
+// substationId·result·at: 지금 화면의 변전소·계산 결과·계산 시각 (없으면 null). 응답: { reply }
+// extras: 화면에서 이미 계산한 결과 { capacity, reinforce } (ChatBot.jsx)
+export const askChat = (messages, substationId = null, result = null, at = null, extras = null) =>
+  request('POST', '/chat', { messages, substation_id: substationId, result, date: at?.date ?? null, hour: at?.hour ?? null, extras })
+
 export const createReport = (simulationResult, audience = 'expert', at = null) =>
   request('POST', `/reports?audience=${audience}${at ? `&${atQuery(at)}` : ''}`, simulationResult)
 
@@ -107,6 +113,8 @@ const withQuery = (path, params, at) => {
 export const createHostingReport = (body, at) => request('POST', withQuery('/reports/hosting', 'audience=expert', at), body)
 export const createDailyReport = (substationId, body) => request('POST', `/reports/daily/${substationId}?audience=expert`, body)
 // 보강 우선순위는 AI 리포트 창으로 옮기면서 다른 AI 리포트 창 탭처럼 쉬운 설명 (11/10)
+// 보강 우선순위 기본 점검 날짜: [{ date, label, reason }] (순부하 최대일·최소일, ai_report/report.py critical_dates)
+export const getReinforceDates = (substationId) => request('GET', `/reports/reinforcement/${substationId}/dates`)
 export const createReinforcementReport = (substationId, body) =>
   request('POST', `/reports/reinforcement/${substationId}?audience=plain`, body)
 // 여유 용량 (ai_report/capacity.py): 접속점마다 신재생·부하를 몇 kW까지 더 붙일 수 있는지, 무엇이 막는지. 계산만 (수 초~수십 초)

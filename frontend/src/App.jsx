@@ -36,6 +36,7 @@ import { CapacityPanel, ReinforceBox } from './components/UsecasePanels.jsx'
 const Diagram3D = lazy(() => import('./components/Diagram3D.jsx'))
 import { DeleteSubstationDialog, NewSubstationDialog, RenameDialog } from './components/SubstationDialog.jsx'
 import SubstationPicker from './components/SubstationPicker.jsx'
+import ChatBot from './components/ChatBot.jsx'
 import {
   addNode,
   electricalKey,
@@ -902,6 +903,8 @@ export default function App() {
 
       {dialog === 'new' && <NewSubstationDialog onCreate={createSubstation} onClose={() => setDialog(null)} />}
       {dialog === 'rename' && graph && <RenameDialog current={graph.substation.name} onRename={renameSubstation} onClose={() => setDialog(null)} />}
+      {/* AI 챗봇: 오른쪽 아래 "질문하기" (11/20). 질문할 때 지금 변전소·계산 결과·계산 시각을 같이 보낸다 */}
+      <ChatBot graph={graph} result={result} resultAt={resultAt} isNew={isNew} />
       {dialog === 'delete' && deleting && (
         <DeleteSubstationDialog
           target={deleting}

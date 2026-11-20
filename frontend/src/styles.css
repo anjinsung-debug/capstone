@@ -1488,10 +1488,6 @@ p.warn {
   line-height: 18px;
   text-align: center;
 }
-.rp-list.solution li::before {
-  border-color: var(--accent);
-  color: var(--accent);
-}
 .num-hl {
   color: #8fd0ff;
   font-weight: 700;
@@ -1807,6 +1803,20 @@ p.warn {
   flex-wrap: wrap;
   align-items: flex-end;
   gap: 10px;
+}
+/* 보강 우선순위: 점검 날짜마다 고른 이유 (11/20) */
+.uc-date-why {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.uc-date-why b {
+  color: var(--text, inherit);
+  font-weight: 600;
+  margin-right: 4px;
 }
 .uc-controls .field {
   margin-bottom: 0;
@@ -2179,4 +2189,137 @@ p.warn {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+/* ── AI 챗봇 (오른쪽 아래 "질문하기", 11/20). 모달(AI 리포트 창 등) 위에도 떠서 보면서 물어볼 수 있다 ── */
+.chat-fab {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 30;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.chat-panel {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 30;
+  width: min(400px, calc(100vw - 32px));
+  height: min(560px, calc(100vh - 100px));
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+.chat-panel header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.chat-panel header > div {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.chat-panel header span {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chat-head-btn {
+  padding: 4px 9px;
+  font-size: 12px;
+}
+.chat-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.chat-msg {
+  max-width: 88%;
+  padding: 8px 11px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+.chat-msg p {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+.chat-msg.user {
+  align-self: flex-end;
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-bottom-right-radius: 3px;
+}
+.chat-msg.assistant {
+  align-self: flex-start;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-bottom-left-radius: 3px;
+}
+.chat-msg.error {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.chat-msg.typing {
+  color: var(--muted);
+  font-style: italic;
+}
+.chat-empty p {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.chat-suggest {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.chat-suggest button {
+  padding: 6px 10px;
+  font-size: 12.5px;
+  border-radius: 999px;
+}
+.chat-input {
+  display: flex;
+  gap: 6px;
+  padding: 10px 12px 6px;
+  border-top: 1px solid var(--line);
+}
+.chat-input textarea {
+  flex: 1;
+  font: inherit;
+  color: inherit;
+  resize: none;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 7px 9px;
+  font-size: 13.5px;
+}
+.chat-note {
+  margin: 0;
+  padding: 0 12px 8px;
+  color: var(--muted);
+  font-size: 11px;
 }

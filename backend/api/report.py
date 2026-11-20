@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from ai_report.capacity import CapacityTable, capacity_table
 from ai_report.models import ReinforcementReport, Report
 from ai_report.report import (
+    critical_dates,
     generate_capacity_report,
     generate_daily_report,
     generate_hosting_report,
@@ -110,6 +111,12 @@ def create_reinforcement_report(substation_id: str, body: ReinforcementRequest,
     except ValueError as e:
         raise HTTPException(422, str(e)) from e
     return generate_reinforcement_report(g, dailies, body.budget_lines, audience)
+
+
+@router.get("/reports/reinforcement/{substation_id}/dates")
+def reinforcement_dates(substation_id: str) -> list[dict]:
+    """설비 보강 우선순위의 기본 점검 날짜: 이 계통에 가장 불리한 두 날(순부하 최대일·최소일)과 고른 이유 (시뮬레이션 없음, 바로 끝남)"""
+    return critical_dates(graph.get_substation(substation_id))
 
 
 @router.post("/reports/capacity/{substation_id}")

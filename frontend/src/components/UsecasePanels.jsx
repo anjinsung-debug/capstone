@@ -6,7 +6,7 @@
 // 계산은 진짜 백엔드(simulation/der.py, simulation/daily.py)가 하고, AI 문장은 ai_report/report.py가 만든다
 // (전문가용 설명: 한전 담당자용 화면). 모의 백엔드에는 이 주소들이 없다 (진짜 백엔드로 확인)
 import { useCallback, useEffect, useState } from 'react'
-import { createCapacityReport, createDailyReport, createHostingReport, createReinforcementReport, runCapacity } from '../api/client.js'
+import { createCapacityReport, createDailyReport, createHostingReport, createReinforcementReport, getReinforceDates, runCapacity } from '../api/client.js'
 
 // 화면을 닫거나 다른 탭에 갔다 와도 마지막 결과가 남도록 값을 컴포넌트 밖(모듈)에 둔다 (새로고침하면 지워짐).
 // 계산 중에 창을 닫아도 응답이 오면 여기에 저장되고, 다시 열면 그대로 보인다.
@@ -30,6 +30,18 @@ function usePersisted(key, initial) {
     [key],
   )
   return [value, set]
+}
+
+// AI 챗봇(ChatBot.jsx)에 보낼, 화면에서 이미 계산한 결과 (11/20). 계산 안 했으면 null
+const atLabel = (at) => (at ? `${at.date} ${at.hour}시` : null)
+export function chatExtras(sid, at) {
+  if (!sid) return {}
+  const table = store.get(`cap:${sid}:table`)
+  const rf = store.get(`reinforce:${sid}:data`)
+  return {
+    capacity: table ? { table: table.data, at: atLabel(table.at), stale: atLabel(table.at) !== atLabel(at) } : null,
+    reinforce: rf?.ranking ? { ranking: rf.ranking, dates: (store.get(`reinforce:${sid}:dates`) ?? DEFAULT_DATES).filter(Boolean) } : null,
+  }
 }
 
 // AI 리포트(ai_report/models.py의 Report)를 AI 리포트 창과 같은 카드 모양으로
@@ -150,7 +162,13 @@ export function DailyAiBox({ graph, date }) {
 }
 
 // ── 유스케이스 3: 설비 보강 우선순위 ──
-const DEFAULT_DATES = ['2025-08-01', '2025-01-15'] // 여름·겨울 대표일 (2025년 가상 패턴)
+// 기본 점검 날짜 (11/20): 서버가 이 계통에 가장 불리한 두 날(순부하 최대일·최소일)을 골라 준다 (ai_report/report.py critical_dates).
+// 서버에 못 물어봤을 때만 아래 값을 쓴다 (원본 계통 기준으로 고른 날. 예전 기본값 8/1·1/15는 겨울이라 역조류를 못 봤음)
+const DEFAULT_DATES = ['2025-07-29', '2025-05-10']
+const todayIso = () => {
+  const d = new Date() // 서버는 오늘까지만 받는다 (simulation/daily.py check_date)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 
 export function ReinforceBox({ graph, onFocus }) {
   const sid = graph.substation.id
@@ -160,12 +178,30 @@ export function ReinforceBox({ graph, onFocus }) {
   const [data, setData] = usePersisted(k('data'), null)
   const [busy, setBusy] = usePersisted(k('busy'), false)
   const [error, setError] = usePersisted(k('error'), '')
+  const [why, setWhy] = usePersisted(k('why'), null) // 서버가 고른 날의 이름·이유 { 날짜: { label, reason } }
+
+  // 처음 열 때 이 계통에 맞는 기본 날짜를 받아 온다 (사용자가 날짜를 바꾼 뒤에는 그대로 둔다)
+  useEffect(() => {
+    if (why) return
+    let alive = true
+    getReinforceDates(sid)
+      .then((list) => {
+        if (!alive) return
+        setWhy(Object.fromEntries(list.map((x) => [x.date, { label: x.label, reason: x.reason }])))
+        setDates((cur) => (cur.join() === DEFAULT_DATES.join() ? list.map((x) => x.date) : cur))
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sid])
 
   async function make() {
     setBusy(true)
     setError('')
     try {
-      setData(await createReinforcementReport(sid, { dates: dates.filter(Boolean), budget_lines: Number(count) || 2 }))
+      setData({ ...(await createReinforcementReport(sid, { dates: dates.filter(Boolean), budget_lines: Number(count) || 2 })), dates: dates.filter(Boolean) })
     } catch (e) {
       setError(e.message)
     } finally {
@@ -176,13 +212,16 @@ export function ReinforceBox({ graph, onFocus }) {
   return (
     <section className="uc-result">
       <h4>설비 보강 우선순위</h4>
-      <p className="muted small">여러 날의 24시간 결과에서 선로마다 최대 부하율과 기준을 넘는 시간을 세어 순위를 매기고, AI가 증강 순서를 정리합니다.</p>
+      <p className="muted small">
+        고른 날들의 24시간 결과에서 선로마다 최대 부하율과 기준을 넘는 시간을 세어 순위를 매기고, AI가 증강 순서를 정리합니다. 기본 날짜는 1년 중 이 계통에
+        가장 불리한 두 날(부하가 가장 무거운 날, 태양광이 부하를 가장 많이 덮는 날)이며 직접 바꿀 수 있습니다.
+      </p>
       <div className="uc-controls">
         {dates.map((d, i) => (
           <label key={i} className="field">
             점검 날짜 {i + 1}
             <span className="field-input">
-              <input type="date" min="2025-01-01" value={d} disabled={busy} onChange={(e) => setDates(dates.map((x, j) => (j === i ? e.target.value : x)))} />
+              <input type="date" min="2025-01-01" max={todayIso()} value={d} disabled={busy} onChange={(e) => setDates(dates.map((x, j) => (j === i ? e.target.value : x)))} />
             </span>
           </label>
         ))}
@@ -197,6 +236,16 @@ export function ReinforceBox({ graph, onFocus }) {
           순위 계산 + AI 정리
         </button>
       </div>
+      {/* 날짜마다 고른 이유 (서버가 고른 날이면 이름·이유, 바꾼 날이면 "직접 고른 날") */}
+      <ul className="uc-date-why">
+        {dates.map((d, i) =>
+          d ? (
+            <li key={i}>
+              <b>점검 날짜 {i + 1}</b> {d} · {why?.[d] ? `${why[d].label}: ${why[d].reason}` : '직접 고른 날'}
+            </li>
+          ) : null,
+        )}
+      </ul>
       {busy && <Busy text="날짜마다 24시간 계산 후 AI가 정리하고 있습니다... (수십 초)" />}
       <Fail error={error} />
       {data && (
@@ -238,6 +287,9 @@ export function ReinforceBox({ graph, onFocus }) {
               ))}
             </tbody>
           </table>
+          <p className="muted small">
+            시간 수는 고른 {data.dates?.length ?? dates.filter(Boolean).length}일({(data.dates ?? dates.filter(Boolean)).join(', ')})의 24시간을 합한 값입니다. 1년 전체 시간 수가 아닙니다.
+          </p>
           <ReportCards report={data.report} titles={['요약', '선로별 위험', '증강 순서 권고']} />
         </>
       )}
