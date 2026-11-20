@@ -2197,8 +2197,12 @@ p.warn {
   right: 20px;
   bottom: 20px;
   z-index: 30;
-  padding: 10px 16px;
-  border-radius: 999px;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-ink);
@@ -2206,13 +2210,25 @@ p.warn {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
 /* 변전소를 열었을 때: 단선도 오른쪽 아래 "화면에 맞추기"(.fit-btn) 바로 왼쪽, 같은 높이 */
+.chat-fab svg {
+  width: 26px;
+  height: 26px;
+}
+.chat-fab:hover {
+  filter: brightness(1.1);
+}
 .diagram .chat-fab {
   position: absolute;
-  right: 52px;
+  right: 50px;
   bottom: 10px;
   z-index: 2;
-  padding: 4px 12px;
+  width: 34px;
+  height: 34px;
   box-shadow: none;
+}
+.diagram .chat-fab svg {
+  width: 20px;
+  height: 20px;
 }
 .chat-panel {
   position: fixed;

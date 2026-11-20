@@ -105,8 +105,12 @@ export default function ChatBot({ graph, result, resultAt, isNew, tools = [] }) 
 
   if (!open) {
     return (
-      <button type="button" className="chat-fab" onClick={() => setOpen(true)} title="AI에게 지금 계통·결과·기능 물어보기">
-        💬 질문하기
+      // 글자 대신 아이콘 (11/20): 말풍선 + AI 반짝임. 이름은 aria-label·title로
+      <button type="button" className="chat-fab" onClick={() => setOpen(true)} aria-label="AI 질문하기" title="AI 질문하기 · 지금 계통·결과·기능 물어보기">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H11l-4.2 3.6c-.5.4-1.3.1-1.3-.6V16A2.5 2.5 0 0 1 3 13.5Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+          <path d="M12 6.2l.9 2.3 2.3.9-2.3.9-.9 2.3-.9-2.3-2.3-.9 2.3-.9Z" fill="currentColor" />
+        </svg>
       </button>
     )
   }
