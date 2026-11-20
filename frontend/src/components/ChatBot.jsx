@@ -1,5 +1,5 @@
 // AI 챗봇 (11/20): 화면 오른쪽 아래 "질문하기". 지금 계통·계산 결과·플랫폼 기능을 LLM에 묻고 답을 받는다 (ai_report/chat.py)
-// - 질문할 때마다 지금 화면의 변전소·계산 결과·계산 시각, 이미 만든 AI 리포트·여유 용량·보강 우선순위를 같이 보낸다.
+// - 질문할 때마다 지금 화면의 변전소·계산 결과·계산 시각, 이미 계산한 여유 용량·보강 우선순위를 같이 보낸다.
 //   서버는 내 변전소 전체(같은 시각 판정)와 그날 24시간 결과를 직접 계산해 붙인다 (backend/api/chat.py)
 // - 대화는 창을 닫아도 남는다(새로고침하면 지워짐). "새 대화"로 지울 수 있다. 최근 몇 개만 서버로 보낸다 (ai_report/chat.py MAX_TURNS)
 // - Enter 보내기, Shift+Enter 줄바꿈, Esc 닫기
@@ -24,7 +24,7 @@ function Bubble({ m }) {
   )
 }
 
-export default function ChatBot({ graph, result, resultAt, isNew, report, reportStale }) {
+export default function ChatBot({ graph, result, resultAt, isNew }) {
   const [open, setOpen] = useState(false)
   const [msgs, setMsgs] = useState(saved)
   const [text, setText] = useState('')
@@ -57,8 +57,8 @@ export default function ChatBot({ graph, result, resultAt, isNew, report, report
     setText('')
     setBusy(true)
     try {
-      // 화면에서 이미 만든 결과도 같이 보낸다: AI 리포트, 여유 용량 표, 보강 우선순위 (서버는 변전소 목록·24시간 결과를 직접 계산)
-      const extras = subId ? { ...chatExtras(subId, resultAt), report: report ? { diagnosis: report.diagnosis, causes: report.causes, solutions: report.solutions, at: report.forAt ? `${report.forAt.date} ${report.forAt.hour}시` : null, stale: !!reportStale } : null } : null
+      // 화면에서 이미 계산한 여유 용량 표·보강 우선순위도 같이 보낸다 (서버는 변전소 목록·24시간 결과를 직접 계산)
+      const extras = subId ? chatExtras(subId, resultAt) : null
       const { reply } = await askChat(
         next.slice(-SEND_TURNS).map(({ role, content }) => ({ role, content })),
         subId,

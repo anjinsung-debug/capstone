@@ -1,7 +1,7 @@
 """AI 챗봇 API (11/20): 화면 오른쪽 아래 "질문하기". 지금 계통·계산 결과·플랫폼 기능을 묻고 답을 받는다 (ai_report/chat.py)
 
 질문마다 모델에 주는 자료: 내 변전소 전체(같은 시각 판정), 지금 변전소 구성·계산 결과, 그날 24시간 결과,
-화면에서 이미 만든 AI 리포트·여유 용량 표·보강 우선순위 (extras)"""
+화면에서 이미 계산한 여유 용량 표·보강 우선순위 (extras)"""
 
 import datetime as dt
 
@@ -23,7 +23,7 @@ class ChatRequest(BaseModel):
     result: SimulationResult | None = None  # 지금 화면의 계산 결과
     date: dt.date | None = None  # 결과를 계산한 날짜·시 (프롬프트의 부하·태양광 kW를 같은 시각 값으로 맞춘다)
     hour: int | None = None
-    extras: dict | None = None  # 화면에서 이미 만든 결과 { report, capacity: { table, at, stale }, reinforce: { ranking, dates } }
+    extras: dict | None = None  # 화면에서 이미 계산한 결과 { capacity: { table, at, stale }, reinforce: { ranking, dates } }
 
 
 def _now() -> tuple[dt.date, int]:
