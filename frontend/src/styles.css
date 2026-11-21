@@ -2230,6 +2230,14 @@ p.warn {
   width: 20px;
   height: 20px;
 }
+/* 변전소를 열었을 때 채팅 창: 단선도 칸 안 오른쪽 아래 (11/22, 오른쪽 속성 칸을 가리지 않게). 칸보다 크지 않게 */
+.diagram .chat-panel {
+  position: absolute;
+  right: 10px;
+  bottom: 52px;
+  width: min(400px, calc(100% - 20px));
+  height: min(560px, calc(100% - 62px));
+}
 .chat-panel {
   position: fixed;
   right: 20px;

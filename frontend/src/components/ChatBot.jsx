@@ -15,17 +15,20 @@ const SUGGESTIONS_NO_SUB = ['내 변전소는 몇 곳이야?', '이 플랫폼으
 let saved = [] // 창을 닫았다 열어도 대화가 남게 (모듈에 보관)
 let savedPos = null // 끌어서 옮긴 창 위치 { left, top } (닫았다 열어도 그 자리). null = 기본(오른쪽 아래)
 
-// 제목 줄을 잡고 끌면 창을 옮긴다 (11/20). 화면 밖으로 나가지 않게 가둔다. 버튼을 누른 건 끌기로 보지 않는다
+// 제목 줄을 잡고 끌면 창을 옮긴다 (11/20). 버튼을 누른 건 끌기로 보지 않는다.
+// 가두는 칸: 단선도 안에 열린 창(11/22, position: absolute)은 단선도 칸, 첫 화면 창(position: fixed)은 브라우저 화면
 function useDrag(panel) {
   const [pos, setPos] = useState(savedPos)
   const onPointerDown = (e) => {
     if (e.button !== 0 || e.target.closest('button')) return
     const box = panel.current.getBoundingClientRect()
-    const dx = e.clientX - box.left
-    const dy = e.clientY - box.top
+    const parent = panel.current.offsetParent // absolute면 .diagram, fixed면 null
+    const area = parent ? parent.getBoundingClientRect() : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight }
+    const dx = e.clientX - box.left + area.left
+    const dy = e.clientY - box.top + area.top
     const move = (ev) => {
-      const left = Math.min(Math.max(0, ev.clientX - dx), window.innerWidth - box.width)
-      const top = Math.min(Math.max(0, ev.clientY - dy), window.innerHeight - box.height)
+      const left = Math.min(Math.max(0, ev.clientX - dx), area.width - box.width)
+      const top = Math.min(Math.max(0, ev.clientY - dy), area.height - box.height)
       savedPos = { left, top }
       setPos(savedPos)
     }
