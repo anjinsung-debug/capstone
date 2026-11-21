@@ -27,6 +27,7 @@ import {
 import Diagram from './components/Diagram.jsx'
 import Modal from './components/Modal.jsx'
 import NavDrawer from './components/NavDrawer.jsx'
+import { cimExportIssues } from './lib/cimExport.js'
 import PopupWindow, { openPopup } from './components/PopupWindow.jsx'
 import PropertyPanel from './components/PropertyPanel.jsx'
 import SubstationOverview from './components/SubstationOverview.jsx'
@@ -738,6 +739,8 @@ export default function App() {
           onExportCim={downloadCim}
           exporting={exporting}
           canExport={!isNew}
+          exportIssues={cimExportIssues(graph)}
+          onFocusIssue={focusElement}
           tool={tool}
           onTool={(t) => {
             setTool(t)

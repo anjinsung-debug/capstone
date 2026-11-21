@@ -7,7 +7,7 @@ import { DEFAULT_LINE, NODE_TYPES } from '../lib/graphEdit.js'
 
 export const DRAG_TYPE = 'application/x-capstone-node' // 끌어다 놓기로 넘기는 값의 종류 (Diagram.jsx가 받음)
 
-export default function NavDrawer({ open, substationName, onRename, onExportCim, exporting, canExport, tool, onTool, onUndo, canUndo, onDelete, canDelete, onClose }) {
+export default function NavDrawer({ open, substationName, onRename, onExportCim, exporting, canExport, exportIssues = [], onFocusIssue, tool, onTool, onUndo, canUndo, onDelete, canDelete, onClose }) {
   return (
     <aside className={open ? 'nav open' : 'nav'} aria-hidden={!open}>
       <div className="nav-head">
@@ -31,14 +31,29 @@ export default function NavDrawer({ open, substationName, onRename, onExportCim,
           <button
             type="button"
             className="tool"
-            disabled={!substationName || exporting || !canExport}
+            disabled={!substationName || exporting || !canExport || exportIssues.length > 0}
             onClick={onExportCim}
-            title={canExport ? '마지막으로 저장된 계통을 CIM16 XML 파일로 내려받기 (cim/export.py)' : '저장된 뒤에 내보낼 수 있습니다'}
+            aria-describedby={exportIssues.length ? 'cim-export-issues' : undefined}
+            title={exportIssues.length ? '아래 항목을 수정하면 CIM으로 내보낼 수 있습니다' : canExport ? '저장된 계통을 CIM XML 파일로 내려받기' : '저장된 뒤에 내보낼 수 있습니다'}
           >
             <span className="tool-icon">⤓</span>
             {exporting ? '내보내는 중…' : 'CIM 내보내기'}
           </button>
         </div>
+        {exportIssues.length > 0 && (
+          <div id="cim-export-issues" className="nav-note" aria-live="polite">
+            <strong style={{ color: 'var(--warn)' }}>CIM 내보내기 전 확인</strong>
+            <p>시뮬레이션이 성공해도 CIM 내보내기에는 추가 조건이 필요합니다.</p>
+            <ul>
+              {exportIssues.map((issue, i) => (
+                <li key={`${issue.id}-${i}`}>
+                  <button type="button" className="tool" onClick={() => onFocusIssue(issue.id)}>{issue.name} 보기</button>
+                  {issue.message}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
 
       <div className="nav-section">

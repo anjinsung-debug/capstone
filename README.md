@@ -94,7 +94,7 @@ frontend ──HTTP──▶ backend ────────┤ cim/graph.py (�
    - 연계 추천 `POST /api/reports/hosting`: 연계 가능 최대치 결과로 연계 여부·막는 원인·선로 보강 추천 (속성 칸 "태양광 연계 검토" 아래)
    - 24시간 운영 권고 `POST /api/reports/daily/{id}`: 고른 날의 시간대별 위험과 대비 조치 (기록 탭)
    - 설비 보강 우선순위 `POST /api/reports/reinforcement/{id}`: 1~4개 날짜의 24시간 결과로 선로 순위를 매기고 증강 순서 권고 (AI 리포트 창 "보강 우선순위" 탭)
-8. **CIM 내보내기**: 편집 메뉴 "CIM으로 내보내기" → `GET /api/substations/{id}/cim`이 마지막으로 저장된 계통을 한전 원본과 같은 CIM16 RDF/XML 파일로 돌려줌 (`cim/export.py`, `cim/mapping.py`를 거꾸로 적용). 다시 `python -m cim.load --file`로 적재할 수 있음. 좌표·피더 이름·변전소 단락용량 등 CIM에 넣지 않는 값은 파일 맨 위 주석에 적음
+8. **CIM 내보내기**: 편집 메뉴 "CIM으로 내보내기" → `GET /api/substations/{id}/cim`이 마지막으로 저장된 계통을 한전 원본과 같은 CIM16 RDF/XML 파일로 돌려줌 (`cim/export.py`, `cim/mapping.py`를 거꾸로 적용). 다시 `python -m cim.load --file`로 적재할 수 있음. 좌표·피더 이름·변전소 단락용량 등 CIM에 넣지 않는 값은 파일 맨 위 주석에 적음. 편집 메뉴에서 차단기·개폐기의 연결 수, 설비의 접속점·전력 값, 선로 길이를 미리 확인하고 수정할 항목과 설비 보기 버튼을 표시함. 문제가 있으면 내보내기 버튼을 비활성화하며, 시뮬레이션 성공과 내보내기 조건이 다를 수 있음을 안내함.
 
 24시간 분석의 날짜·데이터 기준:
 
