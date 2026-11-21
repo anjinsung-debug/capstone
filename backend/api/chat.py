@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 import simulation.simulate as sim
-from ai_report.chat import MAX_SUBSTATIONS, MAX_TURNS, ChatMessage, ChatReply, chat, daily_section, extra_sections, substations_section
+from ai_report.chat import MAX_SUBSTATIONS, MAX_TURNS, ChatMessage, ChatReply, chat, daily_section, extra_sections, make_tool_runner, substations_section
 from cim import graph
 from simulation.daily import graph_at
 from simulation.models import SimulationResult
@@ -66,4 +66,6 @@ def ask_chat(req: ChatRequest) -> ChatReply:
     more = substations_section(entries, req.substation_id, at)
     if base is not None:
         more += ["", *daily_section(base, day, sim.simulate), "", *extra_sections(g, req.extras)]
-    return chat(req.messages, g, result, at, more)
+    # 변전소를 고른 화면이면 계산 도구를 준다 (11/22): 다른 시각 계산, 태양광·부하 연계 검토, 보강 우선순위를 챗봇이 직접 실행
+    run_tool = make_tool_runner(base, day, hour, sim.simulate) if base is not None else None
+    return chat(req.messages, g, result, at, more, run_tool=run_tool)
