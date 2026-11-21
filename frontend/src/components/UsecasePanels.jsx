@@ -164,11 +164,8 @@ export function DailyAiBox({ graph, date }) {
 // ── 유스케이스 3: 설비 보강 우선순위 ──
 // 기본 점검 날짜 (11/20): 서버가 이 계통에 가장 불리한 두 날(순부하 최대일·최소일)을 골라 준다 (ai_report/report.py critical_dates).
 // 서버에 못 물어봤을 때만 아래 값을 쓴다 (원본 계통 기준으로 고른 날. 예전 기본값 8/1·1/15는 겨울이라 역조류를 못 봤음)
+// 날짜 입력칸은 없앴다 (11/22 피드백: 어차피 자동으로 고르므로 사용자는 증강할 선로 수만 정한다)
 const DEFAULT_DATES = ['2025-07-29', '2025-05-10']
-const todayIso = () => {
-  const d = new Date() // 서버는 오늘까지만 받는다 (simulation/daily.py check_date)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
 
 export function ReinforceBox({ graph, onFocus }) {
   const sid = graph.substation.id
@@ -180,15 +177,18 @@ export function ReinforceBox({ graph, onFocus }) {
   const [error, setError] = usePersisted(k('error'), '')
   const [why, setWhy] = usePersisted(k('why'), null) // 서버가 고른 날의 이름·이유 { 날짜: { label, reason } }
 
-  // 처음 열 때 이 계통에 맞는 기본 날짜를 받아 온다 (사용자가 날짜를 바꾼 뒤에는 그대로 둔다)
+  // 처음 열 때 이 계통에 맞는 점검 날짜를 받아 온다
   useEffect(() => {
-    if (why) return
+    if (why) {
+      setDates(Object.keys(why)) // 예전에 직접 바꿔 둔 날짜가 남아 있어도 자동으로 고른 날로
+      return
+    }
     let alive = true
     getReinforceDates(sid)
       .then((list) => {
         if (!alive) return
         setWhy(Object.fromEntries(list.map((x) => [x.date, { label: x.label, reason: x.reason }])))
-        setDates((cur) => (cur.join() === DEFAULT_DATES.join() ? list.map((x) => x.date) : cur))
+        setDates(list.map((x) => x.date))
       })
       .catch(() => {})
     return () => {
@@ -213,18 +213,10 @@ export function ReinforceBox({ graph, onFocus }) {
     <section className="uc-result">
       <h4>설비 보강 우선순위</h4>
       <p className="muted small">
-        고른 날들의 24시간 결과에서 선로마다 최대 부하율과 기준을 넘는 시간을 세어 순위를 매기고, AI가 증강 순서를 정리합니다. 기본 날짜는 1년 중 이 계통에
-        가장 불리한 두 날(부하가 가장 무거운 날, 태양광이 부하를 가장 많이 덮는 날)이며 직접 바꿀 수 있습니다.
+        1년 중 이 계통에 가장 불리한 두 날(부하가 가장 무거운 날, 태양광이 부하를 가장 많이 덮는 날)을 자동으로 골라 24시간씩 계산하고, 선로마다 최대
+        부하율과 기준을 넘는 시간을 세어 순위를 매긴 뒤 AI가 증강 순서를 정리합니다.
       </p>
       <div className="uc-controls">
-        {dates.map((d, i) => (
-          <label key={i} className="field">
-            점검 날짜 {i + 1}
-            <span className="field-input">
-              <input type="date" min="2025-01-01" max={todayIso()} value={d} disabled={busy} onChange={(e) => setDates(dates.map((x, j) => (j === i ? e.target.value : x)))} />
-            </span>
-          </label>
-        ))}
         <label className="field">
           증강할 선로 수
           <span className="field-input">
@@ -236,12 +228,12 @@ export function ReinforceBox({ graph, onFocus }) {
           순위 계산 + AI 정리
         </button>
       </div>
-      {/* 날짜마다 고른 이유 (서버가 고른 날이면 이름·이유, 바꾼 날이면 "직접 고른 날") */}
+      {/* 자동으로 고른 날과 그 이유 (서버 응답 전이거나 못 받았으면 기본 날만) */}
       <ul className="uc-date-why">
         {dates.map((d, i) =>
           d ? (
             <li key={i}>
-              <b>점검 날짜 {i + 1}</b> {d} · {why?.[d] ? `${why[d].label}: ${why[d].reason}` : '직접 고른 날'}
+              <b>점검한 날 {i + 1}</b> {d}{why?.[d] ? ` · ${why[d].label}: ${why[d].reason}` : ''}
             </li>
           ) : null,
         )}
