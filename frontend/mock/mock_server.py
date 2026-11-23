@@ -39,6 +39,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+from ai_report import seasonal  # noqa: E402
 from cim.export import to_cim_xml  # noqa: E402
 from cim.graph import classify_connection  # noqa: E402
 from cim.load import read_raw, to_substation_graphs  # noqa: E402
@@ -337,6 +338,15 @@ class Handler(SimpleHTTPRequestHandler):
                 except ImportError:
                     return self._send(501, {"detail": "matplotlib이 없어 그래프를 그리지 않습니다"})
                 return self._send(200, plot_result(STORE[r.substation_id], r), "image/png")
+            # 계절별 위험도 (11/23): 집계는 진짜와 같은 ai_report/seasonal.py, 시간마다 계산만 근사. 캐시는 진짜와 섞이지 않게 engine="mock"
+            if p[:2] == ["reports", "seasonal"] and len(p) == 3 and m in ("GET", "POST"):
+                g = self._graph(p[2])
+                if not g:
+                    return self._send(404, {"detail": "변전소가 없습니다"})
+                if m == "GET":
+                    return self._send(200, seasonal.status(g, engine="mock"))
+                again = parse_qs(urlsplit(self.path).query).get("again", ["false"])[0] == "true"
+                return self._send(200, seasonal.start(g, simulate_fn=simulate, again=again, engine="mock"))
             # AI 추천·권고(UsecasePanels.jsx)는 LLM과 OpenDSS 24시간 계산이 필요해 모의 백엔드에는 없다
             if m == "POST" and p[:1] == ["reports"] and len(p) >= 2 and p[1] in ("hosting", "daily", "reinforcement"):
                 return self._send(501, {"detail": "모의 백엔드에는 없는 기능입니다. 진짜 백엔드(uvicorn + Docker Neo4j)로 확인하세요"})

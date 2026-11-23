@@ -3,10 +3,11 @@
 // - HostingAi: 유스케이스 1 ⑤ "AI 추천". 영민이형의 태양광 연계 검토(PropertyPanel.jsx의 HostingSection) 결과 아래에 붙는다
 // - DailyAiBox: 유스케이스 2 ⑥ "AI 운영 권고" (고른 날 24시간 결과 → 시간대별 위험과 대비 조치)
 // - ReinforceBox: 유스케이스 3 "설비 보강 우선순위" (여러 날 24시간 결과 → 선로 순위 → AI 정리)
+// - SeasonalBox: AI 리포트 창 "계절별 위험도" 탭 (1년 365일 × 24시간 → 봄·여름·가을·겨울 위험도, 숫자·등급만, 11/23)
 // 계산은 진짜 백엔드(simulation/der.py, simulation/daily.py)가 하고, AI 문장은 ai_report/report.py가 만든다
 // (전문가용 설명: 한전 담당자용 화면). 모의 백엔드에는 이 주소들이 없다 (진짜 백엔드로 확인)
 import { useCallback, useEffect, useState } from 'react'
-import { createCapacityReport, createDailyReport, createHostingReport, createReinforcementReport, getReinforceDates, runCapacity } from '../api/client.js'
+import { createCapacityReport, createDailyReport, createHostingReport, createReinforcementReport, getReinforceDates, getSeasonal, runCapacity, startSeasonal } from '../api/client.js'
 
 // 화면을 닫거나 다른 탭에 갔다 와도 마지막 결과가 남도록 값을 컴포넌트 밖(모듈)에 둔다 (새로고침하면 지워짐).
 // 계산 중에 창을 닫아도 응답이 오면 여기에 저장되고, 다시 열면 그대로 보인다.
@@ -176,6 +177,9 @@ export function ReinforceBox({ graph, onFocus }) {
   const [busy, setBusy] = usePersisted(k('busy'), false)
   const [error, setError] = usePersisted(k('error'), '')
   const [why, setWhy] = usePersisted(k('why'), null) // 서버가 고른 날의 이름·이유 { 날짜: { label, reason } }
+  // 증강할 선로 수는 이 계통의 선로 수까지 (11/23: 예전에는 최대 10이라 선로 11개인 원래 계통도 다 못 골랐고, 직접 치면 1000도 들어갔음)
+  const lineCount = Math.max(1, graph.lines.filter((l) => l.kind !== 'switch').length)
+  const budget = Math.min(Math.max(1, Math.round(Number(count)) || 2), lineCount)
 
   // 처음 열 때 이 계통에 맞는 점검 날짜를 받아 온다
   useEffect(() => {
@@ -201,7 +205,8 @@ export function ReinforceBox({ graph, onFocus }) {
     setBusy(true)
     setError('')
     try {
-      setData({ ...(await createReinforcementReport(sid, { dates: dates.filter(Boolean), budget_lines: Number(count) || 2 })), dates: dates.filter(Boolean) })
+      setCount(String(budget))
+      setData({ ...(await createReinforcementReport(sid, { dates: dates.filter(Boolean), budget_lines: budget })), dates: dates.filter(Boolean) })
     } catch (e) {
       setError(e.message)
     } finally {
@@ -220,8 +225,17 @@ export function ReinforceBox({ graph, onFocus }) {
         <label className="field">
           증강할 선로 수
           <span className="field-input">
-            <input type="number" min="1" max="10" value={count} disabled={busy} onChange={(e) => setCount(e.target.value)} />
-            <i>개</i>
+            <input
+              type="number"
+              min="1"
+              max={lineCount}
+              value={count}
+              disabled={busy}
+              onChange={(e) => setCount(e.target.value)}
+              onBlur={() => setCount(String(budget))}
+              title={`이 계통의 선로 ${lineCount}개까지`}
+            />
+            <i>/ {lineCount}개</i>
           </span>
         </label>
         <button type="button" className="primary" disabled={busy || !dates.some(Boolean)} onClick={make}>
@@ -461,5 +475,201 @@ export function CapacityPanel({ graph, at, onFocus }) {
 
       {report && <ReportCards report={report} titles={['계통 전체 요약', '막는 요인', '늘리는 방법']} />}
     </div>
+  )
+}
+
+// ── 계절별 위험도 (11/23): 1년치(365일 × 24시간)를 계산해 봄·여름·가을·겨울로 나눠 센다 (ai_report/seasonal.py). AI 없음, 숫자·등급만 ──
+// 오래 걸려서 서버가 백그라운드로 돌리고 여기서는 2초마다 진행률을 받아 온다. 같은 계통은 서버가 결과를 남겨 두어 바로 나온다
+const SEASON_POLL_MS = 2000
+const GRADE_CLASS = { 정상: 'ok', 주의: 'warn', 위험: 'danger' }
+const monthsText = (ms) => (ms[0] === 12 ? '12·1·2월' : `${ms[0]}~${ms[ms.length - 1]}월`)
+const whenText = (x) => (x ? `${x.date.slice(5).replace('-', '/')} ${x.hour}시` : '')
+const hoursText = (n, total) => (total ? `${n.toLocaleString('ko-KR')}시간 (${((n / total) * 100).toFixed(n && n / total < 0.001 ? 2 : 1)}%)` : '-')
+
+function GradeBadge({ grade }) {
+  return <span className={`badge season-grade ${GRADE_CLASS[grade]}`}>{grade}</span>
+}
+
+// 표의 한 줄: [이름, 계절 → 칸 내용, 계절 → 칸 class (기준을 넘은 시간이 있으면 위험 항목은 빨강, 주의 항목은 주황)]
+function seasonRows(onFocus) {
+  const hrs = (key, cls = 'bad-cell') => [(s) => hoursText(s[key], s.hours), (s) => (cls && s[key] > 0 ? cls : '')]
+  const worst = (key, digits, unit, focus = false) => [
+    (s) =>
+      s[key] ? (
+        <>
+          <b>{s[key].value.toLocaleString('ko-KR', { maximumFractionDigits: digits, minimumFractionDigits: digits })}{unit}</b>
+          <small className="muted">
+            {' '}
+            {s[key].where} · {whenText(s[key])}
+          </small>
+          {focus && onFocus && s[key].line_id && (
+            <button type="button" className="focus-btn" onClick={() => onFocus(s[key].line_id)} title="단선도에서 이 위치로 이동">
+              ⌖
+            </button>
+          )}
+        </>
+      ) : (
+        '-'
+      ),
+    () => '',
+  ]
+  return [
+    ['위험 시간', ...hrs('_danger')],
+    ['주의 시간', ...hrs('_caution', 'warn-cell')],
+    ['선로 과부하 (100% 초과)', ...hrs('overload_hours')],
+    ['선로 부하율 80~100%', ...hrs('watch_hours', 'warn-cell')],
+    ['저전압 (0.95 pu 미만)', ...hrs('low_v_hours', 'warn-cell')],
+    ['과전압 (1.05 pu 초과)', ...hrs('high_v_hours', 'warn-cell')],
+    ['정전', ...hrs('outage_hours')],
+    ['비정상 역조류', ...hrs('reverse_bad_hours')],
+    ['정상 역조류 (참고)', ...hrs('reverse_ok_hours', '')],
+    ['단락용량 300 MVA 초과', ...hrs('fault_hours', 'warn-cell')],
+    ['최대 부하율', ...worst('max_loading', 0, '%', true)],
+    ['최저 전압', ...worst('min_v', 3, ' pu')],
+    ['최고 전압', ...worst('max_v', 3, ' pu')],
+    ['최대 역조류', ...worst('max_reverse_kw', 0, ' kW', true)],
+    ['최대 단락용량', ...worst('max_fault_mva', 0, ' MVA')],
+  ]
+}
+
+export function SeasonalBox({ graph, onFocus }) {
+  const sid = graph.substation.id
+  const [job, setJob] = usePersisted(`season:${sid}:job`, null) // 서버 상태 { state, done, total, result, error }
+  const [error, setError] = usePersisted(`season:${sid}:error`, '')
+  const running = job?.state === 'running'
+
+  // 처음 열 때 지금 상태(예전에 계산해 둔 결과가 있으면 바로 done), 계산 중이면 2초마다 다시
+  useEffect(() => {
+    let alive = true
+    let timer = null
+    const poll = () =>
+      getSeasonal(sid)
+        .then((j) => {
+          if (!alive) return
+          setJob(j)
+          setError('')
+          if (j.state === 'running') timer = setTimeout(poll, SEASON_POLL_MS)
+        })
+        .catch((e) => alive && setError(e.message))
+    poll()
+    return () => {
+      alive = false
+      clearTimeout(timer)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sid, running])
+
+  async function begin(again) {
+    setError('')
+    try {
+      setJob(await startSeasonal(sid, again))
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+
+  const result = job?.state === 'done' ? job.result : null
+  const seasons = (result?.seasons ?? []).map((s) => ({ ...s, _danger: s.grade_hours['위험'], _caution: s.grade_hours['주의'] }))
+  const pct = job?.total ? Math.round((job.done / job.total) * 100) : 0
+  return (
+    <section className="uc-result">
+      <h4>계절별 위험도</h4>
+      <div className="uc-controls">
+        {!running && (
+          <button type="button" className="primary" disabled={!job} onClick={() => begin(job?.state === 'done')}>
+            {job?.state === 'done' ? '다시 계산' : '1년 계산 시작'}
+          </button>
+        )}
+        {result && <span className="muted small">계산한 때 {result.computed_at.replace('T', ' ')}</span>}
+      </div>
+      <p className="muted small">저장된 계통으로 계산합니다. 편집한 뒤 저장하지 않은 내용은 반영되지 않아요.</p>
+      {running && (
+        <div className="season-progress" role="progressbar" aria-valuemin={0} aria-valuemax={job.total} aria-valuenow={job.done}>
+          <div className="season-bar">
+            <i style={{ width: `${pct}%` }} />
+          </div>
+          <span>
+            {job.done} / {job.total}일 계산 중 ({pct}%) · 창을 닫아도 서버에서 계속 계산합니다
+          </span>
+        </div>
+      )}
+      {job?.state === 'error' && <Fail error={job.error} />}
+      <Fail error={error} />
+      {result && (
+        <>
+          <div className="season-cards">
+            {seasons.map((s) => (
+              <div key={s.season} className={`season-card ${GRADE_CLASS[s.grade]}`}>
+                <header>
+                  <strong>{s.season}</strong>
+                  <small className="muted">{monthsText(s.months)} · {s.days}일</small>
+                  <GradeBadge grade={s.grade} />
+                </header>
+                <div className="season-hours" title="등급별 시간 (계산한 시간 기준)">
+                  {['위험', '주의', '정상'].map((g) => (
+                    <i key={g} className={GRADE_CLASS[g]} style={{ flexGrow: s.grade_hours[g] }} />
+                  ))}
+                </div>
+                <dl>
+                  <dt>위험</dt>
+                  <dd>{s._danger.toLocaleString('ko-KR')}시간</dd>
+                  <dt>주의</dt>
+                  <dd>{s._caution.toLocaleString('ko-KR')}시간</dd>
+                  <dt>정상</dt>
+                  <dd>{s.grade_hours['정상'].toLocaleString('ko-KR')}시간</dd>
+                  <dt>최대 부하율</dt>
+                  <dd>{s.max_loading ? `${s.max_loading.value.toFixed(0)}% (${whenText(s.max_loading)})` : '-'}</dd>
+                  <dt>최저 전압</dt>
+                  <dd>{s.min_v ? `${s.min_v.value.toFixed(3)} pu` : '-'}</dd>
+                </dl>
+                {s.failed_hours > 0 && <small className="muted">계산 안 된 {s.failed_hours}시간은 빼고 셌습니다</small>}
+              </div>
+            ))}
+          </div>
+          <table className="rtable season-table">
+            <thead>
+              <tr>
+                <th>항목</th>
+                {seasons.map((s) => (
+                  <th key={s.season}>
+                    {s.season} <GradeBadge grade={s.grade} />
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {seasonRows(onFocus).map(([label, cell, bad]) => (
+                <tr key={label}>
+                  <td>{label}</td>
+                  {seasons.map((s) => (
+                    <td key={s.season} className={bad(s)}>
+                      {cell(s)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+              <tr>
+                <td>가장 나쁜 날</td>
+                {seasons.map((s) => (
+                  <td key={s.season}>
+                    {s.worst_days.length === 0
+                      ? '없음'
+                      : s.worst_days.map((d) => (
+                          <div key={d.date}>
+                            {d.date.slice(5).replace('-', '/')} ({d.weekday}) <span className={`season-dot ${GRADE_CLASS[d.grade]}`}>{d.grade}</span>{' '}
+                            <small className="muted">
+                              {d.danger_hours ? `위험 ${d.danger_hours}시간` : `주의 ${d.caution_hours}시간`}
+                            </small>
+                          </div>
+                        ))}
+                  </td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
+          <p className="muted small">시간 수는 그 계절의 모든 시간 중 기준을 넘은 시간입니다. 한 시간에 여러 항목이 겹칠 수 있어 항목별 시간을 더하면 위험·주의 시간보다 클 수 있습니다.</p>
+        </>
+      )}
+    </section>
   )
 }

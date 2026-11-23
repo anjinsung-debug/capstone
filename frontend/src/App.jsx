@@ -32,7 +32,7 @@ import PopupWindow, { openPopup } from './components/PopupWindow.jsx'
 import PropertyPanel from './components/PropertyPanel.jsx'
 import SubstationOverview from './components/SubstationOverview.jsx'
 import { AiReportView, Legend, ResultView, SummaryStrip } from './components/ResultPanel.jsx'
-import { CapacityPanel, ReinforceBox } from './components/UsecasePanels.jsx'
+import { CapacityPanel, ReinforceBox, SeasonalBox } from './components/UsecasePanels.jsx'
 // 3D 보기는 three.js가 커서 버튼을 처음 누를 때 불러온다
 const Diagram3D = lazy(() => import('./components/Diagram3D.jsx'))
 import { DeleteSubstationDialog, NewSubstationDialog, RenameDialog } from './components/SubstationDialog.jsx'
@@ -105,7 +105,7 @@ export default function App() {
   const [resultOpen, setResultOpen] = useState(null)
   const [resultTab, setResultTab] = useState('health')
   const [view3d, setView3d] = useState(false) // 단선도 자리에 3D 보기 (발표용, 편집은 2D)
-  const [aiTab, setAiTab] = useState('report') // AI 리포트 창 안의 탭: 'report' = AI 리포트 | 'capacity' = 여유 용량 (11/10 '추가 가능량'에서 이름 바꿈) (11/9 팀 피드백: 같은 위치에) | 'reinforce' = 설비 보강 우선순위 (11/10 결과 자세히에서 옮김)
+  const [aiTab, setAiTab] = useState('report') // AI 리포트 창 안의 탭: 'report' = AI 리포트 | 'capacity' = 여유 용량 (11/10 '추가 가능량'에서 이름 바꿈) (11/9 팀 피드백: 같은 위치에) | 'reinforce' = 설비 보강 우선순위 (11/10 결과 자세히에서 옮김) | 'season' = 계절별 위험도 (11/23)
   const [popup, setPopup] = useState(null) // 브라우저 새 창 결과 { win, container }
   const [dialog, setDialog] = useState(null) // 'new' | 'rename' | 'delete' | null
   const [deleting, setDeleting] = useState(null) // 삭제 확인 창의 대상 변전소 { id, name, unsaved }
@@ -879,6 +879,9 @@ export default function App() {
               <button type="button" className={aiTab === 'reinforce' ? 'on' : ''} onClick={() => setAiTab('reinforce')}>
                 보강 우선순위
               </button>
+              <button type="button" className={aiTab === 'season' ? 'on' : ''} onClick={() => setAiTab('season')}>
+                계절별 위험도
+              </button>
             </nav>
             {aiTab === 'report' ? (
               <AiReportView
@@ -891,6 +894,9 @@ export default function App() {
                 reportBusy={reportBusy}
                 onMakeReport={makeReport}
               />
+            ) : aiTab === 'season' ? (
+              // 계절별 위험도 (11/23, 최민준): 1년 365일 × 24시간 → 봄·여름·가을·겨울 위험도. 숫자·등급만 (components/UsecasePanels.jsx)
+              <div className="ai-capacity">{graph && <SeasonalBox graph={graph} onFocus={focusElement} />}</div>
             ) : aiTab === 'reinforce' ? (
               // 설비 보강 우선순위: 날짜 입력·순위·AI 정리가 이 칸 안에서 끝나서 AI 창으로 옮김 (11/10). 하루 운영 권고는 그래프와 같이 봐야 해서 결과 자세히에 남김
               <div className="ai-capacity">{graph && <ReinforceBox graph={graph} onFocus={focusElement} />}</div>

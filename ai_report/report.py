@@ -59,6 +59,7 @@ MAX_ROWS = 120  # 프롬프트에 넣는 지점·선로 표의 최대 줄 수
 # ponytail: 300 MVA는 제안서 슬라이드 예시값이다 (화면 진단표에서 '주의'). 한전 자문 후 확정되면 두 곳을 같이 바꾼다
 FAULT_HIGH_MVA = 300
 MAX_FAULT_LISTED = 10  # 프롬프트에 이름을 적는 단락용량 초과 지점 수 (나머지는 개수만)
+WATCH_LISTED = 3  # 보강 우선순위: 기준을 넘는 선로가 없을 때 감시 대상으로 보여 줄 위쪽 선로 수
 # 등급 기준: frontend/src/lib/overlay.js의 VOLTAGE_DANGER_LOW_PU, VOLTAGE_DANGER_HIGH_PU, LOADING_WATCH_PCT와 같은 값이다. 바꾸면 두 곳을 함께 고친다
 VOLTAGE_DANGER_LOW_PU = 0.9
 VOLTAGE_DANGER_HIGH_PU = 1.1
@@ -93,7 +94,8 @@ _RULES = f"""사용자가 계통 정보와 시뮬레이션 수치, 그리고 코
 3. 판정 기준: 전압 정상 범위 {VOLTAGE_MIN_PU}~{VOLTAGE_MAX_PU} pu({VOLTAGE_DANGER_LOW_PU} pu 미만·{VOLTAGE_DANGER_HIGH_PU} pu 초과는 위험), 선로 부하율 {OVERLOAD_PCT:.0f}% 초과면 과부하(위험), {LOADING_WATCH_PCT}% 이상이면 부하율 높음(주의), 분산전원 때문에 전력이 반대로 흐르면 역조류(선로 용량 이내이고 출구 차단기가 고장전류를 끊을 수 있으면 정상이라 문제로 다루지 말고 있다는 사실만 알림, 비정상이면 위험), 3상 단락용량이 {FAULT_HIGH_MVA} MVA를 넘으면 단락용량 증가(차단기 정격·보호계전기 검토 대상), 전원에서 끊기면 정전입니다. 정전은 저전압이 아닙니다.
 4. 원인은 문제가 있는 설비 이름과 수치를 인용해서, 왜 그렇게 되는지 전기적 이유(선로 길이와 임피던스에 따른 전압강하, 분산전원 출력이 부하보다 큰 구간, 전류가 허용전류를 넘음 등)를 설명하세요. 입력에 없는 연결 구조를 가정하지 마세요.
 5. 솔루션은 원인과 하나씩 대응시키고 우선순위 순서로 쓰세요. 전선 굵기 교체, 전압조정기(SVR) 설치, 부하 절체, 역조류 보호계전 점검, 차단기 정격 검토, ESS 설치, 개폐기 조작처럼 엔지니어가 실제로 할 수 있는 조치로 쓰고, 효과를 수치로 약속하지 마세요.
-6. 문제가 없으면 원인에는 "기준 안에 있음"을 근거 수치와 함께 쓰고, 솔루션에는 유지·재점검 방법만 쓰세요. 문제를 지어내지 마세요.
+6. "확정된 점검 결과"에서 1곳(개) 이상인 문제 항목은 하나도 빼지 말고 원인에 항목 하나씩 쓰고, 솔루션에도 하나씩 대응시키세요. 진단에서 "괜찮다"고 하는 항목은 0곳인 항목만 쓰세요.
+   문제가 없으면 원인에는 "기준 안에 있음"을 근거 수치와 함께 쓰고, 솔루션에는 유지·재점검 방법만 쓰세요. 문제를 지어내지 마세요.
 7. 허용전류나 단락용량이 가정값으로 계산됐다고 알려 주면, 그 값에 의존하는 부하율·고장전류 설명에 "가정값 기준"이라고 밝히세요.
 8. 진단은 등급 다음에 "지금 상황 요약"(태양광·풍력이 얼마나 들어오는지, 전기를 얼마나 쓰는지, 변전소가 얼마나 보내는지)을 1~2문장으로 쓰세요. 숫자는 요약에 적힌 값을 그대로 쓰고, 직접 더하거나 다시 계산하지 마세요.
 9. "고장 전류와 출구 차단기"는 참고 정보입니다. 등급을 바꾸지 마세요. 차단 불가인 차단기가 있으면 원인과 솔루션에 "차단기 정격 검토 필요"로 쓰고, 모두 차단 가능이면 진단에 한 마디만 쓰세요. 지락(1선·2선)은 전선이 땅에 닿는 사고로, 3상 단락과 구분해서 쓰세요."""
@@ -120,16 +122,16 @@ _STYLE = {
 "차단기 2", "선로 1", "접속점 3"처럼 화면에 보이는 설비 이름은 그대로 쓰세요.
 
 4) 구성과 길이: 한두 문장으로 끝내지 말고 아래 내용을 모두 담으세요.
-- 진단(3~5문장): 등급 → 지금 상황 요약(규칙 8) → 문제가 있는 것 → 기준 안이라 괜찮은 것(전압, 부하율 등 확정된 점검 결과에서 0곳인 항목) → 그래서 주민에게 어떤 영향이 있는지. 영향은 입력으로 알 수 있는 만큼만 쓰세요. 예: 정전된 접속점에 연결된 집과 가게는 전기를 쓸 수 없어요.
-- 원인(항목당 2~3문장): 진단을 되풀이하지 말고 "왜 그런지"를 설명하세요. 입력의 연결 정보(어느 차단기·개폐기·선로 뒤쪽인지, 근처 발전기가 만드는 양과 쓰는 양 비교, 전선 길이)를 근거로 쓰세요. 자료로 알 수 없는 이유는 지어내지 말고 "자료만으로는 ~까지는 알 수 없어요"라고 쓰세요. 이해를 돕는 쉬운 비유를 한 번 넣어도 됩니다.
+- 진단(3~5문장): 등급 → 지금 상황 요약(규칙 8) → 문제가 있는 것 → 기준 안이라 괜찮은 것(전압, 부하율 등 확정된 점검 결과에서 0곳인 항목) → 그래서 주민에게 어떤 영향이 있는지. 영향은 입력으로 알 수 있는 만큼만 쓰세요. 정전은 "정전 구간에 연결된 부하"가 1곳 이상일 때만 "그곳에 연결된 부하는 전기를 쓸 수 없어요"라고 쓰고, 0곳이면 "정전 구간에 연결된 부하는 없어요"라고 쓰세요.
+- 원인(항목당 2~3문장): 진단을 되풀이하지 말고 "왜 그런지"를 설명하세요. 입력의 연결 정보(어느 차단기·개폐기·선로 뒤쪽인지, 근처 발전기가 만드는 양과 쓰는 양 비교, 전선 길이)를 근거로 쓰세요. 자료로 알 수 없는 이유는 지어내지 말고 "자료만으로는 ~까지는 알 수 없어요"라고 쓰세요. 비유는 쓰지 마세요.
 - 솔루션(항목당 2~3문장): 무엇을 하는지 → 그게 왜 도움이 되는지 → (필요할 때만) 그동안 알아 두면 좋은 점. 주민이 직접 할 일처럼 쓰지 마세요. 효과를 숫자로 약속하지 마세요.
 - "정확한 자료가 없어 보통 쓰는 값으로 계산했어요"는 가정값에 기대는 설명(부하율, 단락용량·고장전류)에만 붙이세요. 정전, 전압, 역조류 설명에는 붙이지 마세요.
 - "전력회사 담당자가"는 첫 솔루션에만 쓰고, 다음 항목부터는 빼서 같은 말로 시작하지 않게 하세요.
 - 한 문장은 짧게(40자 안팎) 쓰고, 겁을 주는 말투는 피하세요. 번역투("~하면 도움이 돼요", "원활해져요", "상쇄")보다 일상 말로 쓰세요.
 
 5) 형식 예시 (말투만 참고하고, 내용은 반드시 입력에 맞게 쓰세요)
-- 진단: "이 계통은 위험 등급이에요. 접속점 3에 정전이 나 있어요. 전압과 부하율은 기준 안이라 괜찮아요. 다만 정전된 곳에 연결된 집과 가게는 지금 전기를 쓸 수 없어요."
-- 원인: "접속점 3은 차단기 1 뒤쪽에 있는데, 그 길로 전기가 하나도 흐르지 않아요. 수도 밸브가 잠기면 그 뒤로 물이 안 가는 것과 비슷해요. 자료만으로는 차단기가 열린 건지, 선로가 끊긴 건지까지는 알 수 없어요."
+- 진단: "이 계통은 위험 등급이에요. 접속점 3에 정전이 나 있어요. 전압과 부하율은 기준 안이라 괜찮아요. 정전 구간에 연결된 부하 2곳은 지금 전기를 쓸 수 없어요."
+- 원인: "접속점 3은 차단기 1 뒤쪽에 있는데, 그 길로 전기가 하나도 흐르지 않아요. 자료만으로는 차단기가 열린 건지, 선로가 끊긴 건지까지는 알 수 없어요."
 - 원인: "왼쪽 끝 태양광이 근처 부하보다 전기를 훨씬 많이 만들어요. 남는 전기가 변전소 쪽으로 흘러서 역조류가 생겨요."
 - 솔루션: "전력회사 담당자가 차단기 1과 그 뒤 선로를 살펴보고 다시 연결해요. 길이 다시 이어지면 끊긴 쪽에도 전기가 들어가요. 고치는 동안에는 그쪽 전기를 잠시 쓸 수 없을 수 있어요."
 """,
@@ -272,6 +274,15 @@ def fault_summary(graph: SubstationGraph, result: SimulationResult) -> list[str]
     return out
 
 
+def outage_loads_text(graph: SubstationGraph, result: SimulationResult) -> str:
+    """정전 구간(전원에서 끊긴 접속점)에 연결된 부하 수와 합계 (11/23 점검: 부하가 없는데 "집과 가게가 전기를 못 쓴다"고 써서 코드가 센다)"""
+    dead = {r.node_id for r in result.nodes if not r.energized}
+    loads = [n for n in graph.nodes if n.type == "load" and (n.bus_id in dead or n.id in dead)]
+    if not loads:
+        return "정전 구간에 연결된 부하: 0곳 (전기를 못 쓰는 부하 없음)"
+    return f"정전 구간에 연결된 부하: {len(loads)}곳, 합계 {sum(n.p_kw or 0 for n in loads):,.0f} kW ({', '.join(n.name for n in loads[:5])}{' 등' if len(loads) > 5 else ''})"
+
+
 def build_prompt(graph: SubstationGraph, result: SimulationResult) -> str:
     """계통 정보와 해석 수치를 구조화된 텍스트로 만든다 (README: 설비 이름·종류·연결, 전압 pu, 부하율, 고장전류, 역조류, 피더별 송출 전력)"""
     f = check_findings(graph, result)
@@ -306,6 +317,8 @@ def build_prompt(graph: SubstationGraph, result: SimulationResult) -> str:
     more = f" 외 {len(f['fault']) - len(shown)}곳" if len(f["fault"]) > len(shown) else ""
     lines.append(f"- 단락용량(>{FAULT_HIGH_MVA} MVA) {len(f['fault'])}곳" + (": " + ", ".join(f"{n} {m:.0f} MVA" for n, m in shown) + more if f["fault"] else ""))
     lines.append(f"- 정전 지점 {len(f['outage'])}곳" + (": " + ", ".join(f["outage"]) if f["outage"] else ""))
+    if f["outage"]:
+        lines.append("  - " + outage_loads_text(graph, result))
     assumptions = _assumptions(graph)
     if assumptions:
         lines.append("- 가정값 사용: " + " ".join(assumptions))
@@ -507,12 +520,15 @@ def _ask(system: str, prompt: str, substation_id: str, client=None) -> Report:
 # 연계 가능량·막는 원인·필요 허용전류는 simulation/der.py(안진성)가 계산한 값을 그대로 쓴다. AI는 설명과 추천만 한다
 _HOSTING_TASK = f"""[이번 작업: 태양광 연계 검토 추천. 이 지침이 위 지침보다 우선합니다]
 사용자가 한 접속점에 태양광을 새로 붙일 수 있는지 코드가 계산한 결과를 줍니다. 리포트 형식(진단·원인·솔루션)은 같고 내용은 아래처럼 쓰세요.
-- 진단: 신청 용량을 붙일 수 있는지(가능/불가) → 지금 최대 몇 kW까지 되는지 → 무엇이 막는지를 2~4문장으로.
+- 진단: 신청 용량을 붙일 수 있는지(가능/불가) → 지금 최대 몇 kW까지 되는지 → 무엇이 막는지를 2~4문장으로. 이 작업 입력에는 건강도 등급이 없으니 "정상."·"위험." 같은 등급으로 시작하지 마세요.
 - 원인: 막는 원인마다 항목 하나. 어느 선로·접속점·차단기가 기준을 얼마나 넘는지, 태양광이 늘면 왜 그렇게 되는지(남는 전기가 변전소 쪽으로 거꾸로 많이 흘러 선로가 감당 못 함, 전압이 올라감 등)를 쓰세요. 막는 원인이 없으면 "검토 상한까지 기준 안"이라고 쓰세요.
-- 솔루션: 우선순위 순서. 과부하 선로는 "○○ 선로 허용전류를 지금 ○○ A에서 ○○ A 이상으로 증강(더 굵은 전선으로 교체)"처럼 입력의 필요 허용전류를 그대로 인용하세요. 과전압은 전압 조정·태양광 출력 제한·연계 지점 변경을, 차단기는 정격 상향을 "검토"로 쓰세요. 신청 용량이 가능하면 "연계 가능, 연계 후 다시 시뮬레이션으로 확인"처럼 쓰세요.
+- 솔루션: 우선순위 순서.
+  · 신청 용량이 연계 불가이면: 위반 항목의 과부하 선로는 "○○ 선로 허용전류를 지금 ○○ A에서 ○○ A 이상으로 증강(더 굵은 전선으로 교체)"처럼 입력의 필요 허용전류를 그대로 인용하세요. 과전압은 전압 조정·태양광 출력 제한·연계 지점 변경을, 차단기는 정격 상향을 "검토"로 쓰세요.
+  · 신청 용량이 연계 가능이면: 증강을 권하지 마세요. "연계 가능, 연계 후 다시 시뮬레이션으로 확인"을 쓰고, 최대치를 넘겨 더 붙일 계획이 있을 때 먼저 걸리는 곳을 감시 대상으로 알려 주세요. 이때 허용전류 숫자를 만들어 쓰지 마세요.
+  · 신청 용량이 없으면: 먼저 걸리는 곳을 알려 주고, 목표 용량을 넣어 다시 검토하면 필요한 증강량이 계산된다고 쓰세요.
 - 이 검토에서는 입력에 적힌 kW·A·pu 숫자를 그대로 써도 됩니다(쉬운 설명이면 숫자 뒤에 쉬운 뜻을 붙이세요). 새로 계산하거나 반올림을 바꾸지 마세요.
 - 허용전류·차단기 정격이 가정값이면 그 결과에 "가정값 기준"이라고 밝히세요. 역조류 자체는 문제가 아닙니다(선로 용량 이내·차단기 차단 가능이면 정상).
-- 계산으로 확인하지 않은 조치(전압 조정, 출력 제한 등)는 효과를 약속하지 말고 "검토"로 쓰세요. 선로 증강은 필요 허용전류 이상이면 위반이 풀린다는 계산 결과이므로 그대로 써도 됩니다."""
+- 계산으로 확인하지 않은 조치(전압 조정, 출력 제한 등)는 효과를 약속하지 말고 "검토"로 쓰세요. 선로 증강은 입력에 필요 허용전류가 있을 때만 그 값으로 쓰세요."""
 
 
 def hosting_system_prompt(audience: str = "expert") -> str:
@@ -523,16 +539,20 @@ def _names(graph: SubstationGraph) -> dict[str, str]:
     return {n.id: n.name for n in graph.nodes} | {line.id: line.name for line in graph.lines} | {f.id: f.name for f in graph.feeders}
 
 
-def _violation_text(graph: SubstationGraph, v) -> str:
-    """simulation/der.py의 Violation 하나를 사람이 읽는 문장으로 (이름·기준·필요 허용전류 포함)"""
+def _violation_text(graph: SubstationGraph, v, need: bool = True) -> str:
+    """simulation/der.py의 Violation 하나를 사람이 읽는 문장으로 (이름·기준·필요 허용전류 포함).
+    need=False: 필요 허용전류를 빼고 "먼저 걸리는 곳"으로만 (11/23 점검). 최대치(한도) 지점에서 잰 필요 허용전류는 지금 허용전류와
+    거의 같아서(부하율 100.005%) "400 A에서 401 A로 증강" 같은 뜻 없는 권고가 나온다. 목표 용량을 넘는 위반(target_violations)에만 붙인다"""
     name = _names(graph).get(v.element_id, v.element_id)
     if v.kind == "overload":
         line = next((x for x in graph.lines if x.id == v.element_id), None)
         rated = line.rated_current_a if line and line.rated_current_a is not None else None
         now = f"{rated:.0f} A" if rated is not None else f"{DEFAULT_RATED_CURRENT_A:.0f} A (가정값)"
-        need = f", 필요 허용전류 {math.ceil(v.required_rated_current_a):,} A 이상" if v.required_rated_current_a else ""
+        if not need:
+            return f"{name}: 선로 과부하 (이 선로가 먼저 허용전류 {now}에 닿음)"
+        req = f", 필요 허용전류 {math.ceil(v.required_rated_current_a):,} A 이상" if v.required_rated_current_a else ""
         pct = f"{v.value:.2f}" if v.value < v.limit + 1 else f"{v.value:.0f}"  # 100.02%가 "100%"로 보여 기준 안처럼 읽히지 않게
-        return f"{name}: 선로 과부하, 부하율 {pct}% (기준 {v.limit:.0f}% 초과), 지금 허용전류 {now}{need}"
+        return f"{name}: 선로 과부하, 부하율 {pct}% (기준 {v.limit:.0f}% 초과), 지금 허용전류 {now}{req}"
     pu = f"{v.value:.4f}" if abs(v.value - v.limit) < 0.001 else f"{v.value:.3f}"  # 0.9499가 "0.950"으로 보여 기준 안처럼 읽히지 않게
     if v.kind == "overvoltage":
         return f"{name}: 접속점 과전압, {pu} pu (기준 {v.limit} pu 초과)"
@@ -575,7 +595,7 @@ def build_hosting_prompt(graph: SubstationGraph, hosting, trial: tuple | None = 
         lines.append(f"- 더 붙일 수 있는 최대 출력: {hosting.max_kw:,.0f} kW 이상 (검토 상한까지 기준 안)")
     else:
         lines.append(f"- 더 붙일 수 있는 최대 출력: {hosting.max_kw:,.0f} kW")
-    lines.append("- 최대치를 넘기면 막는 원인: " + ("; ".join(_violation_text(graph, v) for v in hosting.limited_by) or "없음"))
+    lines.append("- 최대치를 넘기면 먼저 걸리는 곳: " + ("; ".join(_violation_text(graph, v, need=False) for v in hosting.limited_by) or "없음"))
     if hosting.target_kw is not None:
         ok = not hosting.target_violations
         lines.append(f"- 신청 용량 {hosting.target_kw:,.0f} kW: " + ("연계 가능 (기준 위반 없음)" if ok else f"연계 불가 (위반 {len(hosting.target_violations)}건)"))
@@ -610,9 +630,9 @@ def generate_hosting_report(graph: SubstationGraph, hosting, trial: tuple | None
 _CAPACITY_TASK = """[이번 작업: 여유 용량 설명. 이 지침이 위 지침보다 우선합니다]
 화면 이름은 "여유 용량"입니다. 글에서도 "여유 용량"이라고 부르고 "추가 가능량"이라는 말은 쓰지 마세요.
 사용자가 지금 계통에서 접속점마다 신재생(태양광)과 부하를 얼마나 더 붙일 수 있는지 코드가 계산한 표를 줍니다. 리포트 형식(진단·원인·솔루션)은 같고 내용은 아래처럼 쓰세요.
-- 진단(계통 전체 요약, 3~5문장): 신재생을 가장 많이/가장 적게 더 붙일 수 있는 접속점과 kW, 부하를 가장 많이/가장 적게 더 늘릴 수 있는 접속점과 kW, 전체적으로 어느 쪽(말단·변전소 가까운 쪽)이 여유가 없는지.
+- 진단(계통 전체 요약, 3~5문장): 신재생을 가장 많이/가장 적게 더 붙일 수 있는 접속점과 kW, 부하를 가장 많이/가장 적게 더 늘릴 수 있는 접속점과 kW, 전체적으로 어느 쪽(말단·변전소 가까운 쪽)이 여유가 없는지. 검토 상한에 닿은 접속점은 이름을 늘어놓지 말고 입력 "요약"의 개수로 "○곳은 검토 상한까지 여유"처럼 묶으세요. 막는 선로가 여러 개면 이름을 다 나열하지 말고 "말단 쪽 선로 7개"처럼 개수로 묶고, 가장 많이 막는 선로 1~2개만 이름을 쓰세요.
 - 원인: 막는 요인별로 항목 하나. "신재생은 ○○ 선로 과부하(남는 전기가 변전소 쪽으로 거꾸로 몰림)·○○ 접속점 과전압 때문에", "부하는 말단 ○○ 접속점 저전압·○○ 선로 과부하 때문에"처럼 어느 설비가 몇 개 접속점을 막는지 쓰세요.
-- 솔루션: 우선순위 순서. 가장 많이 막는 선로부터 "허용전류를 지금 ○○ A에서 ○○ A 이상으로 증강하면 그 선로 때문에 막히던 곳이 풀림"처럼 입력의 필요 허용전류를 인용하세요. 저전압·과전압은 전압조정기(SVR)·탭 조정·연계 지점 분산을 "검토"로 쓰세요. 신재생과 부하를 같은 곳에 함께 붙이면 서로 상쇄될 수 있다는 점도 한 줄로 알려도 됩니다.
+- 솔루션: 우선순위 순서. 가장 많이 막는 선로부터 "○○ 선로의 허용전류(지금 ○○ A)를 늘리면(더 굵은 전선으로 교체) 그 선로 때문에 막히던 접속점 ○곳의 여유 용량이 늘어남"처럼 쓰세요. 증강 후 허용전류 숫자는 만들어 쓰지 마세요(입력에 없음). 얼마나 증강할지는 붙일 목표 용량을 정해 태양광 연계 검토로 계산하라고 쓰세요. 저전압·과전압은 전압조정기(SVR)·탭 조정·연계 지점 분산을 "검토"로 쓰세요. 신재생과 부하를 같은 곳에 함께 붙이면 서로 상쇄될 수 있다는 점도 한 줄로 알려도 됩니다.
 - 접속점마다 따로 계산한 값이라 여러 곳에 동시에 붙일 때의 합이 아님을 진단 끝에 한 번 밝히세요.
 - 입력의 kW·A·pu 숫자는 그대로 써도 됩니다. 새로 계산하거나 합하지 마세요. 허용전류·차단기 정격이 가정값이면 "가정값 기준"이라고 밝히세요."""
 
@@ -626,7 +646,7 @@ def build_capacity_prompt(graph: SubstationGraph, table, at: str = "최대 조�
         return f"{v:,.0f} 이상(검토 상한)" if v >= top else f"{v:,.0f}"
 
     def lim(items):
-        return "; ".join(_violation_text(graph, v) for v in items) or "없음 (검토 상한까지 기준 안)"
+        return "; ".join(_violation_text(graph, v, need=False) for v in items) or "없음 (검토 상한까지 기준 안)"
 
     lines = [f"# 여유 용량 ({graph.substation.name})", f"- 검토 시각: {at}",
              f"- 신재생 기준: 접속점 전압 {VOLTAGE_MAX_PU} pu 이하, 선로 부하율 {OVERLOAD_PCT:.0f}% 이하, 출구 차단기 차단 가능 (역조류 자체는 문제 아님)",
@@ -636,6 +656,17 @@ def build_capacity_prompt(graph: SubstationGraph, table, at: str = "최대 조�
              "| 접속점 | 신재생 추가 가능 kW | 신재생을 막는 것 | 부하 추가 가능 kW | 부하를 막는 것 |", "| --- | --- | --- | --- | --- |"]
     for x in table.rows:
         lines.append(f"| {x.name} | {kw(x.pv_max_kw)} | {lim(x.pv_limited_by)} | {kw(x.load_max_kw)} | {lim(x.load_limited_by)} |")
+    # 요약도 코드가 정리 (11/23 점검: 검토 상한 접속점 수를 "5곳"·"4곳"으로 섞어 씀)
+    lines += ["", "## 요약 (코드가 셈. 그대로 쓰세요)"]
+    for what, attr in (("신재생", "pv_max_kw"), ("부하", "load_max_kw")):
+        vals = [(getattr(x, attr), x.name) for x in table.rows]
+        if not vals:
+            continue
+        at_top = [n for v, n in vals if v >= top]
+        lo = min(vals)
+        hi = max((v, n) for v, n in vals if v < top) if len(at_top) < len(vals) else None
+        lines.append(f"- {what}: 검토 상한({top:,.0f} kW)까지 여유인 접속점 {len(at_top)}곳 / 전체 {len(vals)}곳"
+                     + (f", 상한 아래에서 가장 많은 곳 {hi[1]} {hi[0]:,.0f} kW" if hi else "") + f", 가장 적은 곳 {lo[1]} {lo[0]:,.0f} kW")
     # 막는 설비별로 몇 개 접속점을 막는지 (AI가 세다 틀리지 않게 코드가 셈)
     kind_ko = {"overload": "선로 과부하", "overvoltage": "과전압", "undervoltage": "저전압", "breaker": "차단기 차단 불가"}
     for what, attr in (("신재생을", "pv_limited_by"), ("부하를", "load_limited_by")):
@@ -698,7 +729,7 @@ def daily_summary(graph: SubstationGraph, daily) -> list[str]:
     rows = ["| 시각 | 태양광 kW | 부하 kW | 피더 송출 kW | 최저 전압 pu | 최고 전압 pu | 최대 부하율 | 역조류(비정상/정상) | 등급 |",
             "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
     found: dict[str, list[tuple[int, str, float]]] = {k: [] for k, _, _ in _DAILY_ITEMS}
-    outage_hours, peaks = [], {}
+    outage_hours, outage_places, outage_first, peaks = [], set(), None, {}
     for h in daily.hours:
         g = scaled_graph(graph, h.load_mult, h.pv_mult)
         r = h.result
@@ -715,6 +746,8 @@ def daily_summary(graph: SubstationGraph, daily) -> list[str]:
                 found[key].append((h.hour, name, value))
         if f["outage"]:
             outage_hours.append(h.hour)
+            outage_places.update(f["outage"])
+            outage_first = outage_first or (g, r)  # 정전 구간 부하는 처음 정전된 시각 값으로
         for key, value in (("태양광 최대", pv), ("부하 최대", load), ("피더 송출 최소(역송 쪽)", -send)):
             if key not in peaks or value > peaks[key][1]:
                 peaks[key] = (h.hour, value)
@@ -729,7 +762,12 @@ def daily_summary(graph: SubstationGraph, daily) -> list[str]:
         places = sorted({x[1] for x in items})
         out.append(f"- {label}: {_hour_ranges(hours)} (최악 {fmt.format(worst[2])}, {worst[0]}시, {worst[1]}; 해당 위치 {', '.join(places[:5])}"
                    + (f" 외 {len(places) - 5}곳" if len(places) > 5 else "") + ")")
-    out.append(f"- 정전: {_hour_ranges(outage_hours) if outage_hours else '없음'}")
+    if outage_hours:
+        places = sorted(outage_places)
+        out.append(f"- 정전: {_hour_ranges(outage_hours)} (정전 위치 {', '.join(places[:5])}{f' 외 {len(places) - 5}곳' if len(places) > 5 else ''}; "
+                   f"{outage_loads_text(*outage_first)})")
+    else:
+        out.append("- 정전: 없음")
     out.append(f"- 태양광이 가장 많은 시각: {peaks['태양광 최대'][0]}시 ({peaks['태양광 최대'][1]:,.0f} kW)")
     out.append(f"- 전기를 가장 많이 쓰는 시각: {peaks['부하 최대'][0]}시 ({peaks['부하 최대'][1]:,.0f} kW)")
     out.append(f"- 피더 송출이 가장 작은 시각: {peaks['피더 송출 최소(역송 쪽)'][0]}시 ({-peaks['피더 송출 최소(역송 쪽)'][1]:,.0f} kW, 음수면 변전소 쪽으로 역송)")
@@ -760,7 +798,10 @@ _REINFORCE_TASK = """[이번 작업: 설비 보강 우선순위. 이 지침이 �
 - 진단(요약, 2~4문장): 어떤 날들을 봤는지 → 기준(100%)을 넘는 선로가 있는지 → 예산 안에서 먼저 증강할 선로.
 - 원인(선로별 위험): 순위 위쪽 선로마다 항목 하나. 최대 부하율과 그 날·시각, 기준 초과 시간 수, 왜 그 선로에 전기가 몰리는지(변전소 가까운 간선이라 아래쪽 전기를 다 실어 나름, 태양광 역송이 몰림 등 입력으로 알 수 있는 만큼)를 쓰세요.
 - 솔루션(증강 순서 권고): 순위대로 "1순위 ○○: 허용전류를 지금 ○○ A에서 ○○ A 이상으로 증강"처럼 입력의 필요 허용전류를 그대로 인용하세요. 예산 밖 선로는 감시 대상으로 쓰세요. 마지막에 "증강 후 허용전류를 바꿔 다시 시뮬레이션해 연계 가능량이 얼마나 느는지 확인"을 권하세요.
-- 기준(100%)을 넘는 선로가 하나도 없으면 "올해 증강이 꼭 필요한 선로는 없음"이라고 쓰고, 솔루션은 "1순위 증강"이 아니라 순위 위쪽 선로를 "우선 감시 대상"(최대 부하율과 그때를 인용)으로 쓰세요. 이때 허용전류를 "유지하라"는 문장은 쓰지 마세요. 80% 이상 시간이 있는 선로는 다음 해 증강 후보로 쓰세요.
+- 기준(100%)을 넘는 선로가 하나도 없으면 "올해 증강이 꼭 필요한 선로는 없음"이라고 쓰고, 솔루션은 "1순위 증강"이 아니라 순위 위쪽 선로를 "우선 감시 대상"(최대 부하율과 그때를 인용)으로 쓰세요. 이때 원인과 솔루션은 순위 위쪽 3개 선로까지만 쓰고(예산이 커도 늘리지 않음), 나머지는 "나머지 선로는 부하율이 낮아 여유 있음"처럼 한 줄로 묶으세요. 이때 허용전류를 "유지하라"는 문장은 쓰지 마세요. 80% 이상 시간이 있는 선로는 다음 해 증강 후보로 쓰세요.
+- 예산 문장은 입력의 "예산 판단"을 그대로 따르세요. 예산이 남아도 기준 안 선로를 증강하라고 하지 마세요.
+- 이 작업 입력에는 건강도 등급이 없습니다. "정상 등급"·"위험 등급" 같은 등급 문장은 쓰지 마세요.
+- 선로는 화면 표와 맞게 "1순위 Section①_…"처럼 순위와 이름을 같이 쓰세요(쉬운 설명이어도 이 작업에서는 선로 이름을 그대로 씁니다. 화면 표에서 찾을 수 있게). 가정값 안내는 진단에서 한 번만 쓰고 선로마다 되풀이하지 마세요.
 - 코드가 매긴 순위를 바꾸지 마세요. 입력의 kW·A·% 숫자는 그대로 써도 됩니다(쉬운 설명이면 숫자 뒤에 쉬운 뜻을 붙이세요). 허용전류가 가정값이면 "가정값 기준"이라고 밝히세요."""
 
 
@@ -810,17 +851,36 @@ def rank_lines(graph: SubstationGraph, dailies: list) -> list[LineRank]:
     return out
 
 
+def budget_text(ranking: list[LineRank], budget_lines: int) -> str:
+    """예산(증강할 선로 수)과 기준을 넘는 선로 수를 비교한 문장 (11/23 점검: 예산 1000개·8개를 AI가 이상하게 해석). 코드가 판단한다"""
+    over = sum(x.max_loading_pct > OVERLOAD_PCT for x in ranking)
+    if over == 0:
+        return f"기준(100%)을 넘는 선로가 없어 올해 증강할 선로는 없음. 예산 {budget_lines}개는 쓰지 않아도 됨"
+    if budget_lines >= over:
+        rest = f", 남는 {budget_lines - over}개는 쓰지 않아도 됨(기준 안 선로라 증강 불필요)" if budget_lines > over else ""
+        return f"기준을 넘는 선로 {over}개를 예산 {budget_lines}개로 모두 증강할 수 있음{rest}"
+    return f"기준을 넘는 선로 {over}개 중 예산 {budget_lines}개만큼 순위 위쪽부터 증강, 나머지 {over - budget_lines}개는 감시 대상"
+
+
 def build_reinforcement_prompt(graph: SubstationGraph, dailies: list, ranking: list[LineRank], budget_lines: int) -> str:
     days = ", ".join(d.profile.name for d in dailies)
+    budget_lines = max(1, min(budget_lines, len(ranking) or 1))  # 이 계통 선로 수보다 많으면 선로 수로 (1000개처럼 큰 값)
     lines = [f"# 설비 보강 우선순위 ({graph.substation.name})", f"- 점검한 날: {days} (날마다 0~23시)",
-             f"- 예산: 선로 {budget_lines}개 증강 가능", f"- 기준: 부하율 {OVERLOAD_PCT:.0f}% 초과면 과부하, {LOADING_WATCH_PCT}% 이상이면 주의", "",
+             f"- 예산: 선로 {budget_lines}개 증강 가능 (이 계통의 선로 {len(ranking)}개)", f"- 예산 판단 (코드가 계산): {budget_text(ranking, budget_lines)}",
+             f"- 기준: 부하율 {OVERLOAD_PCT:.0f}% 초과면 과부하, {LOADING_WATCH_PCT}% 이상이면 주의", "",
              "## 선로 순위 (코드가 계산. 순위를 바꾸지 마세요)",
              "| 순위 | 선로 | 최대 부하율 | 그때 | 100% 초과 시간 | 80% 이상 시간 | 지금 허용전류 | 필요 허용전류(최대 부하율 100% 이하) |",
              "| --- | --- | --- | --- | --- | --- | --- | --- |"]
-    for i, x in enumerate(ranking[:MAX_FAULT_LISTED], 1):
+    over = sum(x.max_loading_pct > OVERLOAD_PCT for x in ranking)
+    # 기준을 넘는 선로가 있으면 예산만큼은 꼭 넣고(예전: 10개까지만), 없으면 감시할 위쪽 3개만 (11/23: 부하율 8% 선로까지 감시 대상으로 늘어놓음)
+    shown = ranking[:max(MAX_FAULT_LISTED, budget_lines)] if over else ranking[:WATCH_LISTED]
+    for i, x in enumerate(shown, 1):
         now = f"{x.rated_current_a:.0f} A" if x.rated_current_a is not None else f"{DEFAULT_RATED_CURRENT_A:.0f} A (가정값)"
         need = f"{math.ceil(x.required_rated_current_a):,} A 이상" if x.max_loading_pct > OVERLOAD_PCT else "증강 불필요 (기준 안)"
         lines.append(f"| {i} | {x.name} | {x.max_loading_pct:.0f}% | {x.worst_date} {x.worst_hour}시 | {x.hours_over} | {x.hours_watch} | {now} | {need} |")
+    if len(ranking) > len(shown):
+        rest = ranking[len(shown):]
+        lines.append(f"- 나머지 {len(rest)}개 선로: 최대 부하율 {max(x.max_loading_pct for x in rest):.0f}% 이하로 여유 있음 (하나씩 쓰지 말고 이 한 줄로)")
     assumptions = _assumptions(graph)
     if assumptions:
         lines += ["", "## 가정값", *[f"- {a}" for a in assumptions]]
@@ -828,10 +888,34 @@ def build_reinforcement_prompt(graph: SubstationGraph, dailies: list, ranking: l
     return "\n".join(lines)
 
 
+def _no_reinforce_report(graph: SubstationGraph, dailies: list, ranking: list[LineRank], budget_lines: int) -> Report:
+    """모든 선로가 80% 미만일 때의 보강 우선순위 정리 (코드가 씀, 숫자는 순위표 그대로)"""
+    days = ", ".join(str(d.profile.date) for d in dailies)
+    assumed = any(x.rated_current_a is None for x in ranking)
+    note = f" 허용전류 자료가 없는 선로는 {DEFAULT_RATED_CURRENT_A:.0f} A 가정값으로 계산했어요." if assumed else ""
+    top = ranking[:WATCH_LISTED]
+    causes = [f"{i}순위 {x.name}: 최대 부하율 {x.max_loading_pct:.0f}% ({x.worst_date} {x.worst_hour}시). 80%까지 여유가 있어요."
+              for i, x in enumerate(top, 1)]
+    if len(ranking) > len(top):
+        causes.append(f"나머지 {len(ranking) - len(top)}개 선로는 최대 부하율 {ranking[len(top)].max_loading_pct:.0f}% 이하예요.")
+    first = f"1순위 {top[0].name}" if top else "부하율이 가장 높은 선로"
+    return Report(
+        substation_id=graph.substation.id,
+        diagnosis=f"{days}의 24시간을 계산했어요. 부하율이 100%를 넘거나 80% 이상인 선로가 없어서 올해 증강할 선로는 없어요.{note}",
+        causes=causes or ["계산할 선로가 없어요."],
+        solutions=[f"지금은 증강하지 않아도 돼요. 부하나 태양광이 늘면 {first}부터 다시 확인하세요.",
+                   "부하·태양광을 새로 붙이거나 선로 허용전류 자료를 넣은 뒤에는 이 탭에서 다시 계산하세요."],
+    )
+
+
 def generate_reinforcement_report(graph: SubstationGraph, dailies: list, budget_lines: int = 2, audience: str = "expert",
                                   client=None) -> ReinforcementReport:
     """유스케이스 3 ④ "AI 정리": 선로 순위(코드)와 증강 순서 권고(AI)를 함께 돌려준다"""
     ranking = rank_lines(graph, dailies)
+    if not any(x.hours_over or x.hours_watch for x in ranking):
+        # 증강할 선로도, 80% 이상인 선로도 없으면 AI를 부르지 않고 코드가 정해진 문장으로 쓴다 (11/23: AI가 "여유가 있어 감시 대상으로 지정",
+        # "예산 2개는 쓰지 않아도"처럼 할 말이 없는데 문장을 채워 넣음)
+        return ReinforcementReport(ranking=ranking, report=_no_reinforce_report(graph, dailies, ranking, budget_lines))
     prompt = build_reinforcement_prompt(graph, dailies, ranking, budget_lines)
     report = _ask(f"{system_prompt(audience)}\n\n{_REINFORCE_TASK}", prompt, graph.substation.id, client)
     return ReinforcementReport(ranking=ranking, report=report)

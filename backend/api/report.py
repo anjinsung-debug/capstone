@@ -6,6 +6,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from ai_report import seasonal
 from ai_report.capacity import CapacityTable, capacity_table
 from ai_report.models import ReinforcementReport, Report
 from ai_report.report import (
@@ -133,3 +134,17 @@ def create_capacity_report(substation_id: str, table: CapacityTable, audience: L
     if table.substation_id != substation_id:
         raise HTTPException(422, "주소의 변전소 id와 표의 substation_id가 다릅니다")
     return generate_capacity_report(_graph_at(substation_id, date, hour), table, _at_text(date, hour), audience)
+
+
+@router.get("/reports/seasonal/{substation_id}")
+def seasonal_status(substation_id: str) -> dict:
+    """계절별 위험도 (11/23): 지금 계통의 1년 계산 상태. state = idle(안 함) | running(done/total일) | done(result) | error(error).
+    같은 계통을 예전에 계산했으면 바로 done (ai_report/seasonal.py의 디스크 캐시)"""
+    return seasonal.status(graph.get_substation(substation_id))
+
+
+@router.post("/reports/seasonal/{substation_id}")
+def seasonal_start(substation_id: str, again: bool = False) -> dict:
+    """계절별 위험도 계산 시작 (365일 × 24시간, 백그라운드). 바로 돌아오고 진행은 GET으로 본다. AI는 부르지 않는다.
+    이미 계산 중이거나 끝났으면 그 상태를 그대로 돌려준다 (again=true면 끝난 것도 다시 계산)"""
+    return seasonal.start(graph.get_substation(substation_id), again=again)
