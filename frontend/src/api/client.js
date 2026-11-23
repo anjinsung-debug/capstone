@@ -117,6 +117,9 @@ export const createDailyReport = (substationId, body) => request('POST', `/repor
 export const getReinforceDates = (substationId) => request('GET', `/reports/reinforcement/${substationId}/dates`)
 export const createReinforcementReport = (substationId, body) =>
   request('POST', `/reports/reinforcement/${substationId}?audience=plain`, body)
+// 계절별 위험도 (ai_report/seasonal.py, 11/23): 1년 계산 상태 { state: idle|running|done|error, done, total, result, error }. 시작은 바로 돌아오고 진행은 GET으로
+export const getSeasonal = (substationId) => request('GET', `/reports/seasonal/${substationId}`)
+export const startSeasonal = (substationId, again = false) => request('POST', `/reports/seasonal/${substationId}${again ? '?again=true' : ''}`)
 // 여유 용량 (ai_report/capacity.py): 접속점마다 신재생·부하를 몇 kW까지 더 붙일 수 있는지, 무엇이 막는지. 계산만 (수 초~수십 초)
 export const runCapacity = (substationId, at) => request('POST', withQuery(`/reports/capacity/${substationId}`, '', at))
 // 여유 용량 표를 AI가 설명 (계통 전체 요약, 막는 요인, 늘리는 방법). 쉬운 설명 (11/10 피드백)

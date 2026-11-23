@@ -2367,3 +2367,124 @@ p.warn {
   color: var(--muted);
   font-size: 11px;
 }
+
+/* 계절별 위험도 (11/23, components/UsecasePanels.jsx의 SeasonalBox) */
+.season-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.season-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+}
+.season-bar i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.4s;
+}
+.season-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 8px;
+}
+.season-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--accent);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.season-card.warn {
+  border-top-color: var(--warn);
+}
+.season-card.danger {
+  border-top-color: var(--danger);
+}
+.season-card header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.season-card header strong {
+  font-size: 15px;
+}
+.season-card header .badge {
+  margin-left: auto;
+}
+.season-card dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 10px;
+  margin: 0;
+  font-size: 12px;
+}
+.season-card dt {
+  color: var(--muted);
+}
+.season-card dd {
+  margin: 0;
+  color: var(--text);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.season-hours {
+  display: flex;
+  height: 6px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--line);
+}
+.season-hours i.ok {
+  background: var(--accent);
+}
+.season-hours i.warn {
+  background: var(--warn);
+}
+.season-hours i.danger {
+  background: var(--danger);
+}
+.badge.season-grade.ok,
+.season-dot.ok {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.badge.season-grade.warn,
+.season-dot.warn {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+.badge.season-grade.danger,
+.season-dot.danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.season-dot {
+  font-size: 12px;
+  font-weight: 700;
+}
+.season-table th .badge {
+  margin-left: 4px;
+}
+.season-table td {
+  font-variant-numeric: tabular-nums;
+}
+.season-table td:first-child {
+  white-space: nowrap;
+  color: var(--muted);
+}
+.season-table td.bad-cell {
+  color: var(--danger);
+}
+.season-table td.warn-cell {
+  color: var(--warn);
+}
