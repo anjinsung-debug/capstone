@@ -888,10 +888,34 @@ def build_reinforcement_prompt(graph: SubstationGraph, dailies: list, ranking: l
     return "\n".join(lines)
 
 
+def _no_reinforce_report(graph: SubstationGraph, dailies: list, ranking: list[LineRank], budget_lines: int) -> Report:
+    """모든 선로가 80% 미만일 때의 보강 우선순위 정리 (코드가 씀, 숫자는 순위표 그대로)"""
+    days = ", ".join(str(d.profile.date) for d in dailies)
+    assumed = any(x.rated_current_a is None for x in ranking)
+    note = f" 허용전류 자료가 없는 선로는 {DEFAULT_RATED_CURRENT_A:.0f} A 가정값으로 계산했어요." if assumed else ""
+    top = ranking[:WATCH_LISTED]
+    causes = [f"{i}순위 {x.name}: 최대 부하율 {x.max_loading_pct:.0f}% ({x.worst_date} {x.worst_hour}시). 80%까지 여유가 있어요."
+              for i, x in enumerate(top, 1)]
+    if len(ranking) > len(top):
+        causes.append(f"나머지 {len(ranking) - len(top)}개 선로는 최대 부하율 {ranking[len(top)].max_loading_pct:.0f}% 이하예요.")
+    first = f"1순위 {top[0].name}" if top else "부하율이 가장 높은 선로"
+    return Report(
+        substation_id=graph.substation.id,
+        diagnosis=f"{days}의 24시간을 계산했어요. 부하율이 100%를 넘거나 80% 이상인 선로가 없어서 올해 증강할 선로는 없어요.{note}",
+        causes=causes or ["계산할 선로가 없어요."],
+        solutions=[f"지금은 증강하지 않아도 돼요. 부하나 태양광이 늘면 {first}부터 다시 확인하세요.",
+                   "부하·태양광을 새로 붙이거나 선로 허용전류 자료를 넣은 뒤에는 이 탭에서 다시 계산하세요."],
+    )
+
+
 def generate_reinforcement_report(graph: SubstationGraph, dailies: list, budget_lines: int = 2, audience: str = "expert",
                                   client=None) -> ReinforcementReport:
     """유스케이스 3 ④ "AI 정리": 선로 순위(코드)와 증강 순서 권고(AI)를 함께 돌려준다"""
     ranking = rank_lines(graph, dailies)
+    if not any(x.hours_over or x.hours_watch for x in ranking):
+        # 증강할 선로도, 80% 이상인 선로도 없으면 AI를 부르지 않고 코드가 정해진 문장으로 쓴다 (11/23: AI가 "여유가 있어 감시 대상으로 지정",
+        # "예산 2개는 쓰지 않아도"처럼 할 말이 없는데 문장을 채워 넣음)
+        return ReinforcementReport(ranking=ranking, report=_no_reinforce_report(graph, dailies, ranking, budget_lines))
     prompt = build_reinforcement_prompt(graph, dailies, ranking, budget_lines)
     report = _ask(f"{system_prompt(audience)}\n\n{_REINFORCE_TASK}", prompt, graph.substation.id, client)
     return ReinforcementReport(ranking=ranking, report=report)
