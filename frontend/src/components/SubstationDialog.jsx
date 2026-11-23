@@ -128,7 +128,7 @@ export function DeleteSubstationDialog({ target, graph, onDelete, onClose }) {
             </li>
           </ul>
         ) : (
-          !target.unsaved && <p className="muted small">지울 내용을 불러오는 중...</p>
+          !target.unsaved && <p className="muted small">지울 내용을 불러오는 중…</p>
         )}
         <p className="muted small">
           {target.unsaved
@@ -149,7 +149,7 @@ export function DeleteSubstationDialog({ target, graph, onDelete, onClose }) {
               setBusy(false)
             }}
           >
-            {busy ? '삭제 중...' : '완전 삭제'}
+            {busy ? '삭제 중…' : '완전 삭제'}
           </button>
         </div>
       </div>

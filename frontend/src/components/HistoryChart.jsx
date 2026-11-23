@@ -8,6 +8,7 @@
 // 백엔드에 하루 계산이 없으면(예전 백엔드) 예전처럼 가로축 = 기록 순서인 그래프를 보여 준다.
 // ponytail: 기록은 브라우저 메모리에만 있다(새로고침하면 사라짐)
 import { useState } from 'react'
+import { Progress } from './UsecasePanels.jsx'
 import { FAULT_HIGH_MVA, OVERLOAD_PCT, VOLTAGE_MIN_PU } from '../lib/overlay.js'
 
 const W = 320
@@ -53,11 +54,13 @@ function DateBar({ daily, profile }) {
       </button>
       <span className="date-info muted small">
         {busy
-          ? `새 날짜로 다시 계산 중 ${busy.done}/${busy.total}`
+          ? ''
           : shownProfile
             ? `${shownProfile.name}${shownProfile.source_date !== shownProfile.date ? ` · 배율은 2025년 같은 요일(${shownProfile.source_date}) 패턴` : ''} · 가상 패턴`
             : '2025-01-01 ~ 오늘 중 고를 수 있습니다 · 가상 패턴'}
       </span>
+      {/* 기록마다 새 날짜로 다시 계산: 진행률을 알아서 진행 막대 (11/23 계산 중 표시 통일, UsecasePanels.jsx Progress) */}
+      {busy && <Progress done={busy.done} total={busy.total} unit="개 기록" note="새 날짜로 다시 계산" />}
     </div>
   )
 }
@@ -118,7 +121,7 @@ function DailySmall({ metric, points, sel, hour, setHour }) {
           {!cur.daily
             ? cur.dailyError
               ? '하루 계산 실패'
-              : '하루 계산 중...'
+              : '하루 계산 중…'
             : hour != null
               ? `${hour}시 ${atHour == null ? '-' : `${metric.fmt(atHour)} ${metric.unit}`}`
               : worst

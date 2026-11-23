@@ -2369,6 +2369,10 @@ p.warn {
 }
 
 /* 계절별 위험도 (11/23, components/UsecasePanels.jsx의 SeasonalBox) */
+/* 날짜 막대 안 진행 막대는 한 줄 전체 (HistoryChart.jsx DateBar) */
+.date-bar .season-progress {
+  flex-basis: 100%;
+}
 .season-progress {
   display: flex;
   flex-direction: column;

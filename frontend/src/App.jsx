@@ -210,7 +210,7 @@ export default function App() {
   // record: false면 결과 기록에 남기지 않는다 (정각 갱신·계산 기준 전환처럼 계통을 고치지 않은 다시 계산)
   async function simulateNow(g, label, { record = true } = {}) {
     const id = ++runId.current
-    setBusy('계산 중...')
+    setBusy('계산 중…')
     const at = simModeRef.current === 'pick' ? pickAtRef.current : nowAt()
     let res
     try {
@@ -350,7 +350,7 @@ export default function App() {
         const g = graphRef.current
         if (!g) break
         const rev = editRev.current
-        setSave({ status: 'saving', text: '저장 중...' })
+        setSave({ status: 'saving', text: '저장 중…' })
         let saved
         try {
           saved = await saveSubstation(g.substation.id, toSnapshot(g))
@@ -521,7 +521,7 @@ export default function App() {
     const forAt = resultAt
     const forKey = simulatedKey.current
     setReportBusy(true)
-    setReportMessage('AI 리포트 생성 중... (수 초~수십 초)')
+    setReportMessage('AI 리포트 생성 중… (수 초~수십 초)')
     try {
       const r = await createReport(result, audience, forAt)
       if (id === reportRun.current) setReport({ ...r, forAt, forKey })
@@ -794,7 +794,7 @@ export default function App() {
             />
           )}
           {view3d && graph && (
-            <Suspense fallback={<div className="d3-wrap d3-loading">3D 화면 불러오는 중...</div>}>
+            <Suspense fallback={<div className="d3-wrap d3-loading">3D 화면 불러오는 중…</div>}>
               <Diagram3D graph={graph} result={result} onSelect={setSelectedIds} />
             </Suspense>
           )}

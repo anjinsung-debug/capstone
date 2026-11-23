@@ -4,7 +4,7 @@
 import { Suspense, lazy, useState } from 'react'
 import { NODE_TYPES, electricalKey, findIssues, updateLine, updateNode, updateSubstation } from '../lib/graphEdit.js'
 import { COLORS, OVERLOAD_PCT, loadingColor, mvaOf, voltageColor } from '../lib/overlay.js'
-import { HostingAi } from './UsecasePanels.jsx'
+import { Busy, HostingAi } from './UsecasePanels.jsx'
 
 const Equipment3D = lazy(() => import('./Diagram3D.jsx').then((m) => ({ default: m.Equipment3D })))
 
@@ -145,9 +145,10 @@ function HostingSection({ graph, node, hosting, resultAt, onCheckHosting, onAddP
           </div>
         </label>
         <button type="button" className="primary-outline" disabled={mine?.status === 'busy'} onClick={() => onCheckHosting(node.id, targetKw, kind)}>
-          {mine?.status === 'busy' ? '계산 중...' : k.calc}
+          {mine?.status === 'busy' ? '계산 중…' : k.calc}
         </button>
       </div>
+      {mine?.status === 'busy' && <Busy text={`${k.what} 최대치를 계산하고 있습니다`} hint="보통 수 초 걸립니다" />}
       {mine?.status === 'error' && <p className="warn small">계산하지 못했습니다: {mine.error}</p>}
       {d && (
         <>

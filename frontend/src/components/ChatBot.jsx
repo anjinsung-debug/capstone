@@ -6,7 +6,7 @@
 // ponytail: 답을 한 번에 받는다(스트리밍 아님). 기다림이 길면 서버를 스트리밍으로 바꾸고 여기서 조각을 이어 붙인다
 import { useEffect, useRef, useState } from 'react'
 import { askChat } from '../api/client.js'
-import { chatExtras } from './UsecasePanels.jsx'
+import { chatExtras, useSeconds } from './UsecasePanels.jsx'
 
 const SEND_TURNS = 12 // 서버로 보내는 최근 대화 수
 const SUGGESTIONS_WITH_RESULT = ['지금 계통 상태를 한 줄로 알려줘', '오늘 몇 시가 제일 위험해?', '내 변전소는 몇 곳이고 상태는 어때?', '문제가 있는 곳은 어디고 왜 그래?']
@@ -63,6 +63,7 @@ export default function ChatBot({ graph, result, resultAt, isNew, tools = [] }) 
   const input = useRef(null)
   const panel = useRef(null)
   const drag = useDrag(panel)
+  const sec = useSeconds(busy) // 계산 도구를 쓰면 수십 초 걸려서 초를 보여 준다 (11/23 계산 중 표시 통일)
 
   useEffect(() => {
     saved = msgs
@@ -167,7 +168,7 @@ export default function ChatBot({ graph, result, resultAt, isNew, tools = [] }) 
         {msgs.map((m, i) => (
           <Bubble key={i} m={m} />
         ))}
-        {busy && <div className="chat-msg assistant typing">답을 만드는 중…</div>}
+        {busy && <div className="chat-msg assistant typing">답을 만드는 중… {sec}초</div>}
       </div>
       <form
         className="chat-input"

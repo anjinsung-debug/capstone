@@ -69,13 +69,49 @@ function ReportCards({ report, titles }) {
   )
 }
 
-function Busy({ text }) {
+// ── 계산 중 표시 (11/23 통일) ──
+// 얼마나 걸릴지 모르는 계산(AI 호출, 여유 용량, 보강 우선순위, 연계 검토, 챗봇): 빙글이 + 하는 일 + 걸린 초 (Busy, useSeconds)
+// 진행률을 아는 계산(계절별 위험도, 시간대별 날짜 다시 계산): 진행 막대 + 완료/전체 (Progress)
+// 1초 안에 끝나는 것(요약 줄 계산 중, 저장 중)은 글자만. 말줄임표는 "…"
+// ponytail: 초는 이 표시가 나타난 때부터 센다. 계산 중에 창을 닫았다 열면 0초부터 다시 센다
+export function useSeconds(on) {
+  const [sec, setSec] = useState(0)
+  useEffect(() => {
+    if (!on) return undefined
+    const start = Date.now()
+    setSec(0)
+    const t = setInterval(() => setSec(Math.floor((Date.now() - start) / 1000)), 500)
+    return () => clearInterval(t)
+  }, [on])
+  return sec
+}
+
+export function Busy({ text, hint }) {
+  const sec = useSeconds(true)
   return (
-    <div className="rp-state">
+    <div className="rp-state" role="status">
       <span className="spinner" aria-hidden="true" />
       <div>
-        <b>{text}</b>
+        <b>
+          {text} · {sec}초
+        </b>
+        {hint && <small>{hint}</small>}
       </div>
+    </div>
+  )
+}
+
+export function Progress({ done, total, unit, note }) {
+  const pct = total ? Math.round((done / total) * 100) : 0
+  return (
+    <div className="season-progress" role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done}>
+      <div className="season-bar">
+        <i style={{ width: `${pct}%` }} />
+      </div>
+      <span>
+        {done} / {total}
+        {unit} 계산 중 ({pct}%){note ? ` · ${note}` : ''}
+      </span>
     </div>
   )
 }
@@ -115,8 +151,9 @@ export function HostingAi({ graph, hosting, stale }) {
   return (
     <div className="uc-ai">
       <button type="button" className="primary-outline mini" disabled={busy || stale} onClick={make}>
-        {busy ? 'AI가 쓰는 중...' : report ? 'AI 추천 다시 만들기' : 'AI 추천 (연계 가능 여부·보강 방법)'}
+        {busy ? 'AI가 쓰는 중…' : report ? 'AI 추천 다시 만들기' : 'AI 추천 (연계 가능 여부·보강 방법)'}
       </button>
+      {busy && <Busy text="AI가 연계 추천을 쓰고 있습니다" />}
       <Fail error={error} />
       {report && <ReportCards report={report} titles={['연계 가능 여부', '막히는 원인', '보강 추천']} />}
     </div>
@@ -155,7 +192,7 @@ export function DailyAiBox({ graph, date }) {
       <p className="muted small">
         고른 날 0~23시 결과에서 언제·어디서·어떤 문제가 생기는지 시간대별로 정리하고 대비 조치를 권고합니다. 조치는 시뮬레이션으로 확인한 것이 아니라 검토 대상입니다.
       </p>
-      {busy && <Busy text="24시간 계산 후 AI가 권고를 쓰고 있습니다... (수십 초)" />}
+      {busy && <Busy text="24시간 계산 후 AI가 권고를 쓰고 있습니다" hint="보통 수십 초 걸립니다" />}
       <Fail error={error} />
       {report && <ReportCards report={report} titles={['하루 요약', '시간대별 위험', '대비 조치 (검토 대상)']} />}
     </section>
@@ -252,7 +289,7 @@ export function ReinforceBox({ graph, onFocus }) {
           ) : null,
         )}
       </ul>
-      {busy && <Busy text="날짜마다 24시간 계산 후 AI가 정리하고 있습니다... (수십 초)" />}
+      {busy && <Busy text="날짜마다 24시간 계산 후 AI가 정리하고 있습니다" hint="보통 수십 초 걸립니다" />}
       <Fail error={error} />
       {data && (
         <>
@@ -364,11 +401,11 @@ export function CapacityPanel({ graph, at, onFocus }) {
     }
   }
   const calc = () =>
-    run('접속점마다 신재생·부하 여유 용량을 계산하는 중... (수 초~수십 초)', async () => {
+    run('접속점마다 신재생·부하 여유 용량을 계산하고 있습니다', async () => {
       setTable({ data: await runCapacity(sid, at), at, atKey })
       setReport(null)
     })
-  const explain = () => run('AI가 설명을 쓰고 있습니다... (수 초~수십 초)', async () => setReport(await createCapacityReport(sid, table.data, table.at)))
+  const explain = () => run('AI가 설명을 쓰고 있습니다', async () => setReport(await createCapacityReport(sid, table.data, table.at)))
 
   const rows = table?.data.rows ?? []
   const top = table?.data.max_search_kw ?? 20000
@@ -396,7 +433,7 @@ export function CapacityPanel({ graph, at, onFocus }) {
           </button>
         </div>
       </div>
-      {busy && <Busy text={busy} />}
+      {busy && <Busy text={busy} hint="보통 수 초~수십 초 걸립니다" />}
       <Fail error={error} />
       {stale && <p className="warn small">화면 시각이 바뀌었습니다. 아래는 {atText(table.at)} 결과이니 &ldquo;다시 계산&rdquo;을 눌러 주세요.</p>}
 
@@ -570,7 +607,6 @@ export function SeasonalBox({ graph, onFocus }) {
 
   const result = job?.state === 'done' ? job.result : null
   const seasons = (result?.seasons ?? []).map((s) => ({ ...s, _danger: s.grade_hours['위험'], _caution: s.grade_hours['주의'] }))
-  const pct = job?.total ? Math.round((job.done / job.total) * 100) : 0
   return (
     <section className="uc-result">
       <h4>계절별 위험도</h4>
@@ -583,16 +619,7 @@ export function SeasonalBox({ graph, onFocus }) {
         {result && <span className="muted small">계산한 때 {result.computed_at.replace('T', ' ')}</span>}
       </div>
       <p className="muted small">저장된 계통으로 계산합니다. 편집한 뒤 저장하지 않은 내용은 반영되지 않아요.</p>
-      {running && (
-        <div className="season-progress" role="progressbar" aria-valuemin={0} aria-valuemax={job.total} aria-valuenow={job.done}>
-          <div className="season-bar">
-            <i style={{ width: `${pct}%` }} />
-          </div>
-          <span>
-            {job.done} / {job.total}일 계산 중 ({pct}%) · 창을 닫아도 서버에서 계속 계산합니다
-          </span>
-        </div>
-      )}
+      {running && <Progress done={job.done} total={job.total} unit="일" note="창을 닫아도 서버에서 계속 계산합니다" />}
       {job?.state === 'error' && <Fail error={job.error} />}
       <Fail error={error} />
       {result && (

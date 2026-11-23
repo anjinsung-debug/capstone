@@ -620,7 +620,7 @@ export function AiReportView({ graph, result, resultAt, report, reportStale, rep
             </button>
           )}
           <button type="button" className="primary rp-make" disabled={reportBusy} onClick={make}>
-            {reportBusy ? '만드는 중...' : report ? '지금 결과로 다시 만들기' : 'AI 해설 만들기'}
+            {reportBusy ? '만드는 중…' : report ? '지금 결과로 다시 만들기' : 'AI 해설 만들기'}
           </button>
         </div>
       </div>
