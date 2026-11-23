@@ -199,15 +199,18 @@ def check_findings(graph: SubstationGraph, result: SimulationResult) -> dict:
     # ponytail: 항목 개수와 상관없이 하나라도 있으면 같은 등급이다. 심각도 가중치가 필요해지면 그때 점수 계산을 넣는다
     # 등급 (화면 진단표와 같은 규칙): 항목마다 판정하고 가장 나쁜 것이 전체 등급
     #   위험: 전압 0.9 pu 미만·1.1 pu 초과, 과부하, 정전, 비정상 역조류 / 주의: 전압 정상 범위 밖, 부하율 80% 이상, 판정 없는 역조류, 단락용량 초과
+    #   단락용량은 변전소 단락용량 데이터가 있을 때만 등급에 넣는다 (11/23): 없으면 가정값 300 MVA가 기준 300 MVA와 같아
+    #   태양광이 조금만 보태도 늘 '주의'가 됐다. 데이터가 없으면 fault 목록은 참고로만 남긴다 (화면 overlay.js healthCheck와 같은 규칙)
+    fault_assumed = graph.substation.short_circuit_mva is None
     danger_v = any(v < VOLTAGE_DANGER_LOW_PU for _, v in low) or any(v > VOLTAGE_DANGER_HIGH_PU for _, v in high)
     if danger_v or overload or outage or reverse_bad:
         grade = GRADES[2]
-    elif low or high or watch or reverse_unjudged or fault:
+    elif low or high or watch or reverse_unjudged or (fault and not fault_assumed):
         grade = GRADES[1]
     else:
         grade = GRADES[0]
     return {"grade": grade, "low": low, "high": high, "outage": outage, "overload": overload, "watch": watch, "reverse": reverse,
-            "reverse_bad": reverse_bad, "reverse_ok": reverse_ok, "fault": fault}
+            "reverse_bad": reverse_bad, "reverse_ok": reverse_ok, "fault": fault, "fault_assumed": fault_assumed}
 
 
 def _assumptions(graph: SubstationGraph) -> list[str]:
@@ -315,7 +318,9 @@ def build_prompt(graph: SubstationGraph, result: SimulationResult) -> str:
                      + ". 나머지 역조류는 선로 용량·차단기 안이라 정상 운전 범위")
     shown = f["fault"][:MAX_FAULT_LISTED]
     more = f" 외 {len(f['fault']) - len(shown)}곳" if len(f["fault"]) > len(shown) else ""
-    lines.append(f"- 단락용량(>{FAULT_HIGH_MVA} MVA) {len(f['fault'])}곳" + (": " + ", ".join(f"{n} {m:.0f} MVA" for n, m in shown) + more if f["fault"] else ""))
+    lines.append(f"- 단락용량(>{FAULT_HIGH_MVA} MVA) {len(f['fault'])}곳" + (": " + ", ".join(f"{n} {m:.0f} MVA" for n, m in shown) + more if f["fault"] else "")
+                 + (" (변전소 단락용량 데이터가 없어 가정값 기준인 참고 값. 등급에 넣지 않았으니 문제로 다루지 말고, 실제 단락용량 데이터를 넣으면 판정된다고만 쓰세요)"
+                    if f["fault"] and f["fault_assumed"] else ""))
     lines.append(f"- 정전 지점 {len(f['outage'])}곳" + (": " + ", ".join(f["outage"]) if f["outage"] else ""))
     if f["outage"]:
         lines.append("  - " + outage_loads_text(graph, result))
@@ -754,6 +759,8 @@ def daily_summary(graph: SubstationGraph, daily) -> list[str]:
     out = ["## 시간대별 결과 (코드가 계산한 값)", *rows, "", "## 위험 시간대 (코드가 정리한 사실. 그대로 쓰세요)"]
     for key, label, fmt in _DAILY_ITEMS:
         items = found[key]
+        if key == "fault" and graph.substation.short_circuit_mva is None:  # 11/23: 데이터가 없으면 참고만 (check_findings fault_assumed)
+            label += " (변전소 단락용량 데이터가 없어 가정값 기준 참고 값, 위험 시간대로 다루지 마세요)"
         if not items:
             out.append(f"- {label}: 없음")
             continue
@@ -1006,6 +1013,17 @@ if __name__ == "__main__":
 
     g, r = _sample()
     assert check_findings(g, r)["grade"] == "위험"  # 과부하·정전이 있으면 화면 진단표와 같이 위험
+    # 11/23: 단락용량만 기준(300 MVA)을 넘는 계통 → 변전소 단락용량 데이터가 없으면(가정값) 등급에 넣지 않고, 있으면 '주의'
+    ok = r.model_copy(update={
+        "nodes": [x.model_copy(update={"energized": True, "voltage_pu": 1.0, "fault_current_ka": 7.7}) for x in r.nodes],
+        "lines": [x.model_copy(update={"loading_pct": 50.0, "reverse_flow": False}) for x in r.lines],
+    })
+    g0 = g.model_copy(update={"substation": g.substation.model_copy(update={"short_circuit_mva": None})})
+    f0 = check_findings(g0, ok)
+    assert f0["fault"] and f0["fault_assumed"] and f0["grade"] == GRADES[0], f0
+    assert "가정값 기준인 참고 값" in build_prompt(g0, ok)
+    g1 = g.model_copy(update={"substation": g.substation.model_copy(update={"short_circuit_mva": 320.0})})
+    assert check_findings(g1, ok)["grade"] == GRADES[1]
     print(build_prompt(g, r))
     if "--call" in sys.argv:
         rep = generate_report(g, r)

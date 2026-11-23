@@ -226,18 +226,22 @@ export function healthCheck(graph, result) {
   const fWorst = withFault.reduce((a, r) => (!a || r.fault_current_ka > a.fault_current_ka ? r : a), null)
   const fHigh = withFault.filter((r) => mvaOf(r.fault_current_ka) > FAULT_HIGH_MVA)
   const maxMva = fWorst ? mvaOf(fWorst.fault_current_ka) : null
+  // 변전소 단락용량 데이터가 없으면 가정값(300 MVA, simulation/dss.py)이 기준 300 MVA와 같아 태양광이 조금만 보태도 늘 '주의'였다.
+  // 그래서 데이터가 없으면 값은 보여 주되 등급에는 넣지 않는다 (11/23, ai_report/report.py check_findings의 fault_assumed와 같은 규칙)
+  const fAssumed = graph.substation.short_circuit_mva == null
   const fault = {
     key: 'fault',
     label: '단락용량',
-    standard: `≤ ${FAULT_HIGH_MVA} MVA`,
+    standard: fAssumed ? `≤ ${FAULT_HIGH_MVA} MVA (변전소 데이터 없음: 가정값 기준 참고, 등급 제외)` : `≤ ${FAULT_HIGH_MVA} MVA`,
+    assumed: fAssumed,
     worst: maxMva,
     worstText: fWorst ? `${maxMva.toFixed(0)} MVA (${fWorst.fault_current_ka.toFixed(2)} kA)` : '-',
     whereId: fWorst?.node_id ?? null,
     whereName: fWorst ? names[fWorst.node_id] : '',
-    problem: fHigh.length ? '단락용량 증가' : '',
+    problem: fHigh.length && !fAssumed ? '단락용량 증가' : '',
     count: fHigh.length,
     items: fHigh.map((r) => ({ id: r.node_id, name: names[r.node_id], value: `${mvaOf(r.fault_current_ka).toFixed(0)} MVA` })),
-    level: fHigh.length ? 'warn' : 'ok',
+    level: fHigh.length && !fAssumed ? 'warn' : 'ok',
   }
 
   // (추가) 정전: 열린 개폐기 아래 전원에서 끊긴 노드
