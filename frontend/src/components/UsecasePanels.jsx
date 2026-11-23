@@ -582,6 +582,7 @@ export function SeasonalBox({ graph, onFocus }) {
         )}
         {result && <span className="muted small">계산한 때 {result.computed_at.replace('T', ' ')}</span>}
       </div>
+      <p className="muted small">저장된 계통으로 계산합니다. 편집한 뒤 저장하지 않은 내용은 반영되지 않아요.</p>
       {running && (
         <div className="season-progress" role="progressbar" aria-valuemin={0} aria-valuemax={job.total} aria-valuenow={job.done}>
           <div className="season-bar">

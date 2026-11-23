@@ -10,14 +10,18 @@ AI 리포트 창 "계절별 위험도" 탭 (frontend/src/components/UsecasePanel
 8,760번 계산이라 오래 걸린다 (OpenDSS로 수 분 이상). 그래서
 - 백그라운드 스레드에서 돌리고 화면은 진행률(끝난 날 수)을 받아 간다 (POST로 시작, GET으로 진행 확인)
 - 결과를 계통 내용(해시)별로 메모리와 디스크(data/seasonal_cache/, 깃 제외)에 남긴다. 계통이 같으면 다시 계산하지 않는다
-ponytail: 스레드 하나로 순서대로 계산한다. 더 빨라야 하면 프로세스 여러 개로 날짜를 나눠 돌린다 (OpenDSS는 프로세스마다 하나)
+- 날짜를 묶음(CHUNK_DAYS일)으로 나눠 프로세스 여러 개가 동시에 계산하고 합친다 (11/23: 한 줄로 약 9분 → 코어 수만큼 빨라짐).
+  OpenDSS는 프로세스마다 엔진이 하나라 스레드가 아니라 프로세스로 나눈다. 프로세스를 못 쓰면 예전처럼 한 줄로 계산한다
 """
 
 import datetime as dt
 import hashlib
 import json
+import importlib
 import math
+import os
 import threading
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from collections.abc import Callable
 from pathlib import Path
 
@@ -27,10 +31,13 @@ from simulation.daily import PROFILE_NOTE, WEEKDAY_KO, read_year, scaled_graph
 from simulation.models import SimulationResult
 
 CACHE_DIR = Path(__file__).resolve().parents[1] / "data" / "seasonal_cache"
-CACHE_VERSION = 1  # 계산·집계 방식을 바꾸면 올린다 (예전 캐시를 안 쓰게)
+CACHE_VERSION = 1  # 계산·집계 방식을 바꾸면 올린다 (예전 캐시를 안 쓰게). 11/23 여러 프로세스로 바꿨지만 결과가 같아 그대로
 SEASONS = (("봄", (3, 4, 5)), ("여름", (6, 7, 8)), ("가을", (9, 10, 11)), ("겨울", (12, 1, 2)))
 SEASON_OF = {m: name for name, months in SEASONS for m in months}
 WORST_DAYS = 3  # 계절마다 보여 줄 가장 나쁜 날 수
+CHUNK_DAYS = 7  # 프로세스 하나에 한 번에 맡기는 날 수 (진행률이 이 단위로 오른다)
+MAX_WORKERS = 8  # 동시에 계산하는 프로세스 수 상한 (코어 수 - 1과 이 값 중 작은 것)
+SIMULATE_REF = "simulation.simulate:simulate"  # 프로세스 안에서 불러올 계산 함수 ("모듈:함수")
 
 
 def graph_key(graph: SubstationGraph, engine: str = "opendss") -> str:
@@ -129,29 +136,19 @@ def _finish(s: dict, day_grades: dict[dt.date, list[tuple[str, float]]]) -> None
     s["worst_days"] = days[:WORST_DAYS]
 
 
-def seasonal_risk(
-    graph: SubstationGraph,
-    simulate_fn: Callable[[SubstationGraph], SimulationResult] | None = None,
-    on_day: Callable[[int, int], None] | None = None,
-    should_stop: Callable[[], bool] | None = None,
-) -> dict:
-    """1년(365일 × 24시간)을 계산해 계절별로 센다. on_day(끝난 날 수, 전체 날 수)로 진행률을 알린다.
-    한 시각 계산이 실패하면(예외) 그 시간은 failed_hours로만 세고 계속한다"""
-    if simulate_fn is None:
-        from simulation.simulate import simulate as simulate_fn  # OpenDSS는 실제로 계산할 때만 불러온다
+def _aggregate(graph: SubstationGraph, days: list[dt.date], simulate_fn, on_day=None) -> tuple[dict, dict]:
+    """고른 날들만 계산해 계절별로 센다 (합치기 전 조각). 한 시각 계산이 실패하면(예외) failed_hours로만 세고 계속한다"""
     names = {n.id: n.name for n in graph.nodes}
     line_names = {line.id: line.name for line in graph.lines}
     year = read_year()
     seasons = {name: _empty(name, months) for name, months in SEASONS}
     day_grades: dict[str, dict[dt.date, list[tuple[str, float]]]] = {name: {} for name, _ in SEASONS}
-    for i, (day, hours) in enumerate(sorted(year.items()), 1):
-        if should_stop and should_stop():
-            raise InterruptedError("계산을 멈췄습니다")
+    for day in days:
         name = SEASON_OF[day.month]
         s = seasons[name]
         s["days"] += 1
         grades = day_grades[name].setdefault(day, [])
-        for hour, load, pv in hours:
+        for hour, load, pv in year[day]:
             g = scaled_graph(graph, load, pv)
             try:
                 result = simulate_fn(g)
@@ -162,7 +159,86 @@ def seasonal_risk(
             grades.append((f["grade"], max((r.loading_pct for r in result.lines if r.loading_pct is not None), default=0.0)))
             _add_hour(s, g, day, hour, result, f, names, line_names)
         if on_day:
-            on_day(i, len(year))
+            on_day(1)
+    return seasons, day_grades
+
+
+_COUNTS = ("days", "hours", "failed_hours", "overload_hours", "watch_hours", "low_v_hours", "high_v_hours", "outage_hours",
+           "reverse_bad_hours", "reverse_ok_hours", "fault_hours")
+_EXTREMES = (("min_v", False), ("max_v", True), ("max_loading", True), ("max_reverse_kw", True), ("max_fault_mva", True))
+
+
+def _pick(a: dict | None, b: dict | None, bigger: bool) -> dict | None:
+    """두 조각의 최댓값(최솟값) 중 더 나쁜 것. 같으면 이른 날·시각 (한 줄로 계산했을 때와 같게)"""
+    if a is None or b is None:
+        return a or b
+    if a["value"] != b["value"]:
+        return a if (a["value"] > b["value"]) == bigger else b
+    return min(a, b, key=lambda x: (x["date"], x["hour"]))
+
+
+def _merge(acc: tuple[dict, dict], part: tuple[dict, dict]) -> None:
+    for name, _ in SEASONS:
+        s, p = acc[0][name], part[0][name]
+        for k in _COUNTS:
+            s[k] += p[k]
+        for g in GRADES:
+            s["grade_hours"][g] += p["grade_hours"][g]
+        for k, bigger in _EXTREMES:
+            s[k] = _pick(s[k], p[k], bigger)
+        acc[1][name].update(part[1][name])
+
+
+def _worker(graph_json: str, days: list[str], simulate_ref: str) -> tuple[dict, dict]:
+    """프로세스 하나가 맡은 날들 (프로세스마다 OpenDSS 엔진이 따로 있다). 인자는 프로세스 사이로 넘길 수 있게 글자로 받는다"""
+    module, func = simulate_ref.split(":")
+    simulate_fn = getattr(importlib.import_module(module), func)
+    return _aggregate(SubstationGraph.model_validate_json(graph_json), [dt.date.fromisoformat(d) for d in days], simulate_fn)
+
+
+def _workers() -> int:
+    return max(1, min(MAX_WORKERS, (os.cpu_count() or 2) - 1))
+
+
+def seasonal_risk(
+    graph: SubstationGraph,
+    simulate_fn: Callable[[SubstationGraph], SimulationResult] | None = None,
+    on_day: Callable[[int, int], None] | None = None,
+    simulate_ref: str | None = None,
+) -> dict:
+    """1년(365일 × 24시간)을 계산해 계절별로 센다. on_day(끝난 날 수, 전체 날 수)로 진행률을 알린다.
+    - simulate_fn을 주면(모의 백엔드·자체 점검) 이 프로세스에서 한 줄로 계산한다
+    - 안 주면 simulate_ref("모듈:함수", 기본 OpenDSS)를 프로세스 여러 개에서 불러 날짜를 나눠 계산한다. 프로세스를 못 띄우면 한 줄로"""
+    year = read_year()
+    days = sorted(year)
+    total = len(days)
+    done = 0
+
+    def tick(n: int) -> None:
+        nonlocal done
+        done += n
+        if on_day:
+            on_day(done, total)
+
+    acc = ({name: _empty(name, months) for name, months in SEASONS}, {name: {} for name, _ in SEASONS})
+    if simulate_fn is None:
+        ref = simulate_ref or SIMULATE_REF
+        chunks = [days[i:i + CHUNK_DAYS] for i in range(0, total, CHUNK_DAYS)]
+        try:
+            with ProcessPoolExecutor(max_workers=_workers()) as pool:
+                jobs = {pool.submit(_worker, graph.model_dump_json(), [d.isoformat() for d in c], ref): len(c) for c in chunks}
+                for job in as_completed(jobs):
+                    _merge(acc, job.result())
+                    tick(jobs[job])
+        except (OSError, RuntimeError, ImportError, AttributeError) as e:  # 프로세스를 못 띄우는 환경이면 한 줄로 (BrokenProcessPool은 RuntimeError)
+            print(f"[seasonal] 여러 프로세스 계산 실패, 한 줄로 계산합니다: {e!r}")
+            acc = ({name: _empty(name, months) for name, months in SEASONS}, {name: {} for name, _ in SEASONS})
+            done = 0
+            module, func = ref.split(":")
+            _merge(acc, _aggregate(graph, days, getattr(importlib.import_module(module), func), tick))
+    else:
+        _merge(acc, _aggregate(graph, days, simulate_fn, tick))
+    seasons, day_grades = acc
     for name, _ in SEASONS:
         _finish(seasons[name], day_grades[name])
     return {
