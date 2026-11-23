@@ -561,10 +561,6 @@ export function SeasonalBox({ graph, onFocus }) {
   return (
     <section className="uc-result">
       <h4>계절별 위험도</h4>
-      <p className="muted small">
-        1년(365일 × 24시간 = 8,760시간)의 부하·태양광 배율로 시간마다 계산하고, 화면 진단표와 같은 기준으로 판정해 봄(3~5월)·여름(6~8월)·가을(9~11월)·겨울(12·1·2월)로
-        나눠 셉니다. 계절 등급은 그 계절에 한 시간이라도 위험이 있으면 위험, 주의가 있으면 주의입니다. 저장된 계통 기준이며 배율은 {result?.note ?? '가상 패턴 (data/profile_2025.csv, 실측 아님)'}입니다.
-      </p>
       <div className="uc-controls">
         {!running && (
           <button type="button" className="primary" disabled={!job} onClick={() => begin(job?.state === 'done')}>
