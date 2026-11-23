@@ -177,6 +177,9 @@ export function ReinforceBox({ graph, onFocus }) {
   const [busy, setBusy] = usePersisted(k('busy'), false)
   const [error, setError] = usePersisted(k('error'), '')
   const [why, setWhy] = usePersisted(k('why'), null) // 서버가 고른 날의 이름·이유 { 날짜: { label, reason } }
+  // 증강할 선로 수는 이 계통의 선로 수까지 (11/23: 예전에는 최대 10이라 선로 11개인 원래 계통도 다 못 골랐고, 직접 치면 1000도 들어갔음)
+  const lineCount = Math.max(1, graph.lines.filter((l) => l.kind !== 'switch').length)
+  const budget = Math.min(Math.max(1, Math.round(Number(count)) || 2), lineCount)
 
   // 처음 열 때 이 계통에 맞는 점검 날짜를 받아 온다
   useEffect(() => {
@@ -202,7 +205,8 @@ export function ReinforceBox({ graph, onFocus }) {
     setBusy(true)
     setError('')
     try {
-      setData({ ...(await createReinforcementReport(sid, { dates: dates.filter(Boolean), budget_lines: Number(count) || 2 })), dates: dates.filter(Boolean) })
+      setCount(String(budget))
+      setData({ ...(await createReinforcementReport(sid, { dates: dates.filter(Boolean), budget_lines: budget })), dates: dates.filter(Boolean) })
     } catch (e) {
       setError(e.message)
     } finally {
@@ -221,8 +225,17 @@ export function ReinforceBox({ graph, onFocus }) {
         <label className="field">
           증강할 선로 수
           <span className="field-input">
-            <input type="number" min="1" max="10" value={count} disabled={busy} onChange={(e) => setCount(e.target.value)} />
-            <i>개</i>
+            <input
+              type="number"
+              min="1"
+              max={lineCount}
+              value={count}
+              disabled={busy}
+              onChange={(e) => setCount(e.target.value)}
+              onBlur={() => setCount(String(budget))}
+              title={`이 계통의 선로 ${lineCount}개까지`}
+            />
+            <i>/ {lineCount}개</i>
           </span>
         </label>
         <button type="button" className="primary" disabled={busy || !dates.some(Boolean)} onClick={make}>

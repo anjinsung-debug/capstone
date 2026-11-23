@@ -227,7 +227,7 @@ TOOLS = [
 def _limits_text(graph: SubstationGraph, items) -> str:
     from ai_report.report import _violation_text
 
-    return "; ".join(_violation_text(graph, v) for v in items) or "없음 (검토 상한까지 기준 안)"
+    return "; ".join(_violation_text(graph, v, need=False) for v in items) or "없음 (검토 상한까지 기준 안)"  # 한도 지점 필요 허용전류는 뜻 없음 (11/23)
 
 
 def make_tool_runner(base: SubstationGraph, day: dt.date, hour: int, simulate_fn):
