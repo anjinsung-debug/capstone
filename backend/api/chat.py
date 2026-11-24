@@ -1,7 +1,7 @@
 """AI 챗봇 API (11/20): 화면 오른쪽 아래 "질문하기". 지금 계통·계산 결과·플랫폼 기능을 묻고 답을 받는다 (ai_report/chat.py)
 
 질문마다 모델에 주는 자료: 내 변전소 전체(같은 시각 판정), 지금 변전소 구성·계산 결과, 그날 24시간 결과,
-화면에서 이미 계산한 여유 용량 표·보강 우선순위 (extras)"""
+화면에서 이미 계산한 여유 용량 표·보강 우선순위 (extras), 이미 끝난 계절별 위험도 (서버에 남은 1년 계산 결과, 11/24)"""
 
 import datetime as dt
 
@@ -9,7 +9,9 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 import simulation.simulate as sim
-from ai_report.chat import MAX_SUBSTATIONS, MAX_TURNS, ChatMessage, ChatReply, chat, daily_section, extra_sections, make_tool_runner, substations_section
+from ai_report import seasonal
+from ai_report.chat import (MAX_SUBSTATIONS, MAX_TURNS, ChatMessage, ChatReply, chat, daily_section, extra_sections, make_tool_runner,
+                            seasonal_section, substations_section)
 from cim import graph
 from simulation.daily import graph_at
 from simulation.models import SimulationResult
@@ -66,6 +68,11 @@ def ask_chat(req: ChatRequest) -> ChatReply:
     more = substations_section(entries, req.substation_id, at)
     if base is not None:
         more += ["", *daily_section(base, day, sim.simulate), "", *extra_sections(g, req.extras)]
+        # 계절별 위험도: 화면이 보내지 않아도 서버가 이 계통의 1년 계산 상태를 직접 본다 (끝났으면 결과, 아니면 상태 한 줄. 새로 계산하지는 않음)
+        try:
+            more += ["", *seasonal_section(seasonal.status(base))]
+        except Exception as e:  # 배율 파일이 없는 등. 챗봇은 계속 답한다
+            more += ["", f"[계절별 위험도] 상태를 읽지 못함: {e}"]
     # 변전소를 고른 화면이면 계산 도구를 준다 (11/22): 다른 시각 계산, 태양광·부하 연계 검토, 보강 우선순위를 챗봇이 직접 실행
     run_tool = make_tool_runner(base, day, hour, sim.simulate) if base is not None else None
     return chat(req.messages, g, result, at, more, run_tool=run_tool)
