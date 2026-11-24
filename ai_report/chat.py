@@ -9,6 +9,8 @@
     4) 지금 화면의 계산 결과: report.build_prompt와 같은 표 (코드가 판정한 "확정된 점검 결과" 포함)
     5) 오늘(계산 날짜) 24시간 결과: report.daily_summary와 같은 표·위험 시간대 (daily_section, 같은 계통·날짜는 다시 계산하지 않음)
     6) 화면에서 이미 계산한 결과: 여유 용량 표, 설비 보강 우선순위 (extra_sections. 없으면 "아직 계산 안 함")
+    7) 계절별 위험도 (seasonal_section, 11/24 고영민): 1년 계산을 이미 끝냈으면 봄·여름·가을·겨울 등급과 가장 나쁜 값.
+       계산에 수 분이 걸려서 챗봇이 직접 돌리지는 않는다 (안 했으면 어디서 계산하는지 안내)
 - 숫자·판정은 자료에 있는 것만 쓰게 하고, 자료에 없는 것은 모른다고 답하게 한다 (지어내지 않기)
 - 계산 도구 (11/22, TOOLS·make_tool_runner): 변전소를 고른 화면이면 모델이 읽기 전용 계산을 직접 부른다.
     다른 날짜·시각 계산, 접속점 태양광 연계 검토, 부하 증설 검토, 보강 우선순위. 계통을 고치거나 저장하는 도구는 없다.
@@ -63,8 +65,8 @@ APP_GUIDE = f"""[플랫폼 기능 안내: 배전계통 통합 분석 플랫폼]
 - 요약 줄: "지금 N시"(오늘 이 시각의 부하·태양광 배율로 계산, 정각마다 다시 계산), 전체 판정, 가장 나쁜 전압, 최대 부하율, 역조류, 단락용량, 정전 수, 총 송출 전력.
 - 오른쪽 속성 칸: 고른 설비·선로의 값 보기·고치기(선로 길이·저항·리액턴스·허용전류, 부하·발전 kW 등), 설비 3D 미리보기. 접속점을 고르면 "연계·증설 검토"(태양광 | 부하 전환): 원하는 kW를 붙일 수 있는지, 최대 몇 kW까지 되는지, 무엇이 막는지, "붙여 보기", 태양광은 "AI 추천".
 - "결과 자세히" 창: ① 건강도 진단(전압·과부하·역조류·단락용량·정전·고장 계산), ② 원인 분석, ③ 솔루션 제안, 요소별 결과(모든 설비·선로 값 표), 시간대별 시뮬레이션(날짜를 골라 24시간 곡선, 기록 값 표에서 두 시각 비교, AI 하루 운영 권고).
-- "AI 리포트" 창: AI 리포트(진단·원인·솔루션, 쉬운 설명), 여유 용량(접속점마다 태양광·부하를 더 붙일 수 있는 kW, AI 설명), 설비 보강 우선순위(여러 날짜의 24시간 결과로 선로 증강 순위, AI 정리).
-- 오른쪽 아래 "질문하기": 지금 이 챗봇. 내 변전소 전체(개수·상태), 지금 화면 결과, 그날 24시간 결과, 화면에서 이미 계산한 여유 용량·보강 우선순위를 근거로 답한다. 변전소를 고른 화면에서는 다른 시각 계산, 접속점 태양광·부하 연계 검토, 보강 우선순위를 직접 계산해 답한다(계통은 바꾸지 않음). 코드 구현, 앱 밖 자료, AI 리포트 내용은 다루지 않는다.
+- "AI 리포트" 창: AI 리포트(진단·원인·솔루션, 쉬운 설명), 여유 용량(접속점마다 태양광·부하를 더 붙일 수 있는 kW, AI 설명), 설비 보강 우선순위(여러 날짜의 24시간 결과로 선로 증강 순위, AI 정리), 계절별 위험도(1년 365일 × 24시간을 계산해 봄·여름·가을·겨울마다 등급·기준 초과 시간·가장 나쁜 값과 날짜, 수 분 걸림, AI 없이 숫자만).
+- 오른쪽 아래 "질문하기": 지금 이 챗봇. 내 변전소 전체(개수·상태), 지금 화면 결과, 그날 24시간 결과, 화면에서 이미 계산한 여유 용량·보강 우선순위·계절별 위험도를 근거로 답한다. 변전소를 고른 화면에서는 다른 시각 계산, 접속점 태양광·부하 연계 검토, 보강 우선순위를 직접 계산해 답한다(계통은 바꾸지 않음). 코드 구현, 앱 밖 자료, AI 리포트 내용은 다루지 않는다.
 [판정 기준과 가정값]
 - 전압: {VOLTAGE_MIN_PU}~{VOLTAGE_MAX_PU} pu 정상, {VOLTAGE_DANGER_LOW_PU} 미만·{VOLTAGE_DANGER_HIGH_PU} 초과는 위험. 부하율: {LOADING_WATCH_PCT}% 이상 주의, {OVERLOAD_PCT:.0f}% 초과 과부하.
 - 역조류(태양광 전기가 변전소 쪽으로 거꾸로 흐름) 자체는 문제가 아니다. 선로 용량 안이고 차단기가 차단할 수 있으면 정상.
@@ -166,6 +168,47 @@ def extra_sections(graph: SubstationGraph, extras: dict | None) -> list[str]:
                        f"100% 초과 {x['hours_over']}시간, 80% 이상 {x['hours_watch']}시간, 지금 허용전류 {rated} → 필요 {x['required_rated_current_a']:.0f} A 이상")
     else:
         out.append("[설비 보강 우선순위] 아직 계산하지 않음 (AI 리포트 창 → 보강 우선순위 → 계산)")
+    return out
+
+
+def _worst(x: dict | None, unit: str, fmt: str = "{:.0f}") -> str:
+    """계절별 위험도의 "가장 나쁜 값" 한 칸: 값 · 어디 · 언제"""
+    if not x:
+        return "없음"
+    return f"{fmt.format(x['value'])}{unit} ({x.get('where') or '위치 모름'}, {x.get('date')} {x.get('hour')}시)"
+
+
+def seasonal_section(st: dict | None) -> list[str]:
+    """계절별 위험도 (11/24). st = ai_report/seasonal.py status() 결과. 끝난 계산만 자료로 쓰고, 아니면 상태만 한 줄"""
+    st = st or {}
+    state = st.get("state")
+    if state == "running":
+        return [f"[계절별 위험도] 지금 계산 중 ({st.get('done', 0)}/{st.get('total', 365)}일). 끝나면 AI 리포트 창 → 계절별 위험도에서 볼 수 있음"]
+    if state == "error":
+        return [f"[계절별 위험도] 계산 실패: {st.get('error') or '이유 모름'}"]
+    res = st.get("result") if state == "done" else None
+    if not res or not res.get("seasons"):
+        return ["[계절별 위험도] 아직 계산하지 않음 (AI 리포트 창 → 계절별 위험도 → 계산, 1년치라 수 분 걸림)"]
+    out = [f"[계절별 위험도 (지금 계통, 1년 365일 × 24시간을 코드가 계산 · {res.get('computed_at', '시각 모름')} · {res.get('note', '')})]"]
+    for x in res["seasons"]:
+        gh = x.get("grade_hours") or {}
+        out.append(
+            f"- {x['season']}({'·'.join(str(m) for m in x.get('months', []))}월): 등급 {x.get('grade')} "
+            f"(위험 {gh.get('위험', 0)}시간, 주의 {gh.get('주의', 0)}시간 / 전체 {x.get('hours', 0)}시간), "
+            f"과부하 {x.get('overload_hours', 0)}시간, 부하율 80~100% {x.get('watch_hours', 0)}시간, "
+            f"저전압 {x.get('low_v_hours', 0)}시간, 과전압 {x.get('high_v_hours', 0)}시간, 정전 {x.get('outage_hours', 0)}시간, "
+            f"비정상 역조류 {x.get('reverse_bad_hours', 0)}시간(정상 역조류 {x.get('reverse_ok_hours', 0)}시간), 단락용량 초과 {x.get('fault_hours', 0)}시간"
+        )
+        out.append(
+            f"  가장 나쁜 값: 최저 전압 {_worst(x.get('min_v'), ' pu', '{:.3f}')}, 최고 전압 {_worst(x.get('max_v'), ' pu', '{:.3f}')}, "
+            f"최대 부하율 {_worst(x.get('max_loading'), '%')}, 최대 역조류 {_worst(x.get('max_reverse_kw'), ' kW')}, "
+            f"최대 단락용량 {_worst(x.get('max_fault_mva'), ' MVA')}"
+        )
+        days = x.get("worst_days") or []
+        if days:
+            out.append("  가장 나쁜 날: " + ", ".join(
+                f"{d['date']}({d.get('weekday', '')}) {d.get('grade')} 위험 {d.get('danger_hours', 0)}·주의 {d.get('caution_hours', 0)}시간, 최대 부하율 {d.get('max_loading_pct', 0):.0f}%"
+                for d in days))
     return out
 
 
@@ -448,6 +491,15 @@ if __name__ == "__main__":
     ex = extra_sections(g, {"reinforce": {"ranking": [{"name": "선로1", "max_loading_pct": 120, "worst_date": "2025-08-01", "worst_hour": 15,
                                                        "hours_over": 3, "hours_watch": 5, "rated_current_a": None, "required_rated_current_a": 480}], "dates": ["2025-08-01"]}})
     assert not any("이미 만든 AI 리포트" in x for x in ex) and any("선로1" in x and "480 A" in x for x in ex) and any("여유 용량] 아직" in x for x in ex), ex
+    # 계절별 위험도 자료 (11/24): 안 함 / 계산 중 / 끝남
+    assert "아직 계산하지 않음" in seasonal_section({"state": "idle"})[0] and "아직 계산하지 않음" in seasonal_section(None)[0]
+    assert "계산 중 (100/365일)" in seasonal_section({"state": "running", "done": 100, "total": 365})[0]
+    sea = seasonal_section({"state": "done", "result": {"computed_at": "2026-11-24T10:00:00", "note": "가상 패턴", "seasons": [
+        {"season": "여름", "months": [6, 7, 8], "hours": 2208, "grade": "주의", "grade_hours": {"정상": 2100, "주의": 108, "위험": 0},
+         "watch_hours": 108, "max_loading": {"value": 95.2, "where": "선로1", "date": "2025-08-01", "hour": 14},
+         "min_v": {"value": 0.9712, "where": "접속점1", "date": "2025-08-01", "hour": 19},
+         "worst_days": [{"date": "2025-08-01", "weekday": "금", "grade": "주의", "danger_hours": 0, "caution_hours": 6, "max_loading_pct": 95.2}]}]}})
+    assert "등급 주의" in sea[1] and "주의 108시간" in sea[1] and "95% (선로1, 2025-08-01 14시)" in sea[2] and "0.971 pu" in sea[2] and "2025-08-01(금)" in sea[3], sea
 
     # 도구 호출 반복 (11/22): 모델이 도구를 부르면 실행해 functionResponse로 돌려주고, 다음 답을 받는다
     os.environ["AI_PROVIDER"] = "gemini"
