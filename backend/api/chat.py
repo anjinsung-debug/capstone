@@ -70,7 +70,7 @@ def ask_chat(req: ChatRequest) -> ChatReply:
         more += ["", *daily_section(base, day, sim.simulate), "", *extra_sections(g, req.extras)]
         # 계절별 위험도: 화면이 보내지 않아도 서버가 이 계통의 1년 계산 상태를 직접 본다 (끝났으면 결과, 아니면 상태 한 줄. 새로 계산하지는 않음)
         try:
-            more += ["", *seasonal_section(seasonal.status(base))]
+            more += ["", *seasonal_section(seasonal.status(base), fault_assumed=base.substation.short_circuit_mva is None)]
         except Exception as e:  # 배율 파일이 없는 등. 챗봇은 계속 답한다
             more += ["", f"[계절별 위험도] 상태를 읽지 못함: {e}"]
     # 변전소를 고른 화면이면 계산 도구를 준다 (11/22): 다른 시각 계산, 태양광·부하 연계 검토, 보강 우선순위를 챗봇이 직접 실행

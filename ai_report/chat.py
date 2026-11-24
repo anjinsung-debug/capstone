@@ -70,7 +70,7 @@ APP_GUIDE = f"""[플랫폼 기능 안내: 배전계통 통합 분석 플랫폼]
 [판정 기준과 가정값]
 - 전압: {VOLTAGE_MIN_PU}~{VOLTAGE_MAX_PU} pu 정상, {VOLTAGE_DANGER_LOW_PU} 미만·{VOLTAGE_DANGER_HIGH_PU} 초과는 위험. 부하율: {LOADING_WATCH_PCT}% 이상 주의, {OVERLOAD_PCT:.0f}% 초과 과부하.
 - 역조류(태양광 전기가 변전소 쪽으로 거꾸로 흐름) 자체는 문제가 아니다. 선로 용량 안이고 차단기가 차단할 수 있으면 정상.
-- 단락용량 {FAULT_HIGH_MVA} MVA 초과는 주의. 데이터가 없으면 변전소 단락용량을 {DEFAULT_SHORT_CIRCUIT_MVA:.0f} MVA로, 출구 차단기 차단용량을 {DEFAULT_BREAKER_INTERRUPT_KA:.0f} kA로 가정한다.
+- 단락용량 {FAULT_HIGH_MVA} MVA 초과는 주의. 데이터가 없으면 변전소 단락용량을 {DEFAULT_SHORT_CIRCUIT_MVA:.0f} MVA로, 출구 차단기 차단용량을 {DEFAULT_BREAKER_INTERRUPT_KA:.0f} kA로 가정한다. 변전소 단락용량 데이터가 없으면 단락용량 초과는 가정값 기준 참고 값이라 등급에 넣지 않고 문제로 다루지 않는다.
 - 부하·태양광은 2025년 가상 패턴의 시간대별 배율을 곱한다 (계통의 태양광 값 = 설비용량). 풍력은 배율 없이 고정.
 - 계산은 OpenDSS(조류 계산·고장 계산), 데이터는 CIM(한전 배전 데이터 형식) → Neo4j 저장. AI는 계산된 숫자를 설명만 하고 숫자·판정은 코드가 정한다."""
 
@@ -178,8 +178,9 @@ def _worst(x: dict | None, unit: str, fmt: str = "{:.0f}") -> str:
     return f"{fmt.format(x['value'])}{unit} ({x.get('where') or '위치 모름'}, {x.get('date')} {x.get('hour')}시)"
 
 
-def seasonal_section(st: dict | None) -> list[str]:
-    """계절별 위험도 (11/24). st = ai_report/seasonal.py status() 결과. 끝난 계산만 자료로 쓰고, 아니면 상태만 한 줄"""
+def seasonal_section(st: dict | None, fault_assumed: bool = False) -> list[str]:
+    """계절별 위험도 (11/24). st = ai_report/seasonal.py status() 결과. 끝난 계산만 자료로 쓰고, 아니면 상태만 한 줄.
+    fault_assumed: 변전소 단락용량 데이터가 없음 → 단락용량 초과 시간은 가정값 기준 참고 (report.check_findings와 같은 규칙, 11/24)"""
     st = st or {}
     state = st.get("state")
     if state == "running":
@@ -198,6 +199,7 @@ def seasonal_section(st: dict | None) -> list[str]:
             f"과부하 {x.get('overload_hours', 0)}시간, 부하율 80~100% {x.get('watch_hours', 0)}시간, "
             f"저전압 {x.get('low_v_hours', 0)}시간, 과전압 {x.get('high_v_hours', 0)}시간, 정전 {x.get('outage_hours', 0)}시간, "
             f"비정상 역조류 {x.get('reverse_bad_hours', 0)}시간(정상 역조류 {x.get('reverse_ok_hours', 0)}시간), 단락용량 초과 {x.get('fault_hours', 0)}시간"
+            + (" (변전소 단락용량 데이터가 없어 가정값 기준 참고 값. 문제로 다루지 마세요)" if fault_assumed else "")
         )
         out.append(
             f"  가장 나쁜 값: 최저 전압 {_worst(x.get('min_v'), ' pu', '{:.3f}')}, 최고 전압 {_worst(x.get('max_v'), ' pu', '{:.3f}')}, "
@@ -499,6 +501,7 @@ if __name__ == "__main__":
          "watch_hours": 108, "max_loading": {"value": 95.2, "where": "선로1", "date": "2025-08-01", "hour": 14},
          "min_v": {"value": 0.9712, "where": "접속점1", "date": "2025-08-01", "hour": 19},
          "worst_days": [{"date": "2025-08-01", "weekday": "금", "grade": "주의", "danger_hours": 0, "caution_hours": 6, "max_loading_pct": 95.2}]}]}})
+    assert "가정값 기준 참고" not in sea[1] and "가정값 기준 참고" in seasonal_section({"state": "done", "result": {"seasons": [{"season": "봄"}]}}, fault_assumed=True)[1]
     assert "등급 주의" in sea[1] and "주의 108시간" in sea[1] and "95% (선로1, 2025-08-01 14시)" in sea[2] and "0.971 pu" in sea[2] and "2025-08-01(금)" in sea[3], sea
 
     # 도구 호출 반복 (11/22): 모델이 도구를 부르면 실행해 functionResponse로 돌려주고, 다음 답을 받는다
