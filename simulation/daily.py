@@ -102,7 +102,8 @@ def scaled_graph(graph: SubstationGraph, load_mult: float, pv_mult: float) -> Su
         if n.type == "load" and n.p_kw is not None:
             n = n.model_copy(update={"p_kw": n.p_kw * load_mult, "q_kvar": (n.q_kvar or 0) * load_mult})
         elif n.type == "pv" and n.p_kw is not None:
-            n = n.model_copy(update={"p_kw": n.p_kw * max(pv_mult, PV_MIN_MULT)})
+            # rated_kw: 고장 계산용 설비용량 (dss.fault_study_script). 이미 배율을 곱한 계통이면 처음 값을 그대로 둔다
+            n = n.model_copy(update={"p_kw": n.p_kw * max(pv_mult, PV_MIN_MULT), "rated_kw": n.rated_kw or n.p_kw})
         nodes.append(n)
     return graph.model_copy(update={"nodes": nodes})
 

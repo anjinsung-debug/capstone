@@ -195,4 +195,24 @@ def fault_study_script(graph: SubstationGraph) -> list[str]:
     mva = sub.short_circuit_mva if sub.short_circuit_mva is not None else DEFAULT_SHORT_CIRCUIT_MVA
     x_r = sub.x_r_ratio if sub.x_r_ratio is not None else DEFAULT_X_R_RATIO
     loads_off = ["Batchedit Load..* enabled=no"] if any(n.type == "load" for n in graph.nodes) else []
-    return loads_off + [f"Edit Vsource.source MVAsc3={mva} MVAsc1={mva} X1R1={x_r} X0R0={x_r}", "Solve mode=faultstudy"]
+    return loads_off + pv_fault_script(graph) + [f"Edit Vsource.source MVAsc3={mva} MVAsc1={mva} X1R1={x_r} X0R0={x_r}", "Solve mode=faultstudy"]
+
+
+def pv_fault_script(graph: SubstationGraph) -> list[str]:
+    """태양광 고장전류 기여를 그 시각 출력이 아니라 설비용량 기준으로 (11/24, 한전 의견: 신재생은 시각마다 들어오는 양이 다름).
+    인버터는 발전 중이면 햇빛이 약해도 설비 크기만큼 고장전류를 내보내고, 발전하지 않으면(밤) 0이다.
+    - 시간대 배율로 줄인 태양광(rated_kw 있음): 발전 중이면 kVA = 설비용량 × 1.2 (OpenDSS 기본 kVA = kW × 1.2와 같은 비율 → 한낮 값은 예전과 같음),
+      밤(배율이 PV_MIN_MULT 이하)이면 고장 계산에서 끈다
+    - rated_kw가 없는 태양광(최대 조건·연계 검토로 더한 태양광)과 풍력은 그대로 (지금 kW가 곧 기준)
+    ponytail: 인버터 고장전류 배수는 1.2배(OpenDSS 기본) 가정. 한전 연계 기준(보통 정격의 1~1.5배)을 받으면 이 값만 바꾼다"""
+    from simulation.daily import PV_MIN_MULT
+
+    out = []
+    for i, n in enumerate(graph.nodes):
+        if n.type != "pv" or not n.rated_kw or n.p_kw is None:
+            continue
+        if n.p_kw <= n.rated_kw * PV_MIN_MULT * 1.000001:
+            out.append(f"Edit Generator.n{i} enabled=no")
+        else:
+            out.append(f"Edit Generator.n{i} kVA={n.rated_kw * 1.2}")
+    return out

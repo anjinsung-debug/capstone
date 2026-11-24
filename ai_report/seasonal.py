@@ -31,7 +31,7 @@ from simulation.daily import PROFILE_NOTE, WEEKDAY_KO, read_year, scaled_graph
 from simulation.models import SimulationResult
 
 CACHE_DIR = Path(__file__).resolve().parents[1] / "data" / "seasonal_cache"
-CACHE_VERSION = 1  # 계산·집계 방식을 바꾸면 올린다 (예전 캐시를 안 쓰게). 11/23 여러 프로세스로 바꿨지만 결과가 같아 그대로
+CACHE_VERSION = 2  # 계산·집계 방식을 바꾸면 올린다 (예전 캐시를 안 쓰게). 11/24: 태양광 고장전류를 설비용량 기준으로 바꿔 2
 SEASONS = (("봄", (3, 4, 5)), ("여름", (6, 7, 8)), ("가을", (9, 10, 11)), ("겨울", (12, 1, 2)))
 SEASON_OF = {m: name for name, months in SEASONS for m in months}
 WORST_DAYS = 3  # 계절마다 보여 줄 가장 나쁜 날 수

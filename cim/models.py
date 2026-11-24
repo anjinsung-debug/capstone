@@ -49,6 +49,9 @@ class Node(BaseModel):
     y: float
     p_kw: float | None = None  # load: 소비 전력, pv·wind: 발전 출력 (3상 합계, 한 시점 값). 시뮬레이션에는 필수
     q_kvar: float | None = None  # 없으면 0 (역률 1)
+    # pv만: 시간대 배율을 곱하기 전 설비용량 (kW). simulation/daily.py scaled_graph가 채우고 고장 계산에만 쓴다 (11/24).
+    # 인버터는 발전 중이면 햇빛 세기와 상관없이 설비 크기만큼 고장전류를 보내므로. DB에는 저장하지 않는다 (graph.py NODE_PROPS에 없음)
+    rated_kw: float | None = None
     is_open: bool = False  # switch(개폐기)만: True면 열림 → 이 노드에 닿은 연결을 끊고 계산 (CIM Switch.open)
     # 단자 1개 설비(source·load·pv·wind)가 붙은 접속점(type=bus 노드)의 id (CIM Terminal.ConnectivityNode).
     # 이 설비들은 선로(Line)로 잇지 않고 bus_id로만 연결한다. Neo4j에서는 (:Node)-[:CONNECTED_TO]->(:Node {type:'bus'})

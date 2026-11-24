@@ -186,6 +186,17 @@ if __name__ == "__main__":
         line.r0_ohm_per_km = line.x0_ohm_per_km = None
     assert [round(x.ground_fault_current_ka, 6) for x in simulate(no_zero).nodes] == [round(x.ground_fault_current_ka, 6) for x in r.nodes]
 
+    # 태양광 고장전류 기여 (11/24): 발전 중이면 햇빛 세기와 상관없이 설비용량 기준, 밤(배율 0)이면 0
+    from simulation.daily import scaled_graph
+
+    def bus_ka(gg):
+        return next(x for x in simulate(gg).nodes if x.node_id == source.id).fault_current_ka
+
+    weak, full, night = bus_ka(scaled_graph(g, 1.0, 0.2)), bus_ka(scaled_graph(g, 1.0, 1.0)), bus_ka(scaled_graph(g, 1.0, 0.0))
+    assert abs(weak / full - 1) < 0.005, (weak, full)  # 햇빛이 약해도 한낮과 거의 같은 고장전류 (고장 전 운전점 차이로 0.2% 정도 다름)
+    assert abs(night / theory_ka - 1) < 0.005, (night, theory_ka)  # 밤에는 전원 몫만
+    assert abs(full / at_source.fault_current_ka - 1) < 0.005  # 한낮 값은 예전(설비용량 그대로 넣은 계통)과 같음
+
     # 단락용량이 커서 차단기 위치 고장전류가 정격 차단전류를 넘으면 못 끊음
     strong = g.model_copy(deep=True)
     strong.substation.short_circuit_mva = 3**0.5 * 22.9 * DEFAULT_BREAKER_INTERRUPT_KA * 1.2
