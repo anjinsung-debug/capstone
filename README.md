@@ -45,7 +45,7 @@ capstone/
 ├── frontend/
 │   ├── src/
 │   │   ├── App.jsx          화면 흐름: 변전소 선택 → 단선도 → 자동 저장·시뮬레이션 → 결과·리포트
-│   │   ├── components/      Diagram(단선도), Diagram3D(3D 보기·속성 칸 설비 3D 미리보기), NavDrawer(편집 메뉴), PropertyPanel(속성), ResultPanel(결과), UsecasePanels(여유 용량·AI 추천·권고), SubstationOverview(첫 화면: DB 변전소 단선도), NodeIcon(설비 모양·색), HistoryChart, ProfileChart, Modal, SubstationDialog, PopupWindow, ChatBot(AI 질문하기: 단선도 오른쪽 아래, 끌어서 옮기기, AI 기능 바로 쓰기)
+│   │   ├── components/      Diagram(단선도), Diagram3D(3D 보기·속성 칸 설비 3D 미리보기), NavDrawer(편집 메뉴), PropertyPanel(속성), ResultPanel(결과), UsecasePanels(여유 용량·AI 추천·권고), SubstationOverview(첫 화면: DB 변전소 단선도), NodeIcon(설비 모양·색), HistoryChart, ProfileChart, Modal, SubstationDialog, PopupWindow, ChatBot(AI 챗봇 루나: 단선도 오른쪽 아래, 열면 먼저 인사, 끌어서 옮기기, AI 기능 바로 쓰기)
 │   │   ├── lib/             graphEdit.js(편집 로직), overlay.js(결과 → 단선도 표시)
 │   │   ├── api/client.js    백엔드 API 호출
 │   │   └── main.jsx, styles.css
@@ -95,7 +95,7 @@ frontend ──HTTP──▶ backend ────────┤ cim/graph.py (�
    - 연계 추천 `POST /api/reports/hosting`: 연계 가능 최대치 결과로 연계 여부·막는 원인·선로 보강 추천 (속성 칸 "태양광 연계 검토" 아래)
    - 24시간 운영 권고 `POST /api/reports/daily/{id}`: 고른 날의 시간대별 위험과 대비 조치 (기록 탭)
    - 설비 보강 우선순위 `POST /api/reports/reinforcement/{id}`: 1~4개 날짜의 24시간 결과로 선로 순위를 매기고 증강 순서 권고 (AI 리포트 창 "보강 우선순위" 탭); 화면은 날짜를 자동으로 고른 가장 불리한 두 날로 정하고 증강할 선로 수만 입력 (11/22)
-   - AI 챗봇 `POST /api/chat`: 오른쪽 아래 질문하기. 지금 화면 자료로 답하고, 변전소를 고른 화면에서는 읽기 전용 계산 도구 4개(다른 날짜·시각 계산, 접속점 태양광 연계 검토, 부하 증설 검토, 보강 우선순위)를 AI가 직접 불러 계산한 값으로 답함 (계통은 바꾸지 않음, 11/22). 계절별 위험도를 이미 계산했으면 그 결과로도 답함 (PR #25, 11/24)
+   - AI 챗봇 `POST /api/chat`: 오른쪽 아래 챗봇 "루나"(창을 열면 먼저 인사, 11/26). 지금 화면 자료로 답하고, 변전소를 고른 화면에서는 읽기 전용 계산 도구 4개(다른 날짜·시각 계산, 접속점 태양광 연계 검토, 부하 증설 검토, 보강 우선순위)를 AI가 직접 불러 계산한 값으로 답함 (계통은 바꾸지 않음, 11/22). 계절별 위험도를 이미 계산했으면 그 결과로도 답함 (PR #25, 11/24)
 8. **CIM 내보내기**: 편집 메뉴 "CIM으로 내보내기" → `GET /api/substations/{id}/cim`이 마지막으로 저장된 계통을 한전 원본과 같은 CIM16 RDF/XML 파일로 돌려줌 (`cim/export.py`, `cim/mapping.py`를 거꾸로 적용). 다시 `python -m cim.load --file`로 적재할 수 있음. 좌표·피더 이름·변전소 단락용량 등 CIM에 넣지 않는 값은 파일 맨 위 주석에 적음. 편집 메뉴에서 차단기·개폐기의 연결 수, 설비의 접속점·전력 값, 선로 길이를 미리 확인하고 수정할 항목과 설비 보기 버튼을 표시함. 문제가 있으면 내보내기 버튼을 비활성화하며, 시뮬레이션 성공과 내보내기 조건이 다를 수 있음을 안내함.
 
 24시간 분석의 날짜·데이터 기준:

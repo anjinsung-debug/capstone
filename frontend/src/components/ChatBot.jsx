@@ -1,4 +1,4 @@
-// AI 챗봇 (11/20): 화면 오른쪽 아래 "질문하기". 지금 계통·계산 결과·플랫폼 기능을 LLM에 묻고 답을 받는다 (ai_report/chat.py)
+// AI 챗봇 루나 (11/20, 이름·인사말 11/26): 화면 오른쪽 아래. 지금 계통·계산 결과·플랫폼 기능을 LLM에 묻고 답을 받는다 (ai_report/chat.py)
 // - 질문할 때마다 지금 화면의 변전소·계산 결과·계산 시각, 이미 계산한 여유 용량·보강 우선순위를 같이 보낸다.
 //   서버는 내 변전소 전체(같은 시각 판정)와 그날 24시간 결과를 직접 계산해 붙인다 (backend/api/chat.py)
 // - 대화는 창을 닫아도 남는다(새로고침하면 지워짐). "새 대화"로 지울 수 있다. 최근 몇 개만 서버로 보낸다 (ai_report/chat.py MAX_TURNS)
@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from 'react'
 import { askChat } from '../api/client.js'
 import { chatExtras, useSeconds } from './UsecasePanels.jsx'
 
+const NAME = '루나' // 챗봇 이름 (DIANA의 AI 도우미, 11/26)
 const SEND_TURNS = 12 // 서버로 보내는 최근 대화 수
 const SUGGESTIONS_WITH_RESULT = ['지금 계통 상태를 한 줄로 알려줘', '오늘 몇 시가 제일 위험해?', '내 변전소는 몇 곳이고 상태는 어때?', '문제가 있는 곳은 어디고 왜 그래?']
 const SUGGESTIONS_NO_SUB = ['내 변전소는 몇 곳이야?', '이 플랫폼으로 뭘 할 수 있어?', '새 변전소는 어떻게 만들어?', '판정 기준이 뭐야?']
@@ -110,7 +111,7 @@ export default function ChatBot({ graph, result, resultAt, isNew, tools = [] }) 
   if (!open) {
     return (
       // 글자 대신 아이콘 (11/20): 말풍선 + AI 반짝임. 이름은 aria-label·title로
-      <button type="button" className="chat-fab" onClick={() => setOpen(true)} aria-label="AI 질문하기" title="AI 질문하기 · 지금 계통·결과·기능 물어보기">
+      <button type="button" className="chat-fab" onClick={() => setOpen(true)} aria-label={`AI 챗봇 ${NAME}`} title={`AI 챗봇 ${NAME} · 지금 계통·결과·기능 물어보기`}>
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H11l-4.2 3.6c-.5.4-1.3.1-1.3-.6V16A2.5 2.5 0 0 1 3 13.5Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
           <path d="M12 6.2l.9 2.3 2.3.9-2.3.9-.9 2.3-.9-2.3-2.3-.9 2.3-.9Z" fill="currentColor" />
@@ -119,11 +120,19 @@ export default function ChatBot({ graph, result, resultAt, isNew, tools = [] }) 
     )
   }
   const suggestions = subId && result ? SUGGESTIONS_WITH_RESULT : SUGGESTIONS_NO_SUB
+  // 창을 열면 루나가 먼저 인사하며 대화를 시작한다 (대화 맨 위에 늘 보임). 화면에만 보이고 서버로는 안 보낸다
+  const greeting = `안녕하세요, 저는 DIANA의 AI 도우미 ${NAME}예요.\n${
+    !graph
+      ? '내 변전소 현황이나 플랫폼 사용법이 궁금하시면 물어봐 주세요.'
+      : result
+        ? `지금 ${graph.substation.name} 계산 결과를 같이 보고 있어요. 어디가 위험한지, 왜 그런지, 얼마까지 붙일 수 있는지 무엇이든 물어보세요.`
+        : '이 변전소는 아직 계산 결과가 없어요. 계산하기 전이라도 사용법은 물어보셔도 돼요.'
+  }`
   return (
-    <section className="chat-panel" aria-label="AI 질문하기" ref={panel} style={drag.style}>
+    <section className="chat-panel" aria-label={`AI 챗봇 ${NAME}`} ref={panel} style={drag.style}>
       <header onPointerDown={drag.onPointerDown} title="끌어서 창 옮기기">
         <div>
-          <strong>AI 질문하기</strong>
+          <strong>AI 챗봇 {NAME}</strong>
           <span title="질문할 때 이 화면의 변전소·계산 결과를 같이 보냅니다">{where}</span>
         </div>
         <button type="button" className="chat-head-btn" disabled={busy || msgs.length === 0} onClick={() => setMsgs([])} aria-label="새 대화" title="새 대화 (대화 지우기)">
@@ -134,6 +143,7 @@ export default function ChatBot({ graph, result, resultAt, isNew, tools = [] }) 
         </button>
       </header>
       <div className="chat-list" ref={list}>
+        <Bubble m={{ role: 'assistant', content: greeting }} />
         {msgs.length === 0 && (
           <div className="chat-empty">
             {tools.length > 0 && (
@@ -155,7 +165,7 @@ export default function ChatBot({ graph, result, resultAt, isNew, tools = [] }) 
                 </div>
               </>
             )}
-            <p>지금 계통 상태, 계산 결과, 플랫폼 사용법을 물어보세요. 답은 이 화면의 결과를 근거로 합니다.</p>
+            <p>이렇게 물어볼 수 있어요</p>
             <div className="chat-suggest">
               {suggestions.map((s) => (
                 <button type="button" key={s} onClick={() => send(s)}>
